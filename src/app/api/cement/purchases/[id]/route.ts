@@ -1,0 +1,155 @@
+import { prisma } from '@/lib/prisma';
+import { NextRequest, NextResponse } from 'next/server';
+import { journalCementPurchaseApproved } from '@/lib/accounting';
+import { notify } from '@/lib/telegram';
+
+export const dynamic = 'force-dynamic';
+
+export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
+  try {
+    const purchase = await prisma.cementPurchase.findUnique({
+      where: { id: params.id },
+      include: {
+        factory: true,
+        liftings: {
+          orderBy: { createdAt: 'desc' },
+          take: 20,
+          include: { truck: true },
+        },
+      },
+    });
+
+    if (!purchase) {
+      return NextResponse.json(
+        { success: false, error: 'Cement purchase not found' },
+        { status: 404 }
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      data: {
+        ...purchase,
+        quantityTons: Number(purchase.quantityTons),
+        unitPrice: Number(purchase.unitPrice),
+        totalAmount: Number(purchase.totalAmount),
+        balanceRemaining: Number(purchase.balanceRemaining),
+        paidAmount: Number((purchase as any).paidAmount || 0),
+        paymentStatus: (purchase as any).paymentStatus || 'Unpaid',
+      },
+    });
+  } catch (error: any) {
+    console.error('Error fetching cement purchase:', error);
+    return NextResponse.json(
+      { success: false, error: error.message },
+      { status: 500 }
+    );
+  }
+}
+
+export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
+  try {
+    const body = await request.json();
+    const { action, notes } = body;
+
+    const purchase = await prisma.cementPurchase.findUnique({
+      where: { id: params.id },
+    });
+
+    if (!purchase) {
+      return NextResponse.json(
+        { success: false, error: 'Cement purchase not found' },
+        { status: 404 }
+      );
+    }
+
+    let newStatus = purchase.status;
+
+    switch (action) {
+      case 'check':
+        // Finance checks the purchase (Pending → Checked)
+        if (purchase.status !== 'Pending') {
+          return NextResponse.json(
+            { success: false, error: `Cannot check a purchase with status "${purchase.status}". Must be "Pending".` },
+            { status: 400 }
+          );
+        }
+        newStatus = 'Checked';
+        break;
+
+      case 'approve':
+        // Manager approves (Checked → Approved — purchase is NOT Active until paid)
+        if (purchase.status !== 'Checked') {
+          return NextResponse.json(
+            { success: false, error: `Cannot approve a purchase with status "${purchase.status}". Must be "Checked" first.` },
+            { status: 400 }
+          );
+        }
+        newStatus = 'Approved';
+        break;
+
+      case 'reject':
+        // Reject at any pre-Active stage
+        if (purchase.status !== 'Pending' && purchase.status !== 'Checked' && purchase.status !== 'Approved') {
+          return NextResponse.json(
+            { success: false, error: `Cannot reject a purchase with status "${purchase.status}".` },
+            { status: 400 }
+          );
+        }
+        newStatus = 'Rejected';
+        break;
+
+      case 'cancel':
+        newStatus = 'Cancelled';
+        break;
+
+      default:
+        return NextResponse.json(
+          { success: false, error: `Unknown action: "${action}". Use check, approve, reject, or cancel.` },
+          { status: 400 }
+        );
+    }
+
+    const updated = await prisma.cementPurchase.update({
+      where: { id: params.id },
+      data: { status: newStatus },
+      include: { factory: true },
+    });
+
+    // Auto-create journal entry when purchase is approved
+    let journalResult = null;
+    if (action === 'approve' && newStatus === 'Approved') {
+      journalResult = await journalCementPurchaseApproved(updated);
+      if (journalResult.created) {
+        notify({
+          module: 'FINANCE',
+          event: 'auto_journal_posted',
+          details: {
+            source: 'Cement Purchase',
+            ref: updated.purchaseNo,
+            journalNo: journalResult.voucherNo,
+            amount: Number(updated.totalAmount),
+          },
+        });
+      }
+    }
+
+    return NextResponse.json({
+      success: true,
+      data: {
+        ...updated,
+        quantityTons: Number(updated.quantityTons),
+        unitPrice: Number(updated.unitPrice),
+        totalAmount: Number(updated.totalAmount),
+        balanceRemaining: Number(updated.balanceRemaining),
+      },
+      ...(journalResult ? { journal: journalResult } : {}),
+    });
+  } catch (error: any) {
+    console.error('Error updating cement purchase:', error);
+    return NextResponse.json(
+      { success: false, error: error.message },
+      { status: 500 }
+    );
+  }
+}

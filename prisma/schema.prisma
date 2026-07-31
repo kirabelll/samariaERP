@@ -1,0 +1,1614 @@
+generator client {
+  provider   = "prisma-client-js"
+  engineType = "wasm"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// AUTHENTICATION & RBAC
+// ============================================================
+model User {
+  id             String    @id @default(cuid())
+  username       String    @unique
+  email          String    @unique
+  passwordHash   String
+  firstName      String
+  middleName     String?
+  lastName       String
+  phone          String?
+  role           Role      @default(USER)
+  department     String?
+  branch         String?
+  profileImage   String?
+  telegramChatId String?
+  status         UserStatus @default(ACTIVE)
+  lastLogin      DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  permissions   UserPermission[]
+  activities    ActivityLog[]
+  approvals     Approval[]       @relation("Approver")
+  requestedApprovals Approval[]  @relation("Requester")
+
+  @@map("users")
+}
+
+enum Role {
+  ADMIN
+  MANAGER
+  PROCUREMENT
+  SALES
+  FINANCE
+  HR
+  MEDICAL_PHARMACIST
+  MEDICAL_DRUGGIST
+  WAREHOUSE
+  AUDITOR
+  USER
+  PORTAL_CUSTOMER
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+model UserPermission {
+  id         String  @id @default(cuid())
+  userId     String
+  module     String
+  page       String? // specific page within module
+  canView    Boolean @default(false)
+  canCreate  Boolean @default(false)
+  canEdit    Boolean @default(false)
+  canDelete  Boolean @default(false)
+  canApprove Boolean @default(false)
+  canPrint   Boolean @default(false)
+  canExport  Boolean @default(false)
+  canReverse Boolean @default(false)
+  canClose   Boolean @default(false)
+  canUnlock  Boolean @default(false)
+  user       User    @relation(fields: [userId], references: [id])
+
+  @@unique([userId, module])
+  @@map("user_permissions")
+}
+
+model ActivityLog {
+  id          String   @id @default(cuid())
+  userId      String
+  action      String
+  module      String
+  recordId    String?
+  details     String?
+  ipAddress   String?
+  createdAt   DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id])
+
+  @@map("activity_logs")
+}
+
+model Approval {
+  id              String         @id @default(cuid())
+  module          String
+  recordId        String
+  recordRef       String?
+  requesterId     String
+  approverId      String?
+  status          ApprovalStatus @default(PENDING)
+  level           Int            @default(1)
+  requiredLevels  Int            @default(1)
+  amount          Float          @default(0)
+  description     String?
+  notes           String?
+  requestedAt     DateTime       @default(now())
+  resolvedAt      DateTime?
+  requester       User           @relation("Requester", fields: [requesterId], references: [id])
+  approver        User?          @relation("Approver", fields: [approverId], references: [id])
+
+  @@index([module, recordId])
+  @@index([status])
+  @@index([requesterId])
+  @@index([approverId])
+  @@map("approvals")
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+// ============================================================
+// COMPANY & BRANCH
+// ============================================================
+model Company {
+  id          String  @id @default(cuid())
+  name        String
+  nameAmharic String?
+  tin         String?
+  phone       String?
+  phone2      String?
+  email       String?
+  website     String?
+  location    String?
+  regNo       String?
+  withholding Boolean @default(false)
+  logoUrl     String?
+  createdAt   DateTime @default(now())
+
+  @@map("companies")
+}
+
+model Branch {
+  id        String   @id @default(cuid())
+  name      String
+  location  String?
+  phone     String?
+  status    String   @default("Active")
+  createdAt DateTime @default(now())
+
+  @@map("branches")
+}
+
+// ============================================================
+// CUSTOMER MASTER
+// ============================================================
+model Customer {
+  id              String       @id @default(cuid())
+  code            String       @unique @default(cuid())
+  customerType    CustomerType
+  companyName     String
+  firstName       String?
+  lastName        String?
+  tin             String?
+  phone           String
+  email           String?
+  contactPerson   String?
+  location        String?
+  withholding     Boolean      @default(false)
+  withholdRate    Float        @default(2)
+  creditLimit     Float        @default(0)
+  creditTermDays  Int          @default(0)
+  status          String       @default("Active")
+  approvedBy      String?
+  registeredBy    String?
+  division        Division     @default(CONSTRUCTION)
+  // Medical-specific
+  licenseNo       String?
+  licenseExpiry   DateTime?
+  licenseType     String?      // wholesaler, pharmacy, institution
+  medicalApproved Boolean      @default(false)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  agreements      SalesAgreement[]
+  salesOrders     SalesOrder[]
+  proformas       Proforma[]
+  invoices        SalesInvoice[]
+  medicalRequests MedicalRequest[]
+  payments        CustomerPayment[]
+  deliveries      Delivery[]
+  deposits        CustomerDeposit[]
+  storeIssues     MedicalStoreIssue[]
+  cementLiftings  CementLifting[]
+
+  @@map("customers")
+}
+
+enum CustomerType {
+  COMPANY
+  INDIVIDUAL
+}
+
+enum Division {
+  CONSTRUCTION
+  MEDICAL
+  CEMENT
+  AGGREGATE
+  GENERAL
+  BOTH
+}
+
+// ============================================================
+// SUPPLIER MASTER
+// ============================================================
+model Supplier {
+  id            String   @id @default(cuid())
+  code          String   @unique @default(cuid())
+  supplierType  String   @default("company")
+  companyName   String
+  firstName     String?
+  lastName      String?
+  tin           String?
+  phone         String?
+  email         String?
+  contactPerson String?
+  location      String?
+  category      String?  // Construction, Medicine/Medical, Food, General, etc.
+  withholding   Boolean  @default(false)
+  withholdRate  Float    @default(2)
+  status        String   @default("Active")
+  registeredBy  String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  purchaseOrders PurchaseOrder[]
+  goodsReceives  GoodsReceive[]
+  bankAccounts   SupplierBank[]
+  supplierPayments SupplierPayment[]
+  agreements     SupplierAgreement[]
+
+  @@map("suppliers")
+}
+
+model SupplierAgreement {
+  id           String   @id @default(cuid())
+  agreementNo  String   @unique
+  supplierId   String
+  division     String   @default("CONSTRUCTION")
+  items        String   // JSON: [{type, itemName, qty, unit, unitPrice, amount, description}]
+  totalAmount  Float
+  validFrom    DateTime
+  validTo      DateTime
+  terms          String?
+  status         String   @default("Draft")
+  loadingSite    String?
+  offloadingSite String?
+  createdBy      String?
+  createdAt      DateTime @default(now())
+  supplier       Supplier @relation(fields: [supplierId], references: [id])
+
+  @@map("supplier_agreements")
+}
+
+model SupplierBank {
+  id            String   @id @default(cuid())
+  supplierId    String
+  bankName      String
+  accountNo     String
+  accountName   String?
+  branch        String?
+  isDefault     Boolean  @default(false)
+  supplier      Supplier @relation(fields: [supplierId], references: [id])
+  createdAt     DateTime @default(now())
+
+  @@map("supplier_banks")
+}
+
+// ============================================================
+// FACTORY MASTER (Cement & Aggregate sources)
+// ============================================================
+model Factory {
+  id               String   @id @default(cuid())
+  code             String   @unique @default(cuid())
+  name             String
+  factoryType      String   // cement, aggregate, sand, mixed
+  suppliedMaterial String?
+  location         String?
+  phone            String?
+  contactPerson    String?
+  useCoupons       Boolean  @default(false)
+  weighbridgeReq   Boolean  @default(true)
+  terms            String?
+  status           String   @default("Active")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  cementPurchases  CementPurchase[]
+  coupons          Coupon[]
+  cementLiftings   CementLifting[]
+  cementBalances   CementBalance[]
+
+  @@map("factories")
+}
+
+// ============================================================
+// TRANSPORTER & TRUCK
+// ============================================================
+model TransportAssociation {
+  id            String   @id @default(cuid())
+  code          String   @unique @default(cuid())
+  name          String
+  contactPerson String?
+  phone         String?
+  email         String?
+  address       String?
+  status        String   @default("Active")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  transporters  Transporter[]
+
+  @@map("transport_associations")
+}
+
+model Transporter {
+  id              String   @id @default(cuid())
+  code            String   @unique @default(cuid())
+  transporterType String   @default("company")
+  companyName     String
+  firstName       String?
+  lastName        String?
+  tin             String?
+  phone           String?
+  email           String?
+  contactPerson   String?
+  driverName      String?
+  location        String?
+  associationId   String?
+  withholding     Boolean  @default(false)
+  withholdRate    Float    @default(2)
+  status          String   @default("Active")
+  registeredBy    String?
+  createdAt       DateTime @default(now())
+
+  association     TransportAssociation? @relation(fields: [associationId], references: [id])
+  trucks          Truck[]
+  agreements      TransporterAgreement[]
+  aggDeliveries   AggregateDelivery[]
+  truckPayments   TruckPayment[]
+  settlements     AggregateSettlement[]
+  recoveries      TransporterRecovery[]
+
+  @@map("transporters")
+}
+
+model Truck {
+  id            String      @id @default(cuid())
+  plateNo       String      @unique
+  transporterId String
+  ownerName     String?
+  ownerPhone    String?
+  ownerTin      String?
+  driverName    String?
+  truckType     String?     // Trailer, Truck, Pickup, etc.
+  capacity      Float?      // Holding capacity
+  capacityUnit  String?     // m3, quintal, ton
+  status        String      @default("Active")
+  transporter   Transporter @relation(fields: [transporterId], references: [id])
+  createdAt     DateTime    @default(now())
+
+  aggDeliveries AggregateDelivery[]
+  cementLiftings CementLifting[]
+
+  @@map("trucks")
+}
+
+model TransporterAgreement {
+  id              String      @id @default(cuid())
+  agreementNo     String      @unique
+  transporterId   String
+  supplierId      String?     // supplier the transporter picks up from
+  supplierAgreementId String? // linked supplier agreement for auto-populating sites
+  productType     String      // aggregate, cement, sand
+  validFrom       DateTime
+  validTo         DateTime
+  terms           String?
+  loadingSite     String?
+  offloadingSite  String?
+  deliverySites   String?     // JSON: [{site, pricePerUnit}] - multiple destinations with pricing
+  pricePerUnit    Float?
+  aggregateValue  Float?      // ETB per m³ for shortage calculation
+  unitType        String?     // m³, kg, ton, trip
+  amount          Float?
+  loadSize        Float?
+  associationServiceCharge Float? @default(0) // Now stored as percentage (e.g., 5 = 5%)
+  associationChargeEnabled Boolean @default(false)
+  status          String      @default("Active") // Active, Expired, Cancelled
+  createdBy       String?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  transporter     Transporter @relation(fields: [transporterId], references: [id])
+  pricingItems    TransporterPricing[]
+  agreementItems  TransporterAgreementItem[]
+
+  @@map("transporter_agreements")
+}
+
+model TransporterAgreementItem {
+  id              String   @id @default(cuid())
+  agreementId    String
+  itemId          String
+  transportRate   Float    // ETB per m³
+  aggregateValue  Float    // ETB per m³ for shortage calc
+  agreement       TransporterAgreement @relation(fields: [agreementId], references: [id], onDelete: Cascade)
+
+  @@map("transporter_agreement_items")
+}
+
+model TransporterPricing {
+  id              String               @id @default(cuid())
+  agreementId     String
+  truckCategory   String               // e.g., "Trailer", "Truck", "Pickup"
+  holdingCapacity Float                // capacity for this category
+  capacityUnit    String               @default("m3") // m3, quintal, ton
+  unitPrice       Float                // price per unit
+  totalPrice      Float?               // calculated: holdingCapacity * unitPrice
+  agreement       TransporterAgreement @relation(fields: [agreementId], references: [id], onDelete: Cascade)
+
+  @@map("transporter_pricing")
+}
+
+// ============================================================
+// ITEM / PRODUCT MASTER
+// ============================================================
+model Item {
+  id           String   @id @default(cuid())
+  code         String   @unique @default(cuid())
+  name         String
+  nameAmharic  String?
+  category     String
+  unit         String
+  itemType     String   @default("sales") // sales, internal, medical
+  division     Division @default(CONSTRUCTION)
+  // Medical fields
+  batchTracked Boolean  @default(false)
+  expiryTracked Boolean @default(false)
+  manufacturer String?
+  genericName  String?
+  strength     String?
+  dosageForm   String?
+  status       String   @default("Active")
+  registeredBy String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  stockBalances   StockBalance[]
+  medicalBatches  MedicalBatch[]
+
+  @@map("items")
+}
+
+model Unit {
+  id     String @id @default(cuid())
+  name   String @unique
+  symbol String
+
+  @@map("units")
+}
+
+model Category {
+  id   String @id @default(cuid())
+  name String @unique
+  type String @default("item") // item, expense, income
+
+  @@map("categories")
+}
+
+// ============================================================
+// STOCK BALANCE
+// ============================================================
+model StockBalance {
+  id          String @id @default(cuid())
+  itemId      String
+  warehouse   String @default("main")
+  quantity    Float  @default(0)
+  avgCost     Float  @default(0)
+  lastUpdated DateTime @default(now())
+  item        Item   @relation(fields: [itemId], references: [id])
+
+  @@unique([itemId, warehouse])
+  @@map("stock_balances")
+}
+
+// ============================================================
+// SALES / COMMERCIAL
+// ============================================================
+model SalesAgreement {
+  id           String   @id @default(cuid())
+  agreementNo  String   @unique
+  customerId   String
+  division     Division
+  items        String   // JSON: [{itemId, qty, unit, unitPrice}]
+  totalAmount  Float
+  validFrom    DateTime
+  validTo      DateTime
+  terms          String?
+  offloadingSite String?  @map("offloading_site")
+  status         String   @default("Draft")
+  approvedBy     String?
+  createdBy      String?
+  createdAt      DateTime @default(now())
+  customer       Customer @relation(fields: [customerId], references: [id])
+
+  @@map("sales_agreements")
+}
+
+model Proforma {
+  id          String   @id @default(cuid())
+  proformaNo  String   @unique
+  customerId  String
+  division    Division
+  items       String   // JSON array
+  subtotal    Float
+  vatAmount   Float
+  withholding Float    @default(0)
+  totalAmount Float
+  validityDays Int     @default(15)
+  terms       String?
+  status      String   @default("Draft") // Draft, Sent, Accepted, Expired, Cancelled
+  sentDate    DateTime?
+  sentMethod  String?
+  createdBy   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  customer    Customer @relation(fields: [customerId], references: [id])
+
+  salesOrders SalesOrder[]
+
+  @@map("proformas")
+}
+
+model SalesOrder {
+  id          String   @id @default(cuid())
+  orderNo     String   @unique
+  customerId  String
+  proformaId  String?
+  division    Division
+  items       String   // JSON
+  totalAmount Float
+  status      String   @default("Pending") // Pending, Confirmed, InProgress, Delivered, Cancelled
+  orderDate   DateTime @default(now())
+  createdBy   String?
+  customer    Customer @relation(fields: [customerId], references: [id])
+  proforma    Proforma? @relation(fields: [proformaId], references: [id])
+
+  deliveries  Delivery[]
+  invoices    SalesInvoice[]
+
+  @@map("sales_orders")
+}
+
+model SalesInvoice {
+  id           String   @id @default(cuid())
+  invoiceNo    String   @unique
+  customerId   String
+  salesOrderId String?
+  liftingId    String?  // Link to CementLifting for cement invoices
+  division     Division
+  items        String   // JSON
+  subtotal     Float
+  vatRate      Float    @default(15)
+  vatAmount    Float
+  withholding  Float    @default(0)
+  totalAmount  Float
+  status       String   @default("Unpaid") // Unpaid, Partial, Paid, Cancelled
+  invoiceDate  DateTime @default(now())
+  dueDate      DateTime?
+  createdBy    String?
+  customer     Customer @relation(fields: [customerId], references: [id])
+  salesOrder   SalesOrder? @relation(fields: [salesOrderId], references: [id])
+  cementLifting CementLifting? @relation(fields: [liftingId], references: [id])
+
+  payments     CustomerPayment[]
+
+  @@map("sales_invoices")
+}
+
+model CustomerPayment {
+  id               String   @id @default(cuid())
+  receiptNo        String
+  customerId       String
+  invoiceId        String?
+  amount           Float
+  withholdingAmount Float   @default(0)
+  paymentMethod    String  // cash, bank_transfer, check
+  bankName         String?
+  refNo            String?
+  depositSlip      String?  // file path
+  status           String   @default("Pending") // Pending, Verified, Rejected
+  verifiedBy       String?
+  paymentDate      DateTime @default(now())
+  createdBy        String?
+  bankAccountId    String?
+  customer         Customer @relation(fields: [customerId], references: [id])
+  invoice          SalesInvoice? @relation(fields: [invoiceId], references: [id])
+
+  @@index([receiptNo])
+  @@map("customer_payments")
+}
+
+// ============================================================
+// DELIVERY (General)
+// ============================================================
+model Delivery {
+  id            String   @id @default(cuid())
+  deliveryNo    String   @unique
+  customerId    String
+  salesOrderId  String?
+  division      Division
+  items         String   // JSON
+  driverName    String?
+  truckPlateNo  String?
+  deliveredTo   String?
+  deliveryDate  DateTime @default(now())
+  status        String   @default("Pending")
+  registeredBy  String?
+  customer      Customer @relation(fields: [customerId], references: [id])
+  salesOrder    SalesOrder? @relation(fields: [salesOrderId], references: [id])
+
+  @@map("deliveries")
+}
+
+// ============================================================
+// AGGREGATE OPERATIONS
+// ============================================================
+model AggregateDelivery {
+  id               String      @id @default(cuid())
+  dispatchNo       String      @unique
+  customerId       String
+  supplierId       String
+  transporterId    String
+  truckId          String
+  itemId           String
+  agreementId      String?
+  driverName       String?
+  padNumber        String?     // Delivery pad/receipt number
+  loadedVolume     Float       // m3 from supplier
+  deliveredVolume  Float?      // m3 from buyer
+  shortageVolume   Float?      // loaded - delivered
+  transportRate    Float       // per m3
+  aggregateValue   Float       // per m3 for shortage calc
+  grossTruckFee    Float?      // deliveredVolume * transportRate
+  shortageDeduction Float?     // shortageVolume * aggregateValue
+  netTruckPayment  Float?      // gross - shortage
+  telegramProof    String?     // file path
+  signedInvoice    String?     // file path
+  dispatchDate     DateTime    @default(now())
+  deliveryDate     DateTime?
+  status           String      @default("Dispatched") // Dispatched, Delivered, Verified, Settled
+  verifiedBy       String?
+  registeredBy     String?
+  transporter      Transporter @relation(fields: [transporterId], references: [id])
+  truck            Truck       @relation(fields: [truckId], references: [id])
+  proofs           AggregateProof[]
+
+  @@map("aggregate_deliveries")
+}
+
+model TruckPayment {
+  id              String      @id @default(cuid())
+  paymentSheetNo  String      @unique
+  transporterId   String
+  periodFrom      DateTime
+  periodTo        DateTime
+  totalGrossFee   Float
+  totalShortage   Float
+  totalNetPayment Float
+  commissionRate  Float       @default(0)
+  commissionAmt   Float       @default(0)
+  finalPayable    Float
+  status          String      @default("Draft") // Draft, Approved, Paid
+  approvedBy      String?
+  createdBy       String?
+  createdAt       DateTime    @default(now())
+  transporter     Transporter @relation(fields: [transporterId], references: [id])
+
+  @@map("truck_payments")
+}
+
+// ============================================================
+// CEMENT OPERATIONS
+// ============================================================
+model CementPurchase {
+  id              String   @id @default(cuid())
+  purchaseNo      String   @unique
+  factoryId       String
+  cementType      String
+  quantityTons    Float
+  unitPrice       Float
+  totalAmount     Float
+  paidAmount      Float    @default(0)
+  paymentStatus   String   @default("Unpaid") // Unpaid, Partial, Paid
+  paymentRef      String?
+  paymentDate     DateTime?
+  balanceRemaining Float   @default(0)
+  vatRate         Float    @default(0) @map("vat_rate")
+  vatAmount       Float    @default(0) @map("vat_amount")
+  status          String   @default("Pending") // Pending, Checked, Active, Exhausted
+  createdBy       String?
+  createdAt       DateTime @default(now())
+  factory         Factory  @relation(fields: [factoryId], references: [id])
+
+  liftings        CementLifting[]
+  coupons         Coupon[]
+  balances        CementBalance[]
+
+  @@map("cement_purchases")
+}
+
+model Coupon {
+  id              String   @id @default(cuid())
+  couponNo        String   @unique
+  factoryId       String
+  purchaseId      String
+  purchaseOrderId String?  // Link to Purchase Order when registered
+  tonnage         Float?
+  status          CouponStatus @default(COLLECTED)
+  collectedDate   DateTime?
+  collectedBy     String?
+  handedOverTo    String?
+  handoverDate    DateTime?
+  handoverProof   String?
+  usedDate        DateTime?
+  returnDate      DateTime?
+  notes           String?
+  createdAt       DateTime @default(now())
+  factory         Factory  @relation(fields: [factoryId], references: [id])
+  purchase        CementPurchase @relation(fields: [purchaseId], references: [id])
+  purchaseOrder   PurchaseOrder? @relation(fields: [purchaseOrderId], references: [id])
+
+  @@map("coupons")
+}
+
+enum CouponStatus {
+  COLLECTED
+  IN_CUSTODY
+  HANDED_OVER
+  USED
+  RETURNED
+  CANCELLED
+  EXPIRED
+  LOST
+}
+
+model CementLifting {
+  id                    String   @id @default(cuid())
+  liftingNo             String   @unique
+  purchaseId            String
+  factoryId             String
+  truckId               String
+  customerId            String
+  // Factory weighbridge (mandatory)
+  factoryWeighbridgeRef String
+  factoryWeight         Float
+  // Buyer weighbridge
+  buyerWeighbridgeQty   Float?
+  // Shortage
+  shortageQty           Float?   // factory - buyer
+  shortagePenalty       Float?
+  // Coupon (optional)
+  couponId              String?
+  deliveryNoteNo        String?
+  liftingDate           DateTime @default(now())
+  status                String   @default("Lifted") // Lifted, Delivered, Verified
+  registeredBy          String?
+  createdAt             DateTime @default(now())
+  purchase              CementPurchase @relation(fields: [purchaseId], references: [id])
+  factory               Factory  @relation(fields: [factoryId], references: [id])
+  truck                 Truck    @relation(fields: [truckId], references: [id])
+  customer              Customer @relation(fields: [customerId], references: [id])
+  invoices              SalesInvoice[]
+
+  @@map("cement_liftings")
+}
+
+// ============================================================
+// MEDICAL DIVISION
+// ============================================================
+model MedicalRequest {
+  id            String   @id @default(cuid())
+  requestNo     String   @unique
+  customerId    String
+  items         String   // JSON: [{itemId, qty, batchPref, notes}]
+  priority      String   @default("Normal")
+  status        String   @default("Submitted") // Submitted, Quoted, Approved, Released, Dispatched, Delivered, Cancelled
+  requestDate   DateTime @default(now())
+  notes         String?
+  createdBy     String?
+  customer      Customer @relation(fields: [customerId], references: [id])
+
+  @@map("medical_requests")
+}
+
+model MedicalBatch {
+  id           String    @id @default(cuid())
+  itemId       String
+  batchNo      String
+  expiryDate   DateTime
+  quantity     Float
+  costPrice    Float     @default(0)
+  warehouse    String    @default("medical_store")
+  status       String    @default("Available") // Available, Reserved, Quarantine, Expired, Damaged, Recalled
+  receivedDate DateTime  @default(now())
+  supplierId   String?
+  item         Item      @relation(fields: [itemId], references: [id])
+
+  @@unique([itemId, batchNo, warehouse])
+  @@map("medical_batches")
+}
+
+model MedicalPricing {
+  id                String   @id @default(cuid())
+  itemId            String
+  manufacturerPrice Float    @default(0)
+  freight           Float    @default(0)
+  insurance         Float    @default(0)
+  customs           Float    @default(0)
+  inlandTransport   Float    @default(0)
+  bankCost          Float    @default(0)
+  warehouseCost     Float    @default(0)
+  handlingCost      Float    @default(0)
+  wastageAllowance  Float    @default(0)
+  otherCosts        Float    @default(0)
+  totalCost         Float    @default(0)
+  marginPercent     Float    @default(0)
+  recommendedPrice  Float    @default(0)
+  approvedPrice     Float?
+  approvedBy        String?
+  effectiveDate     DateTime @default(now())
+  createdAt         DateTime @default(now())
+
+  @@map("medical_pricing")
+}
+
+model SalesCommission {
+  id              String   @id @default(cuid())
+  salespersonId   String
+  basis           String   @default("invoiced") // invoiced, paid
+  ratePercent     Float
+  productCategory String?
+  customerId      String?
+  effectiveFrom   DateTime
+  effectiveTo     DateTime?
+  approvedBy      String?
+  status          String   @default("Active")
+  createdAt       DateTime @default(now())
+
+  @@map("sales_commissions")
+}
+
+// ============================================================
+// PURCHASING
+// ============================================================
+model PurchaseOrder {
+  id          String   @id @default(cuid())
+  poNo        String   @unique
+  supplierId  String
+  items       String   // JSON
+  totalAmount Float
+  status      String   @default("Draft")
+  requestType String   @default("purchase_order") // purchase_order | service_request
+  approvedBy  String?
+  createdBy   String?
+  createdAt   DateTime @default(now())
+  supplier    Supplier @relation(fields: [supplierId], references: [id])
+
+  goodsReceives GoodsReceive[]
+  supplierPayments SupplierPayment[]
+  coupons       Coupon[]
+
+  @@map("purchase_orders")
+}
+
+model GoodsReceive {
+  id            String   @id @default(cuid())
+  grvNo         String   @unique
+  supplierId    String
+  purchaseOrderId String?
+  items         String   // JSON with batch/lot info for medical
+  totalAmount   Float
+  receivedBy    String?
+  receivedDate  DateTime @default(now())
+  status        String   @default("Received")
+  supplier      Supplier @relation(fields: [supplierId], references: [id])
+  purchaseOrder PurchaseOrder? @relation(fields: [purchaseOrderId], references: [id])
+
+  @@map("goods_receives")
+}
+
+// ============================================================
+// SUPPLIER PAYMENT
+// ============================================================
+model SupplierPayment {
+  id            String   @id @default(cuid())
+  paymentNo     String   @unique
+  supplierId    String
+  purchaseOrderId String?
+  amount        Float
+  paymentMethod String   // cash, bank_transfer, check
+  bankName      String?
+  refNo         String?
+  description   String?
+  status        String   @default("Pending") // Pending, Approved, Paid
+  approvedBy    String?
+  paymentDate   DateTime @default(now())
+  createdBy     String?
+  createdAt     DateTime @default(now())
+  supplier      Supplier @relation(fields: [supplierId], references: [id])
+  purchaseOrder PurchaseOrder? @relation(fields: [purchaseOrderId], references: [id])
+  @@map("supplier_payments")
+}
+
+// ============================================================
+// ACCOUNTING & VAT
+// ============================================================
+model ChartOfAccount {
+  id           String   @id @default(cuid())
+  accountCode  String   @unique
+  accountName  String
+  accountType  String   // Asset, Liability, Equity, Revenue, Expense
+  parentId     String?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  entries      JournalEntry[]
+
+  @@map("chart_of_accounts")
+}
+
+model JournalEntry {
+  id          String   @id @default(cuid())
+  voucherNo   String
+  accountId   String
+  debit       Float    @default(0)
+  credit      Float    @default(0)
+  description String?
+  refModule   String?
+  refId       String?
+  entryDate   DateTime @default(now())
+  postedBy    String?
+  account     ChartOfAccount @relation(fields: [accountId], references: [id])
+
+  @@map("journal_entries")
+}
+
+model BankAccount {
+  id          String   @id @default(cuid())
+  bankName    String
+  accountNo   String
+  accountName String
+  branch      String?
+  currency    String   @default("ETB")
+  balance     Float    @default(0)
+  status      String   @default("Active")
+  createdAt   DateTime @default(now())
+
+  transactions    BankTransaction[]
+  reconciliations BankReconciliation[]
+
+  @@map("bank_accounts")
+}
+
+model BankTransaction {
+  id            String      @id @default(cuid())
+  bankAccountId String
+  type          String      // deposit, withdrawal, transfer
+  amount        Float
+  refNo         String?
+  description   String?
+  refModule     String?     // CEMENT_PURCHASE, SUPPLIER_PAYMENT, etc.
+  refId         String?     // ID of the linked record
+  transDate     DateTime    @default(now())
+  reconStatus   String      @default("Pending")
+  createdBy     String?
+  bankAccount   BankAccount @relation(fields: [bankAccountId], references: [id])
+
+  @@map("bank_transactions")
+}
+
+model VatPeriod {
+  id            String   @id @default(cuid())
+  periodName    String   // e.g. "2024-08"
+  startDate     DateTime
+  endDate       DateTime
+  outputVat     Float    @default(0)
+  inputVat      Float    @default(0)
+  netVat        Float    @default(0)
+  status        String   @default("Open") // Open, Filed, Locked
+  filedBy       String?
+  filedDate     DateTime?
+  createdAt     DateTime @default(now())
+
+  @@map("vat_periods")
+}
+
+// ============================================================
+// HR & PAYROLL
+// ============================================================
+model Employee {
+  id              String   @id @default(cuid())
+  employeeNo      String   @unique
+  firstName       String
+  middleName      String?
+  lastName        String
+  firstNameAm     String?
+  lastNameAm      String?
+  gender          String?
+  dateOfBirth     DateTime?
+  phone           String?
+  email           String?
+  address         String?
+  department      String?
+  position        String?
+  hireDate        DateTime
+  employmentType  String   @default("Permanent") // Permanent, Contract, PartTime
+  baseSalary      Float    @default(0)
+  bankAccount     String?
+  bankName        String?
+  tin             String?
+  pensionNo       String?
+  emergencyContact String?
+  emergencyPhone  String?
+  status          String   @default("Active")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  attendances     Attendance[]
+  leaves          LeaveRequest[]
+  payrollItems    PayrollItem[]
+  advances        EmployeeAdvance[]
+
+  @@map("employees")
+}
+
+model Attendance {
+  id         String   @id @default(cuid())
+  employeeId String
+  date       DateTime
+  checkIn    DateTime?
+  checkOut   DateTime?
+  status     String   @default("Present") // Present, Absent, Late, HalfDay, Holiday, Leave
+  notes      String?
+  employee   Employee @relation(fields: [employeeId], references: [id])
+
+  @@unique([employeeId, date])
+  @@map("attendances")
+}
+
+model LeaveRequest {
+  id          String   @id @default(cuid())
+  employeeId  String
+  leaveType   String   // Annual, Sick, Maternity, Paternity, Other
+  startDate   DateTime
+  endDate     DateTime
+  days        Float
+  reason      String?
+  status      String   @default("Pending")
+  approvedBy  String?
+  createdAt   DateTime @default(now())
+  employee    Employee @relation(fields: [employeeId], references: [id])
+
+  @@map("leave_requests")
+}
+
+model PayrollPeriod {
+  id          String   @id @default(cuid())
+  periodName  String   @unique // e.g. "2024-08"
+  month       Int
+  year        Int
+  status      String   @default("Draft") // Draft, Calculated, Approved, Paid, Locked
+  approvedBy  String?
+  approvedAt  DateTime?
+  createdAt   DateTime @default(now())
+
+  items       PayrollItem[]
+
+  @@map("payroll_periods")
+}
+
+model PayrollItem {
+  id                 String        @id @default(cuid())
+  payrollPeriodId    String
+  employeeId         String
+  baseSalary         Float
+  workingDays        Float         @default(30)
+  absentDays         Float         @default(0)
+  overtimeHours      Float         @default(0)
+  overtimePay        Float         @default(0)
+  allowances         Float         @default(0)
+  grossSalary        Float
+  pensionEmployee    Float         @default(0) // 7%
+  pensionEmployer    Float         @default(0) // 11%
+  incomeTax          Float         @default(0)
+  otherDeductions    Float         @default(0)
+  advanceDeduction   Float         @default(0)
+  totalDeductions    Float
+  netSalary          Float
+  payrollPeriod      PayrollPeriod @relation(fields: [payrollPeriodId], references: [id])
+  employee           Employee      @relation(fields: [employeeId], references: [id])
+
+  @@unique([payrollPeriodId, employeeId])
+  @@map("payroll_items")
+}
+
+model EmployeeAdvance {
+  id           String   @id @default(cuid())
+  employeeId   String
+  amount       Float
+  remainingBal Float
+  monthlyDeduction Float @default(0)
+  reason       String?
+  approvedBy   String?
+  status       String   @default("Pending") // Pending, Approved, Active, PaidOff
+  issueDate    DateTime @default(now())
+  employee     Employee @relation(fields: [employeeId], references: [id])
+
+  @@map("employee_advances")
+}
+
+model TaxTable {
+  id        String   @id @default(cuid())
+  minIncome Float
+  maxIncome Float
+  rate      Float
+  deduction Float
+  effectiveFrom DateTime
+  effectiveTo   DateTime?
+
+  @@unique([minIncome, maxIncome])
+  @@map("tax_tables")
+}
+
+// ============================================================
+// DOCUMENT EVIDENCE
+// ============================================================
+model Document {
+  id          String   @id @default(cuid())
+  module      String
+  recordId    String
+  docType     String   // telegram_proof, signed_invoice, weighbridge, coupon_photo, deposit_slip
+  filePath    String
+  fileName    String
+  uploadedBy  String?
+  uploadedAt  DateTime @default(now())
+  verified       Boolean  @default(false)
+  verifiedBy     String?
+  verifiedDate   DateTime?
+  originalReceived Boolean @default(false)
+  originalReceivedDate DateTime?
+
+  @@map("documents")
+}
+
+// ============================================================
+// PAYMENT VOUCHERS (P1 - Source-document-driven payments)
+// ============================================================
+model PaymentVoucher {
+  id              String   @id @default(cuid())
+  voucherNo       String   @unique
+  voucherType     String   // PAYMENT, RECEIPT, REFUND
+  sourceModule    String   // PURCHASE, AGGREGATE, CEMENT, PAYROLL, VAT, MEDICAL, ASSOCIATION, TRANSPORTER
+  sourceId        String?  // ID of source record (PO, settlement, etc.)
+  sourceRef       String?  // Human-readable ref (PO-001, etc.)
+  payeeType       String   // SUPPLIER, CUSTOMER, EMPLOYEE, TRANSPORTER, GOVERNMENT, ASSOCIATION
+  payeeId         String?
+  payeeName       String
+  amount          Float
+  paymentMethod   String   // cash, bank_transfer, check
+  bankAccountId   String?
+  bankName        String?
+  checkNo         String?
+  refNo           String?
+  description     String?
+  status          String   @default("Draft") // Draft, Pending_Approval, Approved, Posted, Rejected, Cancelled
+  preparedBy      String?
+  checkedBy       String?
+  checkedAt       DateTime?
+  approvedBy      String?
+  approvedAt      DateTime?
+  postedBy        String?
+  postedAt        DateTime?
+  rejectionReason String?
+  voucherDate     DateTime @default(now())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@map("payment_vouchers")
+}
+
+// ============================================================
+// CUSTOMER DEPOSITS (P1 - Deposit workflow)
+// ============================================================
+model CustomerDeposit {
+  id              String   @id @default(cuid())
+  depositNo       String   @unique
+  customerId      String
+  amount          Float
+  depositMethod   String   // cash, bank_transfer, check
+  bankName        String?
+  refNo           String?
+  depositSlip     String?  // file path
+  appliedAmount   Float    @default(0)
+  unappliedAmount Float    @default(0) // amount - appliedAmount
+  status          String   @default("Pending") // Pending, Verified, Applied, Partially_Applied, Refunded
+  verifiedBy      String?
+  verifiedAt      DateTime?
+  depositDate     DateTime @default(now())
+  createdBy       String?
+  createdAt       DateTime @default(now())
+  customer        Customer @relation(fields: [customerId], references: [id])
+
+  applications    DepositApplication[]
+
+  @@map("customer_deposits")
+}
+
+model DepositApplication {
+  id          String   @id @default(cuid())
+  depositId   String
+  invoiceId   String?
+  orderId     String?
+  amount      Float
+  appliedBy   String?
+  appliedAt   DateTime @default(now())
+  deposit     CustomerDeposit @relation(fields: [depositId], references: [id])
+
+  @@map("deposit_applications")
+}
+
+// ============================================================
+// AGGREGATE SETTLEMENT & PROOF (P2)
+// ============================================================
+model AggregateProof {
+  id              String   @id @default(cuid())
+  deliveryId      String
+  proofType       String   // telegram, signed_invoice, weighbridge, photo
+  filePath        String
+  uploadedBy      String?
+  uploadedAt      DateTime @default(now())
+  verified        Boolean  @default(false)
+  verifiedBy      String?
+  verifiedAt      DateTime?
+  notes           String?
+
+  delivery        AggregateDelivery @relation(fields: [deliveryId], references: [id])
+
+  @@map("aggregate_proofs")
+}
+
+model AggregateSettlement {
+  id                  String   @id @default(cuid())
+  settlementNo        String   @unique
+  transporterId       String
+  periodFrom          DateTime
+  periodTo            DateTime
+  totalDispatches     Int      @default(0)
+  totalLoadedVolume   Float    @default(0)
+  totalDeliveredVolume Float   @default(0)
+  totalShortage       Float    @default(0)
+  totalGrossFee       Float    @default(0)
+  totalShortageDeduction Float @default(0)
+  totalNetPayment     Float    @default(0)
+  associationRate     Float    @default(0)
+  associationAmount   Float    @default(0)
+  recoveryDeduction   Float    @default(0)
+  finalPayable        Float    @default(0)
+  status              String   @default("Draft") // Draft, Verified, Approved, Settled, Paid
+  verifiedBy          String?
+  verifiedAt          DateTime?
+  approvedBy          String?
+  approvedAt          DateTime?
+  createdBy           String?
+  createdAt           DateTime @default(now())
+  transporter         Transporter @relation(fields: [transporterId], references: [id])
+
+  @@map("aggregate_settlements")
+}
+
+// ============================================================
+// CEMENT EXTENDED (P3 - Weighbridge, Balance, Penalty)
+// ============================================================
+model CementWeighbridge {
+  id              String   @id @default(cuid())
+  weighbridgeNo   String   @unique
+  liftingId       String?
+  weighbridgeType String   // FACTORY, BUYER
+  truckPlateNo    String
+  grossWeight     Float
+  tareWeight      Float
+  netWeight       Float    // gross - tare
+  weighbridgeDate DateTime @default(now())
+  operatorName    String?
+  proofImage      String?
+  verified        Boolean  @default(false)
+  verifiedBy      String?
+  createdAt       DateTime @default(now())
+
+  @@map("cement_weighbridges")
+}
+
+model CementBalance {
+  id              String   @id @default(cuid())
+  purchaseId      String
+  factoryId       String
+  initialQty      Float
+  liftedQty       Float    @default(0)
+  remainingQty    Float    @default(0)
+  lastUpdated     DateTime @default(now())
+  purchase        CementPurchase @relation(fields: [purchaseId], references: [id])
+  factory         Factory  @relation(fields: [factoryId], references: [id])
+
+  @@unique([purchaseId, factoryId])
+  @@map("cement_balances")
+}
+
+model CementPenalty {
+  id              String   @id @default(cuid())
+  penaltyNo       String   @unique
+  liftingId       String?
+  transporterId   String?
+  truckPlateNo    String?
+  penaltyType     String   // SHORTAGE, DAMAGE, DELAY, OTHER
+  shortageQty     Float    @default(0)
+  penaltyRate     Float    @default(0)
+  penaltyAmount   Float    @default(0)
+  recoveryStatus  String   @default("Pending") // Pending, Deducted, Recovered, Waived
+  recoveredAmount Float    @default(0)
+  approvedBy      String?
+  notes           String?
+  penaltyDate     DateTime @default(now())
+  createdAt       DateTime @default(now())
+
+  @@map("cement_penalties")
+}
+
+model TransporterRecovery {
+  id              String   @id @default(cuid())
+  recoveryNo      String   @unique
+  transporterId   String
+  sourceModule    String   // AGGREGATE, CEMENT
+  sourceId        String?
+  originalAmount  Float
+  recoveredAmount Float    @default(0)
+  pendingAmount   Float    @default(0)
+  status          String   @default("Open") // Open, Partial, Recovered, Written_Off
+  notes           String?
+  createdAt       DateTime @default(now())
+  transporter     Transporter @relation(fields: [transporterId], references: [id])
+
+  @@map("transporter_recoveries")
+}
+
+// ============================================================
+// MEDICAL STORE OPERATIONS (P4)
+// ============================================================
+model MedicalStoreIssue {
+  id              String   @id @default(cuid())
+  issueNo         String   @unique
+  requestId       String?
+  customerId      String
+  items           String   // JSON: [{itemId, batchId, batchNo, qty, unitPrice, total}]
+  totalAmount     Float    @default(0)
+  issuedBy        String?
+  issuedDate      DateTime @default(now())
+  status          String   @default("Issued") // Issued, Delivered, Returned
+  deliveryMethod  String?  // pickup, delivery
+  receiverName    String?
+  receiverPhone   String?
+  signedProof     String?
+  notes           String?
+  createdAt       DateTime @default(now())
+  customer        Customer @relation(fields: [customerId], references: [id])
+
+  @@map("medical_store_issues")
+}
+
+model StockAdjustment {
+  id              String   @id @default(cuid())
+  adjustmentNo    String   @unique
+  itemId          String
+  batchId         String?
+  warehouse       String   @default("main")
+  adjustmentType  String   // PHYSICAL_COUNT, DAMAGE, EXPIRY, RETURN, TRANSFER, WRITE_OFF
+  previousQty     Float
+  newQty          Float
+  difference      Float    // newQty - previousQty
+  reason          String
+  approvedBy      String?
+  adjustedBy      String?
+  adjustmentDate  DateTime @default(now())
+  createdAt       DateTime @default(now())
+
+  @@map("stock_adjustments")
+}
+
+// ============================================================
+// COMMISSION (P5)
+// ============================================================
+model CommissionCalculation {
+  id              String   @id @default(cuid())
+  calculationNo   String   @unique
+  salespersonId   String
+  periodFrom      DateTime
+  periodTo        DateTime
+  basis           String   @default("invoiced") // invoiced, paid
+  totalSales      Float    @default(0)
+  commissionRate  Float    @default(0)
+  grossCommission Float    @default(0)
+  adjustments     Float    @default(0)
+  netCommission   Float    @default(0)
+  status          String   @default("Calculated") // Calculated, Approved, Paid, Reversed
+  approvedBy      String?
+  approvedAt      DateTime?
+  paidDate        DateTime?
+  reversalReason  String?
+  createdBy       String?
+  createdAt       DateTime @default(now())
+
+  items           CommissionItem[]
+
+  @@map("commission_calculations")
+}
+
+model CommissionItem {
+  id              String   @id @default(cuid())
+  calculationId   String
+  invoiceId       String?
+  invoiceNo       String?
+  customerId      String?
+  customerName    String?
+  invoiceAmount   Float    @default(0)
+  paidAmount      Float    @default(0)
+  commissionBase  Float    @default(0)
+  rate            Float    @default(0)
+  commissionAmount Float   @default(0)
+  calculation     CommissionCalculation @relation(fields: [calculationId], references: [id], onDelete: Cascade)
+
+  @@map("commission_items")
+}
+
+// ============================================================
+// EXCEPTION CENTER (P6)
+// ============================================================
+model ExceptionLog {
+  id              String   @id @default(cuid())
+  exceptionType   String   // MISSING_DOCUMENT, OVERDUE_APPROVAL, SHORTAGE_MISMATCH, EXPIRED_LICENSE, OVER_CREDIT, UNRECOVERED_DEDUCTION, UNFILED_VAT, PRICE_OVERRIDE, PENDING_DEPOSIT
+  severity        String   @default("Medium") // Low, Medium, High, Critical
+  module          String
+  recordId        String?
+  recordRef       String?
+  description     String
+  assignedTo      String?
+  status          String   @default("Open") // Open, In_Progress, Resolved, Escalated, Closed
+  resolvedBy      String?
+  resolvedAt      DateTime?
+  resolutionNotes String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@map("exception_logs")
+}
+
+// ============================================================
+// BANK RECONCILIATION (P1)
+// ============================================================
+model BankReconciliation {
+  id              String   @id @default(cuid())
+  bankAccountId   String
+  periodFrom      DateTime
+  periodTo        DateTime
+  openingBalance  Float    @default(0)
+  closingBalance  Float    @default(0)
+  bankStatement   Float    @default(0)
+  difference      Float    @default(0)
+  status          String   @default("Draft") // Draft, In_Progress, Reconciled, Approved
+  reconciledBy    String?
+  reconciledAt    DateTime?
+  approvedBy      String?
+  createdAt       DateTime @default(now())
+  bankAccount     BankAccount @relation(fields: [bankAccountId], references: [id])
+
+  items           ReconciliationItem[]
+
+  @@map("bank_reconciliations")
+}
+
+model ReconciliationItem {
+  id                String   @id @default(cuid())
+  reconciliationId  String
+  transactionId     String?
+  description       String
+  bookAmount        Float    @default(0)
+  bankAmount        Float    @default(0)
+  difference        Float    @default(0)
+  status            String   @default("Unreconciled") // Unreconciled, Matched, Outstanding
+  matchedAt         DateTime?
+  reconciliation    BankReconciliation @relation(fields: [reconciliationId], references: [id], onDelete: Cascade)
+
+  @@map("reconciliation_items")
+}
+
+// ============================================================
+// DAILY CASH (P1)
+// ============================================================
+model DailyCash {
+  id              String   @id @default(cuid())
+  cashDate        DateTime
+  openingBalance  Float    @default(0)
+  totalReceipts   Float    @default(0)
+  totalPayments   Float    @default(0)
+  closingBalance  Float    @default(0)
+  physicalCount   Float?
+  difference      Float?   // physicalCount - closingBalance
+  status          String   @default("Open") // Open, Closed, Verified
+  closedBy        String?
+  verifiedBy      String?
+  notes           String?
+  createdAt       DateTime @default(now())
+
+  @@unique([cashDate])
+  @@map("daily_cash")
+}
+
+// ============================================================
+// SYSTEM SETTINGS (Key-Value store for app config)
+// ============================================================
+model SystemSetting {
+  id    String @id @default(cuid())
+  key   String @unique
+  value String
+  updatedAt DateTime @updatedAt
+
+  @@map("system_settings")
+}
+
+// ============================================================
+// TELEGRAM NOTIFICATIONS
+// ============================================================
+model TelegramNotification {
+  id          String   @id @default(cuid())
+  recipientId String?  // userId or null for broadcast
+  chatId      String   // telegram chat ID
+  module      String   // SALES, PURCHASING, FINANCE, HR, MEDICAL, CEMENT, AGGREGATE, SYSTEM
+  event       String   // e.g. order_created, payment_received, approval_needed
+  message     String
+  status      String   @default("PENDING") // PENDING, SENT, FAILED
+  errorMsg    String?
+  sentAt      DateTime?
+  createdAt   DateTime @default(now())
+
+  @@map("telegram_notifications")
+}
+
+// ============================================================
+// PETTY CASH MANAGEMENT
+// ============================================================
+// SQL Migration:
+// CREATE TABLE "petty_cash" (
+//   "id" TEXT NOT NULL,
+//   "voucherNo" TEXT NOT NULL,
+//   "type" TEXT NOT NULL,
+//   "cashierId" TEXT,
+//   "cashierName" TEXT NOT NULL,
+//   "amount" DOUBLE PRECISION NOT NULL,
+//   "category" TEXT,
+//   "description" TEXT,
+//   "refNo" TEXT,
+//   "bankAccountId" TEXT,
+//   "approvedBy" TEXT,
+//   "status" TEXT NOT NULL DEFAULT 'Pending',
+//   "transactionDate" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+//   "createdBy" TEXT,
+//   "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+//   "updatedAt" TIMESTAMP(3) NOT NULL,
+//   CONSTRAINT "petty_cash_pkey" PRIMARY KEY ("id")
+// );
+// CREATE UNIQUE INDEX "petty_cash_voucherNo_key" ON "petty_cash"("voucherNo");
+model PettyCash {
+  id              String   @id @default(cuid())
+  voucherNo       String   @unique
+  type            String   // FUND_ALLOCATION, EXPENSE, REPLENISHMENT, RETURN
+  cashierId       String?  // Employee who manages the fund
+  cashierName     String
+  amount          Float
+  category        String?  // Office Supplies, Transport, Meals, Utilities, Miscellaneous, etc.
+  description     String?
+  refNo           String?  // receipt/invoice reference
+  bankAccountId   String?  // source bank for allocations
+  approvedBy      String?
+  status          String   @default("Pending") // Pending, Approved, Posted
+  transactionDate DateTime @default(now())
+  createdBy       String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@map("petty_cash")
+}

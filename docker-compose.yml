@@ -1,0 +1,70 @@
+services:
+  # PostgreSQL Database Service
+  db:
+    image: postgres:15-alpine
+    container_name: ****
+    restart: always
+    environment:
+      POSTGRES_USER: samaria
+      POSTGRES_PASSWORD: *********
+      POSTGRES_DB: *****
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - samaria-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U samaria -d samaria_erp"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Next.js Application Service
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: *****
+    restart: always
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ******
+      NEXTAUTH_SECRET: *******
+      NEXTAUTH_URL: https://samariaerp-dev.org
+      NEXT_PUBLIC_APP_URL: https://samariaerp-dev.org
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - samaria-network
+    volumes:
+      - ./uploads:/app/public/uploads
+      - ./logs:/app/logs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  samaria-network:
+    driver: bridge
+
+volumes:
+  postgres-data:
+    driver: local

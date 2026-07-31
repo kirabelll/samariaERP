@@ -1,0 +1,1103 @@
+'use client';
+
+import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
+import { Card, CardHeader, CardBody, CardFooter, Button, Input, Select, Modal } from '@/components/ui';
+import { useI18n } from '@/lib/i18n';
+// Documents are now uploaded on the delivery detail page
+
+interface FormData {
+  agreementId: string;
+  customerId: string;
+  supplierId: string;
+  transporterId: string;
+  truckId: string;
+  itemId: string;
+  loadedVolume: string;
+  deliveredVolume: string;
+  driverName: string;
+  transportRate: string;
+  aggregateValue: string;
+  dispatchDate: string;
+}
+
+interface Customer {
+  customerId: string;
+  companyName: string;
+  agreementNo: string;
+  phone?: string;
+  tin?: string;
+  withholding?: boolean;
+  withholdRate?: number;
+  creditLimit?: number;
+  creditTermDays?: number;
+  agreementId?: string;
+  agreementStatus?: string;
+  division?: string;
+  validFrom?: string;
+  validTo?: string;
+  totalAmount?: number;
+  items?: any[];
+  terms?: string;
+}
+
+interface Supplier {
+  id: string;
+  companyName: string;
+  code: string;
+  category?: string;
+}
+
+interface Item {
+  id: string;
+  name: string;
+  code: string;
+  unit: string;
+  category?: string;
+}
+
+interface Truck {
+  id: string;
+  plateNo: string;
+  truckType?: string;
+  capacity?: number;
+  capacityUnit?: string;
+}
+
+interface Transporter {
+  id: string;
+  companyName: string;
+  code: string;
+  driverName?: string;
+  trucks?: Truck[];
+}
+
+interface AgreementMaterialItem {
+  id: string;
+  itemId: string;
+  transportRate: number;
+  aggregateValue: number;
+  item?: { id: string; name: string; code: string; unit?: string };
+}
+
+interface Agreement {
+  id: string;
+  agreementNo: string;
+  supplierId?: string;
+  supplier?: { id: string; companyName: string; code: string };
+  transporter: {
+    id: string;
+    companyName: string;
+    code: string;
+    driverName?: string;
+    trucks?: Truck[];
+  };
+  pricePerUnit?: number;
+  aggregateValue?: number;
+  loadingSite?: string;
+  offloadingSite?: string;
+  agreementItems?: AgreementMaterialItem[];
+}
+
+export default function NewAggregateDispatch() {
+  const { t } = useI18n();
+  const [formData, setFormData] = useState<FormData>({
+    agreementId: '',
+    customerId: '',
+    supplierId: '',
+    transporterId: '',
+    truckId: '',
+    itemId: '',
+    loadedVolume: '',
+    deliveredVolume: '',
+    driverName: '',
+    transportRate: '',
+    aggregateValue: '',
+    dispatchDate: new Date().toISOString().split('T')[0],
+  });
+
+  const [showDeliveryModal, setShowDeliveryModal] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [loadingData, setLoadingData] = useState(false);
+  // Document attachments are now on the delivery detail page
+
+  const [agreements, setAgreements] = useState<Agreement[]>([]);
+  const [selectedAgreement, setSelectedAgreement] = useState<Agreement | null>(null);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [transporters, setTransporters] = useState<Transporter[]>([]);
+  const [trucks, setTrucks] = useState<Truck[]>([]);
+  const [items, setItems] = useState<Item[]>([]);
+  const [filteredItems, setFilteredItems] = useState<Item[]>([]);
+  // Map: "supplierId_itemId" → aggregate value (unitPrice) from supplier agreements
+  const [supplierItemPrices, setSupplierItemPrices] = useState<Map<string, number>>(new Map());
+  // Map: customerId → Set of itemIds from their AGGREGATE agreements
+  const [customerAgreementItems, setCustomerAgreementItems] = useState<Map<string, Set<string>>>(new Map());
+
+  // Agreement validation
+  const [customerHasAgreement, setCustomerHasAgreement] = useState<boolean | null>(null);
+  const [supplierHasAgreement, setSupplierHasAgreement] = useState<boolean | null>(null);
+  const [checkingAgreements, setCheckingAgreements] = useState(false);
+
+  // Fetch all data on mount
+  useEffect(() => {
+    const fetchData = async () => {
+      setLoadingData(true);
+      try {
+        const [salesAgreementsRes, suppliersRes, agreementsRes, transportersRes, itemsRes] =
+          await Promise.all([
+            fetch('/api/sales/agreements?status=Active&division=AGGREGATE&limit=1000'),
+            fetch('/api/supplier-agreements?status=Active&division=AGGREGATE&limit=1000'),
+            fetch('/api/transporters/agreements?limit=1000'),
+            fetch('/api/transporters?limit=1000'),
+            fetch('/api/items?division=AGGREGATE&limit=1000'),
+          ]);
+
+        // Process Sales Agreements - Extract customers with active agreements
+        if (salesAgreementsRes.ok) {
+          const salesData = await salesAgreementsRes.json();
+          const customerMap = new Map<string, Customer>();
+          const custItemsMap = new Map<string, Set<string>>();
+          
+          (salesData.data || []).forEach((agr: any) => {
+            if (!agr.customerId || !agr.customer) return;
+            
+            // Parse items JSON safely
+            let items: any[] = [];
+            try {
+              items = typeof agr.items === 'string' ? JSON.parse(agr.items) : (agr.items as any[] || []);
+            } catch {
+              items = [];
+            }
+
+            // Only keep the first (most recent) agreement per customer
+            if (!customerMap.has(agr.customerId)) {
+              customerMap.set(agr.customerId, {
+                customerId: agr.customerId,
+                companyName: agr.customer.companyName,
+                phone: agr.customer.phone,
+                tin: agr.customer.tin,
+                withholding: agr.customer.withholding,
+                withholdRate: agr.customer.withholdRate,
+                creditLimit: agr.customer.creditLimit,
+                creditTermDays: agr.customer.creditTermDays,
+                // Latest agreement info
+                agreementId: agr.id,
+                agreementNo: agr.agreementNo,
+                agreementStatus: agr.status,
+                division: agr.division,
+                validFrom: agr.validFrom,
+                validTo: agr.validTo,
+                totalAmount: agr.totalAmount,
+                items,
+                terms: agr.terms,
+              });
+            }
+
+            // Track which items belong to which customer
+            if (!custItemsMap.has(agr.customerId)) {
+              custItemsMap.set(agr.customerId, new Set());
+            }
+            items.forEach((item: any) => {
+              if (item.itemId) {
+                custItemsMap.get(agr.customerId)!.add(item.itemId);
+              }
+            });
+          });
+          
+          setCustomers(Array.from(customerMap.values()));
+          setCustomerAgreementItems(custItemsMap);
+        }
+
+        // Process Supplier Agreements
+        if (suppliersRes.ok) {
+          const d = await suppliersRes.json();
+          const supplierMap = new Map<string, Supplier>();
+          const itemMap = new Map<string, Item>();
+          const priceMap = new Map<string, number>();
+          
+          (d.data || []).forEach((agr: any) => {
+            const suppId = agr.supplier?.id || agr.supplierId;
+            if (agr.supplier && !supplierMap.has(suppId)) {
+              supplierMap.set(suppId, {
+                id: suppId,
+                companyName: agr.supplier.companyName,
+                code: agr.supplier.code || '',
+                category: agr.supplier.category,
+              });
+            }
+            
+            // Extract items + unitPrice from agreement items JSON
+            try {
+              const agrItems = typeof agr.items === 'string' ? JSON.parse(agr.items) : (agr.items || []);
+              agrItems.forEach((ai: any) => {
+                if (ai.itemId) {
+                  if (!itemMap.has(ai.itemId)) {
+                    itemMap.set(ai.itemId, {
+                      id: ai.itemId,
+                      name: ai.itemName || ai.description || 'Unknown',
+                      code: ai.itemCode || '',
+                      unit: ai.unit || 'm3',
+                      category: ai.type || 'regular',
+                    });
+                  }
+                  // Store price per supplier+item combo (latest agreement wins)
+                  const priceKey = `${suppId}_${ai.itemId}`;
+                  if (ai.unitPrice && !priceMap.has(priceKey)) {
+                    priceMap.set(priceKey, ai.unitPrice);
+                  }
+                }
+              });
+            } catch { /* ignore parse errors */ }
+          });
+          
+          setSuppliers(Array.from(supplierMap.values()));
+          setSupplierItemPrices(priceMap);
+
+          // Fetch all AGGREGATE items from items table (has proper names)
+          if (itemsRes.ok) {
+            const itemsData = await itemsRes.json();
+            (itemsData.data || []).forEach((dbItem: any) => {
+              if (dbItem.id && !itemMap.has(dbItem.id)) {
+                itemMap.set(dbItem.id, {
+                  id: dbItem.id,
+                  name: dbItem.name || 'Unknown',
+                  code: dbItem.code || '',
+                  unit: dbItem.unit || 'm3',
+                  category: dbItem.category || 'regular',
+                });
+              }
+            });
+          }
+
+          setItems(Array.from(itemMap.values()));
+        }
+
+        // Process Transporter Agreements
+        if (agreementsRes.ok) {
+          const d = await agreementsRes.json();
+          setAgreements(d.data || []);
+        }
+
+        // Process Transporters
+        if (transportersRes.ok) {
+          const d = await transportersRes.json();
+          setTransporters(d.data || []);
+        }
+      } catch (error) {
+        console.error('Error fetching data:', error);
+      } finally {
+        setLoadingData(false);
+      }
+    };
+
+    fetchData();
+  }, []);
+
+  // Handle customer selection and auto-populate related fields from sales agreement
+  const handleCustomerChange = (customerId: string) => {
+    const selectedCustomer = customers.find(c => c.customerId === customerId);
+    
+    setFormData(prev => ({
+      ...prev,
+      customerId,
+      // Could auto-populate other fields from the customer's sales agreement if needed
+      // For example, if the agreement has a preferred supplier, transporter, etc.
+    }));
+
+    // Update filtered items based on customer's agreement items
+    if (selectedCustomer && selectedCustomer.items) {
+      // The customer's sales agreement items are already loaded and used in the filtering logic
+      // This is handled in the useEffect for filteredItems
+    }
+  };
+
+  // Check if customer has an active agreement when customer changes and populate agreement data
+  useEffect(() => {
+    if (!formData.customerId) {
+      setCustomerHasAgreement(null);
+      return;
+    }
+    
+    // Find the selected customer from the already loaded customers data
+    const selectedCustomer = customers.find(c => c.customerId === formData.customerId);
+    if (selectedCustomer) {
+      // Customer data already comes from sales agreement, so we know they have an agreement
+      setCustomerHasAgreement(true);
+      
+      // Auto-populate agreement-related fields from the customer's sales agreement data
+      setFormData(prev => ({
+        ...prev,
+        // If the customer has a default agreement, we could set it here
+        // agreementId: selectedCustomer.agreementId || prev.agreementId,
+      }));
+    } else {
+      // Fallback: check via API call if customer not found in pre-loaded data
+      const checkCustomerAgreement = async () => {
+        try {
+          const res = await fetch(`/api/sales/agreements?customerId=${formData.customerId}&status=Active&division=AGGREGATE&limit=1`);
+          const data = await res.json();
+          setCustomerHasAgreement(data.success && data.data && data.data.length > 0);
+        } catch {
+          setCustomerHasAgreement(null);
+        }
+      };
+      checkCustomerAgreement();
+    }
+  }, [formData.customerId, customers]);
+
+  // Check if supplier has an active agreement when supplier changes
+  useEffect(() => {
+    if (!formData.supplierId) {
+      setSupplierHasAgreement(null);
+      return;
+    }
+    const checkSupplierAgreement = async () => {
+      try {
+        const res = await fetch(`/api/supplier-agreements?supplierId=${formData.supplierId}&status=Active&limit=1`);
+        const data = await res.json();
+        setSupplierHasAgreement(data.success && data.data && data.data.length > 0);
+      } catch {
+        setSupplierHasAgreement(null);
+      }
+    };
+    checkSupplierAgreement();
+  }, [formData.supplierId]);
+
+  // Handle agreement selection — auto-populate everything
+  const handleAgreementChange = (value: string) => {
+    const agreement = agreements.find((a) => a.id === value) || null;
+    setSelectedAgreement(agreement);
+
+    if (agreement?.transporter) {
+      // Set trucks from the agreement's transporter
+      setTrucks(agreement.transporter.trucks || []);
+
+      // Reset item; user will pick from agreement items
+      // aggregateValue will be auto-populated when an item is selected from agreement
+      setFormData((prev) => ({
+        ...prev,
+        agreementId: value,
+        transporterId: agreement.transporter.id,
+        supplierId: agreement.supplierId || prev.supplierId,
+        truckId: '',
+        itemId: '',
+        transportRate: agreement.pricePerUnit?.toString() || prev.transportRate,
+        aggregateValue: '', // Will be set when item is selected
+        driverName: agreement.transporter.driverName || '',
+      }));
+    } else {
+      setFormData((prev) => ({
+        ...prev,
+        agreementId: value,
+      }));
+    }
+  };
+
+  // When an item is selected — if the agreement has a matching agreementItem,
+  // pull its transport rate + aggregate value automatically
+  const handleItemChangeWithAgreementLookup = (value: string) => {
+    let newTransportRate: string | null = null;
+    let newAggregateValue: string | null = null;
+
+    // 1. Try transporter agreement items first (has both transportRate + aggregateValue)
+    if (selectedAgreement && selectedAgreement.agreementItems) {
+      const matched = selectedAgreement.agreementItems.find((ai) => ai.itemId === value);
+      if (matched) {
+        newTransportRate = matched.transportRate.toString();
+        if (matched.aggregateValue) {
+          newAggregateValue = matched.aggregateValue.toString();
+        }
+      }
+    }
+
+    // 2. If no aggregate value from transporter agreement, get from supplier agreement
+    // Use supplierId + itemId combo key to get the right price for this specific supplier & item
+    const suppPriceKey = `${formData.supplierId}_${value}`;
+    if (!newAggregateValue && supplierItemPrices.has(suppPriceKey)) {
+      newAggregateValue = supplierItemPrices.get(suppPriceKey)!.toString();
+    }
+
+    setFormData((prev) => ({
+      ...prev,
+      itemId: value,
+      ...(newTransportRate ? { transportRate: newTransportRate } : {}),
+      ...(newAggregateValue ? { aggregateValue: newAggregateValue } : {}),
+    }));
+  };
+
+  // When transporter changes manually (no agreement), fetch their trucks
+  const handleTransporterChange = async (transporterId: string) => {
+    setFormData((prev) => ({ ...prev, transporterId, truckId: '' }));
+    setTrucks([]);
+
+    if (transporterId) {
+      try {
+        const res = await fetch(`/api/transporters/${transporterId}`);
+        if (res.ok) {
+          const data = await res.json();
+          setTrucks(data.data?.trucks || []);
+          // Also set driver name if available
+          if (data.data?.driverName) {
+            setFormData((prev) => ({ ...prev, driverName: data.data.driverName }));
+          }
+        }
+      } catch (err) {
+        console.error('Error fetching trucks:', err);
+      }
+    }
+  };
+
+  // Filter items based on:
+  // 1. Customer's agreement items (only show items the selected customer has in their agreement)
+  // 2. Transporter agreement items (if selected, intersect further)
+  // 3. Fallback to all items if no customer selected
+  useEffect(() => {
+    let availableItems = items;
+
+    // Step 1: If customer is selected, filter to only their agreement items
+    if (formData.customerId && customerAgreementItems.has(formData.customerId)) {
+      const custItemIds = customerAgreementItems.get(formData.customerId)!;
+      const custFiltered = items.filter((i) => custItemIds.has(i.id));
+      if (custFiltered.length > 0) {
+        availableItems = custFiltered;
+      }
+    }
+
+    // Step 2: If transporter agreement has specific items, intersect with those
+    if (selectedAgreement && selectedAgreement.agreementItems && selectedAgreement.agreementItems.length > 0) {
+      const agrItemIds = new Set(selectedAgreement.agreementItems.map((ai) => ai.itemId));
+      const fromAgreement = availableItems.filter((i) => agrItemIds.has(i.id));
+      if (fromAgreement.length > 0) {
+        availableItems = fromAgreement;
+      }
+    }
+
+    setFilteredItems(availableItems);
+
+    // Reset item selection if current item is no longer in the filtered list
+    if (formData.itemId && !availableItems.find((item) => item.id === formData.itemId)) {
+      setFormData((prev) => ({ ...prev, itemId: '', aggregateValue: '' }));
+    }
+  }, [formData.customerId, formData.supplierId, suppliers, items, selectedAgreement, customerAgreementItems]);
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    setFormData((prev) => ({ ...prev, [name]: value }));
+  };
+
+  // Get currently selected truck's capacity (if any)
+  const getSelectedTruckCapacity = (): number => {
+    if (!formData.truckId) return 0;
+    const truck = trucks.find((t) => t.id === formData.truckId);
+    return truck?.capacity ? parseFloat(String(truck.capacity)) : 0;
+  };
+
+  const calculateValues = () => {
+    const loaded = parseFloat(formData.loadedVolume || '0');
+    const rate = parseFloat(formData.transportRate || '0');
+    const truckCapacity = getSelectedTruckCapacity();
+
+    // Cap the billable volume at the truck's capacity
+    // If loaded > capacity, use capacity; otherwise use loaded
+    const billableVolume =
+      truckCapacity > 0 && loaded > truckCapacity ? truckCapacity : loaded;
+
+    return {
+      grossFee: (billableVolume * rate).toFixed(2),
+      billableVolume: billableVolume.toFixed(2),
+      truckCapacity,
+      loaded,
+      isCapped: truckCapacity > 0 && loaded > truckCapacity,
+    };
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (
+      !formData.customerId ||
+      !formData.supplierId ||
+      !formData.transporterId ||
+      !formData.truckId ||
+      !formData.itemId ||
+      !formData.loadedVolume ||
+      !formData.transportRate ||
+      !formData.aggregateValue
+    ) {
+      alert('Please fill in all required fields');
+      return;
+    }
+
+    // Validate that both customer and supplier have active agreements
+    if (customerHasAgreement === false) {
+      alert('Cannot create dispatch: The selected customer does not have an active Sales Agreement. Please create a Sales Agreement first.');
+      return;
+    }
+    if (supplierHasAgreement === false) {
+      alert('Cannot create dispatch: The selected supplier does not have an active Supplier Agreement. Please create a Supplier Agreement first.');
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      const res = await fetch('/api/aggregate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          agreementId: formData.agreementId || null,
+          customerId: formData.customerId,
+          supplierId: formData.supplierId,
+          transporterId: formData.transporterId,
+          truckId: formData.truckId,
+          itemId: formData.itemId,
+          loadedVolume: parseFloat(formData.loadedVolume),
+          driverName: formData.driverName || null,
+          transportRate: parseFloat(formData.transportRate),
+          aggregateValue: parseFloat(formData.aggregateValue),
+          dispatchDate: formData.dispatchDate || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setShowDeliveryModal(true);
+      } else {
+        alert(data.error || 'Failed to create delivery');
+      }
+    } catch {
+      alert('Failed to create delivery');
+    }
+    setIsSubmitting(false);
+  };
+
+  const { truckCapacity, isCapped } = calculateValues();
+  const loaded = parseFloat(formData.loadedVolume || '0');
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <Link
+          href="/dashboard/aggregate"
+          className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+        >
+          ← Back to Aggregate Operations
+        </Link>
+        <h1 className="text-3xl font-bold text-gray-900 mt-4">New Aggregate Dispatch</h1>
+        <p className="text-gray-600 mt-1">Create a new stone/aggregate dispatch order</p>
+      </div>
+
+      <form onSubmit={handleSubmit} className="space-y-6">
+        {/* Dispatch Details — first */}
+        <Card>
+          <CardHeader>
+            <h2 className="text-lg font-semibold text-gray-900">Dispatch Details</h2>
+          </CardHeader>
+          <CardBody>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Customer *
+                </label>
+                <select
+                  name="customerId"
+                  required
+                  value={formData.customerId}
+                  onChange={(e) => handleCustomerChange(e.target.value)}
+                  disabled={loadingData}
+                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border px-3 py-2"
+                >
+                  <option value="">Select Customer</option>
+                  {customers.length === 0 && !loadingData && (
+                    <option value="" disabled>No customers with active sales agreements found</option>
+                  )}
+                  {customers.map((customer) => (
+                    <option key={customer.customerId} value={customer.customerId}>
+                      {customer.companyName} — {customer.agreementNo} ({customer.agreementStatus})
+                    </option>
+                  ))}
+                </select>
+                {formData.customerId && customerHasAgreement === false && (
+                  <p className="text-red-600 text-xs mt-1 font-medium">
+                    No active Sales Agreement found for this customer. A Sales Agreement is required before creating a dispatch.
+                  </p>
+                )}
+                {formData.customerId && customerHasAgreement === true && (
+                  <div className="mt-1">
+                    <p className="text-green-600 text-xs">Active agreement found</p>
+                    {(() => {
+                      const selectedCustomer = customers.find(c => c.customerId === formData.customerId);
+                      if (selectedCustomer) {
+                        return (
+                          <div className="text-xs text-gray-600 mt-1">
+                            Agreement: {selectedCustomer.agreementNo} | Status: {selectedCustomer.agreementStatus}
+                            {selectedCustomer.totalAmount && (
+                              <span> | Total Amount: {selectedCustomer.totalAmount.toLocaleString('en-US')} ETB</span>
+                            )}
+                            {selectedCustomer.validTo && (
+                              <span> | Valid Until: {new Date(selectedCustomer.validTo).toLocaleDateString()}</span>
+                            )}
+                          </div>
+                        );
+                      }
+                      return null;
+                    })()}
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Supplier *
+                </label>
+                <select
+                  name="supplierId"
+                  required
+                  value={formData.supplierId}
+                  onChange={handleInputChange}
+                  disabled={loadingData}
+                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border px-3 py-2"
+                >
+                  <option value="">Select Supplier</option>
+                  {suppliers.map((supplier) => (
+                    <option key={supplier.id} value={supplier.id}>
+                      {supplier.companyName} ({supplier.code})
+                    </option>
+                  ))}
+                </select>
+                {formData.supplierId && supplierHasAgreement === false && (
+                  <p className="text-red-600 text-xs mt-1 font-medium">
+                    No active Supplier Agreement found. A Supplier Agreement is required before creating a dispatch.
+                  </p>
+                )}
+                {formData.supplierId && supplierHasAgreement === true && (
+                  <p className="text-green-600 text-xs mt-1">Active agreement found</p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Transporter *
+                </label>
+                <select
+                  name="transporterId"
+                  required
+                  value={formData.transporterId}
+                  onChange={(e) => handleTransporterChange(e.target.value)}
+                  disabled={loadingData}
+                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border px-3 py-2"
+                >
+                  <option value="">Select Transporter</option>
+                  {transporters.map((tr) => (
+                    <option key={tr.id} value={tr.id}>
+                      {tr.companyName} ({tr.code})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Truck *</label>
+                <select
+                  name="truckId"
+                  required
+                  value={formData.truckId}
+                  onChange={handleInputChange}
+                  disabled={!formData.transporterId || trucks.length === 0}
+                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border px-3 py-2"
+                >
+                  <option value="">Select Truck</option>
+                  {trucks.map((truck) => (
+                    <option key={truck.id} value={truck.id}>
+                      {truck.plateNo} {truck.truckType ? `(${truck.truckType})` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Item *</label>
+                <select
+                  name="itemId"
+                  required
+                  value={formData.itemId}
+                  onChange={(e) => handleItemChangeWithAgreementLookup(e.target.value)}
+                  disabled={loadingData}
+                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border px-3 py-2"
+                >
+                  <option value="">Select Item</option>
+                  {filteredItems.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.name}{item.code ? ` (${item.code})` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Dispatch Date *</label>
+                {(() => {
+                  const today = new Date().toISOString().split('T')[0];
+                  const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+                  return (
+                    <>
+                      <input
+                        type="date"
+                        name="dispatchDate"
+                        value={formData.dispatchDate}
+                        onChange={handleInputChange}
+                        min={yesterday}
+                        max={today}
+                        required
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      />
+                      <p className="text-xs text-slate-500 mt-1">Only today or yesterday allowed</p>
+                    </>
+                  );
+                })()}
+              </div>
+
+              <Input
+                label="Driver Name"
+                name="driverName"
+                value={formData.driverName}
+                onChange={handleInputChange}
+                placeholder="Driver name"
+              />
+            </div>
+          </CardBody>
+        </Card>
+
+       
+        {/* {formData.customerId && customerHasAgreement === true && (
+          <Card>
+            <CardHeader>
+              <h2 className="text-lg font-semibold text-gray-900">Customer Sales Agreement Details</h2>
+            </CardHeader>
+            <CardBody>
+              {(() => {
+                const selectedCustomer = customers.find(c => c.customerId === formData.customerId);
+                if (!selectedCustomer) return null;
+                
+                return (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <p className="text-sm text-slate-600 mb-1">Agreement Number</p>
+                      <p className="text-gray-900 font-medium">{selectedCustomer.agreementNo}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-slate-600 mb-1">Agreement Status</p>
+                      <p className="text-gray-900 font-medium">
+                        <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
+                          selectedCustomer.agreementStatus === 'Active' 
+                            ? 'bg-green-100 text-green-800' 
+                            : 'bg-yellow-100 text-yellow-800'
+                        }`}>
+                          {selectedCustomer.agreementStatus}
+                        </span>
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-slate-600 mb-1">Division</p>
+                      <p className="text-gray-900 font-medium">{selectedCustomer.division}</p>
+                    </div>
+                    {selectedCustomer.totalAmount && (
+                      <div>
+                        <p className="text-sm text-slate-600 mb-1">Total Agreement Amount</p>
+                        <p className="text-gray-900 font-medium">{selectedCustomer.totalAmount.toLocaleString('en-US')} ETB</p>
+                      </div>
+                    )}
+                    {selectedCustomer.validFrom && (
+                      <div>
+                        <p className="text-sm text-slate-600 mb-1">Valid From</p>
+                        <p className="text-gray-900 font-medium">{new Date(selectedCustomer.validFrom).toLocaleDateString()}</p>
+                      </div>
+                    )}
+                    {selectedCustomer.validTo && (
+                      <div>
+                        <p className="text-sm text-slate-600 mb-1">Valid Until</p>
+                        <p className="text-gray-900 font-medium">{new Date(selectedCustomer.validTo).toLocaleDateString()}</p>
+                      </div>
+                    )}
+                    {selectedCustomer.creditLimit && (
+                      <div>
+                        <p className="text-sm text-slate-600 mb-1">Credit Limit</p>
+                        <p className="text-gray-900 font-medium">{selectedCustomer.creditLimit.toLocaleString('en-US')} ETB</p>
+                      </div>
+                    )}
+                    {selectedCustomer.creditTermDays && (
+                      <div>
+                        <p className="text-sm text-slate-600 mb-1">Credit Term</p>
+                        <p className="text-gray-900 font-medium">{selectedCustomer.creditTermDays} days</p>
+                      </div>
+                    )}
+                    {selectedCustomer.items && selectedCustomer.items.length > 0 && (
+                      <div className="md:col-span-2">
+                        <p className="text-sm text-slate-600 mb-2">Agreement Items</p>
+                        <div className="bg-slate-50 p-3 rounded-md">
+                          <table className="w-full text-sm">
+                            <thead>
+                              <tr className="text-left text-slate-500">
+                                <th className="pb-2">Item</th>
+                                <th className="pb-2">Quantity</th>
+                                <th className="pb-2">Unit Price</th>
+                                <th className="pb-2">Total</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {selectedCustomer.items.map((item: any, index: number) => (
+                                <tr key={index} className="border-t border-slate-200">
+                                  <td className="py-1">{item.itemName || item.name || 'N/A'}</td>
+                                  <td className="py-1">{item.quantity || 'N/A'}</td>
+                                  <td className="py-1">{item.unitPrice ? `${item.unitPrice.toLocaleString('en-US')} ETB` : 'N/A'}</td>
+                                  <td className="py-1">{item.total ? `${item.total.toLocaleString('en-US')} ETB` : 'N/A'}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+            </CardBody>
+          </Card>
+        )} */}
+        {/* Agreement Selection */}
+        <Card>
+          <CardHeader>
+            <h2 className="text-lg font-semibold text-gray-900">Agreement</h2>
+          </CardHeader>
+          <CardBody>
+            <Select
+              label="Select Transport Agreement"
+              name="agreementId"
+              value={formData.agreementId}
+              onChange={(e) => handleAgreementChange(e.target.value)}
+              options={[
+                { value: '', label: 'Select agreement (optional)' },
+                ...agreements.map((a) => ({
+                  value: a.id,
+                  label: `${a.agreementNo} - ${a.transporter?.companyName || 'N/A'}`,
+                })),
+              ]}
+            />
+          </CardBody>
+        </Card>
+
+        {/* Auto-populated from Agreement */}
+        {selectedAgreement && (
+          <Card>
+            <CardHeader>
+              <h2 className="text-lg font-semibold text-gray-900">
+                Agreement Details (Auto-populated)
+              </h2>
+            </CardHeader>
+            <CardBody className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <p className="text-sm text-slate-600 mb-1">Transporter</p>
+                  <p className="text-gray-900 font-medium">
+                    {selectedAgreement.transporter?.companyName || '-'}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm text-slate-600 mb-1">Supplier</p>
+                  <p className="text-gray-900 font-medium">
+                    {selectedAgreement.supplier?.companyName || '-'}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm text-slate-600 mb-1">Driver Name</p>
+                  <p className="text-gray-900 font-medium">
+                    {formData.driverName || '-'}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm text-slate-600 mb-1">Loading Site (Origin)</p>
+                  <p className="text-gray-900 font-medium">
+                    {selectedAgreement.loadingSite || '-'}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm text-slate-600 mb-1">Offloading Site (Destination)</p>
+                  <p className="text-gray-900 font-medium">
+                    {selectedAgreement.offloadingSite || '-'}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm text-slate-600 mb-1">Available Trucks</p>
+                  <p className="text-gray-900 font-medium">
+                    {trucks.length} truck(s)
+                    {trucks.length > 0 && (
+                      <span className="text-sm text-gray-500 ml-2">
+                        ({trucks.map((t) => t.plateNo).join(', ')})
+                      </span>
+                    )}
+                  </p>
+                </div>
+                {selectedAgreement.agreementItems && selectedAgreement.agreementItems.length > 0 && (
+                  <div className="md:col-span-2">
+                    <p className="text-sm text-slate-600 mb-2">Materials in this Agreement</p>
+                    <div className="bg-slate-50 p-3 rounded-md">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="text-left text-slate-500">
+                            <th className="pb-2">Material</th>
+                            <th className="pb-2">Transport Rate</th>
+                            <th className="pb-2">Aggregate Value</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {selectedAgreement.agreementItems.map((ai) => (
+                            <tr key={ai.id} className="border-t border-slate-200">
+                              <td className="py-1">
+                                {ai.item?.name || ai.itemId}
+                                {ai.item?.code ? ` (${ai.item.code})` : ''}
+                              </td>
+                              <td className="py-1">{ai.transportRate.toLocaleString('en-US')} ETB/m³</td>
+                              <td className="py-1">{ai.aggregateValue.toLocaleString('en-US')} ETB/m³</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <p className="text-xs text-slate-500 mt-2">
+                      Transport Rate + Aggregate Value will auto-populate when you pick a material below.
+                    </p>
+                  </div>
+                )}
+              </div>
+            </CardBody>
+          </Card>
+        )}
+
+        {/* Volume and Rate Details */}
+        <Card>
+          <CardHeader>
+            <h2 className="text-lg font-semibold text-gray-900">Volume & Rate Details</h2>
+          </CardHeader>
+          <CardBody>
+            {truckCapacity > 0 && (
+              <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-md text-sm text-blue-800">
+                Selected truck capacity: <strong>{truckCapacity} m³</strong>. Net payment will never exceed this capacity × transport rate.
+              </div>
+            )}
+            {isCapped && (
+              <div className="mb-4 p-3 bg-orange-50 border border-orange-200 rounded-md text-sm text-orange-800">
+                ⚠️ Loaded volume ({loaded} m³) exceeds truck capacity ({truckCapacity} m³). Billable volume capped at {billableVolume} m³.
+              </div>
+            )}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <Input
+                label="Loaded Volume (m³) *"
+                name="loadedVolume"
+                type="number"
+                value={formData.loadedVolume}
+                onChange={handleInputChange}
+                placeholder="0"
+                step="0.01"
+                required
+              />
+
+              <div>
+                <Input
+                  label={
+                    selectedAgreement
+                      ? 'Transport Rate (ETB/m³) — from agreement (editable)'
+                      : 'Transport Rate (ETB/m³) *'
+                  }
+                  name="transportRate"
+                  type="number"
+                  value={formData.transportRate}
+                  onChange={handleInputChange}
+                  placeholder="0"
+                  step="0.01"
+                  required
+                />
+                {selectedAgreement && (
+                  <p className="text-xs text-blue-600 mt-1">Pre-filled from agreement. You can adjust if needed.</p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Aggregate Value (ETB/m³) *</label>
+                <input
+                  type="number"
+                  name="aggregateValue"
+                  value={formData.aggregateValue}
+                  readOnly
+                  placeholder="Select an agreement item to auto-fill"
+                  step="0.01"
+                  required
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-slate-50 text-slate-700 cursor-not-allowed"
+                />
+                <p className="text-xs text-slate-500 mt-1">Auto-filled from agreement — not editable</p>
+                {!formData.aggregateValue && formData.itemId && (
+                  <p className="text-xs text-amber-600 mt-1">No aggregate value found in agreement for this item. Please check the supplier agreement.</p>
+                )}
+              </div>
+            </div>
+          </CardBody>
+        </Card>
+
+        {/* Submit Button */}
+        <Card>
+          <CardFooter>
+            <div className="flex gap-4">
+              <Button
+                type="submit"
+                variant="primary"
+                size="lg"
+                isLoading={isSubmitting}
+              >
+                Create Dispatch
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="lg"
+                onClick={() => window.history.back()}
+              >
+                Cancel
+              </Button>
+            </div>
+          </CardFooter>
+        </Card>
+      </form>
+
+      {/* Success Modal */}
+      {showDeliveryModal && (
+        <Modal
+          isOpen={showDeliveryModal}
+          onClose={() => {
+            setShowDeliveryModal(false);
+            window.location.href = '/dashboard/aggregate';
+          }}
+          title="Dispatch Created Successfully"
+        >
+          <p>The aggregate dispatch has been created successfully.</p>
+          <div className="mt-6 flex gap-4">
+            <Button
+              variant="primary"
+              onClick={() => {
+                window.location.href = '/dashboard/aggregate';
+              }}
+            >
+              View Dispatches
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => {
+                window.location.href = '/dashboard/aggregate/new';
+              }}
+            >
+              Create Another
+            </Button>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}

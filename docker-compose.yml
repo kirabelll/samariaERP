@@ -40,7 +40,7 @@ services:
       NEXTAUTH_URL: https://app.samariaerp.org
       NEXT_PUBLIC_APP_URL: https://app.samariaerp.org
     ports:
-      - "127.0.0.1:3000:3000"
+      - "167.235.197.55:3000:3000"
     depends_on:
       db:
         condition: service_healthy
@@ -50,7 +50,7 @@ services:
       - ./uploads:/app/public/uploads
       - ./logs:/app/logs
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      test: ["CMD", "curl", "-f", "http://167.235.197.55:3000/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3

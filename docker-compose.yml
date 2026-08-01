@@ -5,8 +5,8 @@ services:
     container_name: samaria_db
     restart: always
     environment:
-      POSTGRES_USER: samaria
-      POSTGRES_PASSWORD: [PASSWORD]
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: kirabel@123
       POSTGRES_DB: samaria_erp
       POSTGRES_INITDB_ARGS: "--encoding=UTF8"
     volumes:

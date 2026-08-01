@@ -2,12 +2,12 @@ services:
   # PostgreSQL Database Service
   db:
     image: postgres:15-alpine
-    container_name: ****
+    container_name: samaria_db
     restart: always
     environment:
       POSTGRES_USER: samaria
-      POSTGRES_PASSWORD: *********
-      POSTGRES_DB: *****
+      POSTGRES_PASSWORD: [PASSWORD]
+      POSTGRES_DB: samaria_erp
       POSTGRES_INITDB_ARGS: "--encoding=UTF8"
     volumes:
       - postgres-data:/var/lib/postgresql/data
@@ -40,7 +40,7 @@ services:
       NEXTAUTH_URL: https://app.samariaerp.org
       NEXT_PUBLIC_APP_URL: https://app.samariaerp.org
     ports:
-      - "167.235.197.55:3000:3000"
+      - "127.0.0.1:3000:3000"
     depends_on:
       db:
         condition: service_healthy
@@ -50,7 +50,7 @@ services:
       - ./uploads:/app/public/uploads
       - ./logs:/app/logs
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://167.235.197.55:3000/api/health"]
+      test: ["CMD", "curl", "-f", "https://app.samariaerp.org/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3

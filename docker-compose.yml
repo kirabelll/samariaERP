@@ -35,8 +35,8 @@ services:
     restart: always
     environment:
       NODE_ENV: production
-      DATABASE_URL: ******
-      NEXTAUTH_SECRET: *******
+      DATABASE_URL: postgresql://postgres:kirabel@123@samaria-erp-postgresql-7fio9x:5432/samaria_erp
+      NEXTAUTH_SECRET: samaria1995
       NEXTAUTH_URL: https://app.samariaerp.org
       NEXT_PUBLIC_APP_URL: https://app.samariaerp.org
     ports:

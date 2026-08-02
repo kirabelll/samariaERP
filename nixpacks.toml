@@ -1,10 +1,12 @@
-[phases.setup]
-nixPkgs = ["nodejs-18_x", "openssl", "libc6-compat"]
+[provider]
+name = "node"
 
-[phases.install]
+[phases.setup]
+nixPkgs = ["nodejs_18"]
+
+[phases.install] 
 cmds = [
-    "corepack enable",
-    "corepack prepare pnpm@latest --activate",
+    "npm install -g pnpm@latest",
     "pnpm install --frozen-lockfile"
 ]
 
@@ -15,8 +17,4 @@ cmds = [
 ]
 
 [start]
-cmd = "pnpm start:production"
-
-[variables]
-NODE_ENV = "production"
-NEXT_TELEMETRY_DISABLED = "1"
+cmd = "pnpm start"

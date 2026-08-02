@@ -57,32 +57,73 @@ async function seedDatabase() {
 async function startServer() {
   console.log('Starting Next.js server...');
   
+  // Check if we're in production build mode (standalone)
+  const fs = require('fs');
+  const serverFile = fs.existsSync('./server.js') ? './server.js' : 'next';
+  const serverArgs = serverFile === 'next' ? ['start'] : [];
+  
   // Start the Next.js server
-  const server = spawn('node', ['server.js'], { 
+  const server = spawn('node', serverFile === 'next' ? [] : [serverFile], { 
     stdio: 'inherit',
-    env: { ...process.env }
+    env: { 
+      ...process.env,
+      NODE_ENV: 'production'
+    }
   });
   
-  server.on('error', (error) => {
-    console.error('Server error:', error);
-    process.exit(1);
-  });
-  
-  server.on('close', (code) => {
-    console.log('Server closed with code:', code);
-    process.exit(code || 0);
-  });
-  
-  // Handle process termination
-  process.on('SIGTERM', () => {
-    console.log('Received SIGTERM, shutting down gracefully...');
-    server.kill('SIGTERM');
-  });
-  
-  process.on('SIGINT', () => {
-    console.log('Received SIGINT, shutting down gracefully...');
-    server.kill('SIGINT');
-  });
+  if (serverFile === 'next') {
+    // Use npx next start for non-standalone builds
+    server.kill();
+    const nextServer = spawn('npx', ['next', 'start'], {
+      stdio: 'inherit',
+      env: {
+        ...process.env,
+        NODE_ENV: 'production'
+      }
+    });
+    
+    nextServer.on('error', (error) => {
+      console.error('Server error:', error);
+      process.exit(1);
+    });
+    
+    nextServer.on('close', (code) => {
+      console.log('Server closed with code:', code);
+      process.exit(code || 0);
+    });
+    
+    // Handle process termination
+    process.on('SIGTERM', () => {
+      console.log('Received SIGTERM, shutting down gracefully...');
+      nextServer.kill('SIGTERM');
+    });
+    
+    process.on('SIGINT', () => {
+      console.log('Received SIGINT, shutting down gracefully...');
+      nextServer.kill('SIGINT');
+    });
+  } else {
+    server.on('error', (error) => {
+      console.error('Server error:', error);
+      process.exit(1);
+    });
+    
+    server.on('close', (code) => {
+      console.log('Server closed with code:', code);
+      process.exit(code || 0);
+    });
+    
+    // Handle process termination
+    process.on('SIGTERM', () => {
+      console.log('Received SIGTERM, shutting down gracefully...');
+      server.kill('SIGTERM');
+    });
+    
+    process.on('SIGINT', () => {
+      console.log('Received SIGINT, shutting down gracefully...');
+      server.kill('SIGINT');
+    });
+  }
 }
 
 async function main() {

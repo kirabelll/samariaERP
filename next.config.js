@@ -1,6 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: 'standalone', // Disabled due to Windows symlink permission issues
+  output: 'standalone', // Disabls
   skipTrailingSlashRedirect: true,
   experimental: {
     serverComponentsExternalPackages: ['pdfkit'],

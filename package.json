@@ -17,6 +17,10 @@
     "db:studio": "prisma studio",
     "postinstall": "prisma generate"
   },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=8.0.0"
+  },
   "dependencies": {
     "@electric-sql/pglite-tools": "^0.3.6",
     "@prisma/adapter-pg": "^7.9.1",

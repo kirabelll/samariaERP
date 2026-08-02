@@ -15,7 +15,7 @@
     "db:seed": "node prisma/seed.mjs",
     "db:migrate": "prisma migrate deploy",
     "db:studio": "prisma studio",
-    "postinstall": "prisma generate || true"
+    "postinstall": "prisma generate"
   },
   "dependencies": {
     "@electric-sql/pglite-tools": "^0.3.6",

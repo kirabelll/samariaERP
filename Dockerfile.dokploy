@@ -55,8 +55,9 @@ echo "✅ Database ready!"
 npx prisma migrate deploy || true
 node prisma/seed.mjs || true
 
-echo "🌐 Starting server on port 3000..."
-echo "🔗 Accessible at: http://localhost:3000"
+echo "🌐 Starting standalone server on port 3000..."
+echo "🔗 Will be accessible at: https://app.samariaerp.org"
+echo "🔧 Binding to 0.0.0.0:3000 for Traefik access"
 
 # Set environment variables for Next.js
 export HOSTNAME="0.0.0.0"

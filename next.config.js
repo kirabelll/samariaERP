@@ -1,6 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: 'standalone',
+  //output: 'standalone',
   skipTrailingSlashRedirect: true,
   experimental: {
     serverComponentsExternalPackages: ['pdfkit'],
@@ -16,7 +16,7 @@ const nextConfig = {
   images: {
     remotePatterns: [
       { protocol: 'http', hostname: 'localhost' },
-      { protocol: 'http', hostname: '89.167.121.126' },
+      { protocol: 'http', hostname: '167.235.197.55' },
     ],
   },
 };

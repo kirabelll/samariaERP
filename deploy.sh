@@ -51,4 +51,4 @@ echo "  commission_calculations, commission_items, exception_logs, bank_reconcil
 echo "  reconciliation_items, daily_cash"
 echo ""
 echo "Check: docker compose logs -f app"
-echo "Site: https://samariaerp.org"
+echo "Site: https://app.samariaerp.org"

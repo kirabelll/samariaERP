@@ -19,9 +19,9 @@
 set -e
 
 # Configuration
-HETZNER_IP="89.167.121.126"
+HETZNER_IP="167.235.197.55"
 HETZNER_USER="root"
-PROJECT_DIR="/opt/samaria-erp"
+PROJECT_DIR="/opt/samariaERP"
 ENVIRONMENT="${1:-production}"
 TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
 
@@ -183,8 +183,8 @@ echo ""
 echo "========================================"
 echo "DEPLOYMENT ENDPOINTS"
 echo "========================================"
-echo "Application URL: http://89.167.121.126"
-echo "Domain (if configured): https://erp.samariaconstruction.com"
+echo "Application URL: http://167.235.197.55"
+echo "Domain (if configured): https://app.samariaerp.org"
 echo "Database: samaria_erp (PostgreSQL 15)"
 echo ""
 EOF

@@ -5,27 +5,26 @@
 -- Note: User is already created via docker-compose environment variables
 
 -- Grant privileges to the user
-GRANT ALL PRIVILEGES ON DATABASE samaria_erp TO samaria;
+GRANT ALL PRIVILEGES ON DATABASE samaria_erp TO postgres;
 
 -- Create extensions
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "pg_trgm";
-CREATE EXTENSION IF NOT EXISTS "jsonb_plpython3u";
 
 -- Create schema
 CREATE SCHEMA IF NOT EXISTS public;
 
 -- Grant schema privileges
-GRANT ALL PRIVILEGES ON SCHEMA public TO samaria;
+GRANT ALL PRIVILEGES ON SCHEMA public TO postgres;
 
 -- Set default privileges for future tables
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO samaria;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO samaria;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE ON SCHEMAS TO samaria;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO postgres;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO postgres;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE ON SCHEMAS TO postgres;
 
 -- Create audit schema for logging changes
 CREATE SCHEMA IF NOT EXISTS audit;
-GRANT ALL PRIVILEGES ON SCHEMA audit TO samaria;
+GRANT ALL PRIVILEGES ON SCHEMA audit TO postgres;
 
 -- Enable UUID support
 ALTER DATABASE samaria_erp SET default_transaction_isolation TO 'read committed';
@@ -39,11 +38,10 @@ ALTER DATABASE samaria_erp CONNECTION LIMIT 100;
 \echo '============================================'
 \echo ''
 \echo 'Database: samaria_erp'
-\echo 'User: samaria'
+\echo 'User: postgres'
 \echo 'Extensions enabled:'
 \echo '  - uuid-ossp'
 \echo '  - pg_trgm (text search)'
-\echo '  - jsonb_plpython3u'
 \echo ''
 \echo 'Schemas created:'
 \echo '  - public (main application schema)'

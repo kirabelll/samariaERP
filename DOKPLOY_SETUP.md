@@ -26,7 +26,7 @@ NEXTAUTH_SECRET=samaria1995
 NEXTAUTH_URL=https://app.samariaerp.org
 NEXT_PUBLIC_APP_URL=https://app.samariaerp.org
 HOSTNAME=0.0.0.0
-PORT=3000
+PORT=3001
 ```
 
 ### 3. **Traefik Configuration (Automatic)**
@@ -52,11 +52,11 @@ Dokploy automatically configures Traefik with the labels in docker-compose.yml:
 ### 5. **Service Architecture**
 
 ```
-Internet → Traefik (SSL/Proxy) → Next.js App (Port 3000) → PostgreSQL DB
+Internet → Traefik (SSL/Proxy) → Next.js App (Port 3001) → PostgreSQL DB
 ```
 
 - **Traefik**: Handles SSL termination, routing, and Let's Encrypt certificates
-- **Next.js App**: Runs on internal port 3000 (managed by Dokploy network)
+- **Next.js App**: Runs on internal port 3001 (managed by Dokploy network)
 - **PostgreSQL**: Database on internal Docker network
 
 ### 6. **Troubleshooting**

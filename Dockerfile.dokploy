@@ -1,5 +1,5 @@
-# Dokploy/Traefik optimized Dockerfile
-# ===================================
+# Simple Dockerfile for direct deployment
+# =====================================
 
 FROM node:18-alpine
 
@@ -35,12 +35,12 @@ RUN npm run build
 # Create directories
 RUN mkdir -p /app/uploads /app/logs
 
-# Create startup script for standalone mode
+# Create startup script
 RUN cat > /app/start.sh << 'EOF'
 #!/bin/sh
 set -e
 
-echo "🚀 Starting Samaria ERP for Dokploy..."
+echo "🚀 Starting Samaria ERP..."
 
 # Wait for database
 echo "⏳ Waiting for database..."
@@ -55,9 +55,8 @@ echo "✅ Database ready!"
 npx prisma migrate deploy || true
 node prisma/seed.mjs || true
 
-echo "🌐 Starting standalone server on port 3000..."
-echo "🔗 Will be accessible at: https://app.samariaerp.org"
-echo "🔧 Binding to 0.0.0.0:3000 for Traefik access"
+echo "🌐 Starting server on port 3000..."
+echo "🔗 Accessible at: http://localhost:3000"
 
 # Set environment variables for Next.js
 export HOSTNAME="0.0.0.0"

@@ -35,11 +35,10 @@ services:
       NEXTAUTH_SECRET: samaria1995
       NEXTAUTH_URL: https://app.samariaerp.org
       NEXT_PUBLIC_APP_URL: https://app.samariaerp.org
-      # Bind to all interfaces, not just localhost
       HOSTNAME: "0.0.0.0"
       PORT: "3000"
     ports:
-      - "3000:3000"
+      - "80:3000"
     depends_on:
       db:
         condition: service_healthy
@@ -57,31 +56,7 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
-    # Traefik labels for Dokploy
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.samaria-app.rule=Host(`app.samariaerp.org`)"
-      - "traefik.http.routers.samaria-app.entrypoints=websecure"
-      - "traefik.http.routers.samaria-app.tls.certresolver=letsencrypt"
-      - "traefik.http.services.samaria-app.loadbalancer.server.port=3000"
-      - "traefik.http.services.samaria-app.loadbalancer.healthcheck.path=/api/health"
-      - "traefik.http.middlewares.samaria-app-headers.headers.customrequestheaders.X-Forwarded-Proto=https"
-      - "traefik.http.middlewares.samaria-app-headers.headers.customrequestheaders.X-Forwarded-Host=app.samariaerp.org"
-      - "traefik.http.middlewares.samaria-app-headers.headers.customrequestheaders.X-Real-IP=$$remote_addr"
-      - "traefik.http.routers.samaria-app.middlewares=samaria-app-headers"
-      # Redirect HTTP to HTTPS
-      - "traefik.http.routers.samaria-app-http.rule=Host(`app.samariaerp.org`)"
-      - "traefik.http.routers.samaria-app-http.entrypoints=web"
-      - "traefik.http.routers.samaria-app-http.middlewares=redirect-to-https"
-      - "traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https"
-      # Network
-      - "traefik.docker.network=dokploy"
 
 volumes:
   postgres-data:
     driver: local
-
-networks:
-  default:
-    name: dokploy
-    external: true

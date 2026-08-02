@@ -1,6 +1,6 @@
-# Nginx Proxy Deployment Setup for Samaria ERP
+# Dokploy Deployment Setup for Samaria ERP
 
-## 🚀 Docker Deployment with Nginx Proxy
+## 🚀 Docker Deployment with Traefik Proxy (Dokploy)
 
 ### 1. **DNS Configuration**
 Make sure your domain points to your server's IP address:
@@ -8,7 +8,7 @@ Make sure your domain points to your server's IP address:
 A record: app.samariaerp.org → YOUR_SERVER_IP
 ```
 
-### 2. **Nginx Proxy Deployment Setup**
+### 2. **Dokploy Deployment Setup**
 
 #### Application Configuration:
 - **Type**: Docker Compose
@@ -18,13 +18,7 @@ A record: app.samariaerp.org → YOUR_SERVER_IP
 - **Docker Compose File**: `docker-compose.yml`
 - **Build Path**: `.`
 
-#### Port Configuration:
-- **HTTP**: Port 80 (redirects to HTTPS)
-- **HTTPS**: Port 443 (main access point)
-- **HTTP Fallback**: Port 8080 (development)
-- **Access URL**: `https://app.samariaerp.org`
-
-#### Environment Variables:
+#### Environment Variables (Set in Dokploy):
 ```env
 NODE_ENV=production
 DATABASE_URL=postgresql://postgres:kirabel@123@db:5432/samaria_erp
@@ -35,69 +29,112 @@ HOSTNAME=0.0.0.0
 PORT=3000
 ```
 
-### 3. **SSL Certificate Setup**
+### 3. **Traefik Configuration (Automatic)**
 
-#### Option A: Self-signed certificates (Development)
-```bash
-# Generate self-signed certificates
-bash scripts/generate-ssl-cert.sh
-```
-
-#### Option B: Let's Encrypt certificates (Production)
-```bash
-# Install certbot and generate certificates
-sudo apt install certbot
-sudo certbot certonly --standalone -d app.samariaerp.org
-
-# Copy certificates to nginx/ssl/
-sudo cp /etc/letsencrypt/live/app.samariaerp.org/fullchain.pem nginx/ssl/app.samariaerp.org.crt
-sudo cp /etc/letsencrypt/live/app.samariaerp.org/privkey.pem nginx/ssl/app.samariaerp.org.key
-sudo chown $USER:$USER nginx/ssl/app.samariaerp.org.*
-```
+Dokploy automatically configures Traefik with the labels in docker-compose.yml:
+- **Domain**: app.samariaerp.org
+- **SSL**: Automatic Let's Encrypt certificates
+- **HTTP to HTTPS**: Automatic redirect
+- **Health checks**: Configured for /api/health endpoint
 
 ### 4. **Deployment Steps**
 
-1. **Prepare SSL certificates** (see section 3)
-2. **Push your code** to Git repository
-3. **Run deployment** command:
-   ```bash
-   docker-compose up --build -d
-   ```
-4. **Check status**:
-   ```bash
-   docker-compose ps
-   docker-compose logs -f nginx
-   docker-compose logs -f app
-   ```
-5. **Access application**: `https://app.samariaerp.org`
+1. **Configure Dokploy project**:
+   - Create new application in Dokploy
+   - Set repository URL and branch
+   - Configure environment variables
+   
+2. **Deploy**:
+   - Dokploy will automatically build and deploy
+   - Traefik will handle SSL and routing
+   - Application will be available at https://app.samariaerp.org
 
 ### 5. **Service Architecture**
 
 ```
-Internet → Nginx Proxy (Port 80/443) → Next.js App (Port 3000) → PostgreSQL DB
+Internet → Traefik (SSL/Proxy) → Next.js App (Port 3000) → PostgreSQL DB
 ```
 
-- **Nginx**: Handles SSL termination, static files, and proxying
-- **Next.js App**: Runs on internal port 3000 (not exposed)
-- **PostgreSQL**: Database on internal network
+- **Traefik**: Handles SSL termination, routing, and Let's Encrypt certificates
+- **Next.js App**: Runs on internal port 3000 (managed by Dokploy network)
+- **PostgreSQL**: Database on internal Docker network
 
 ### 6. **Troubleshooting**
 
-#### If getting connection issues:
-1. Check nginx logs: `docker-compose logs nginx`
-2. Check app logs: `docker-compose logs app`
-3. Verify SSL certificates: `ls -la nginx/ssl/`
-4. Test nginx configuration: `docker-compose exec nginx nginx -t`
+#### If deployment fails:
+1. **Check Dokploy logs** in the application dashboard
+2. **Check build logs** for Docker build errors
+3. **Verify environment variables** are set correctly
+4. **Check database connectivity**: 
+   ```bash
+   # In Dokploy terminal
+   docker-compose exec app npx prisma db push
+   ```
 
-#### If SSL issues:
-1. Verify certificate files exist and have correct permissions
-2. Check certificate validity: `openssl x509 -in nginx/ssl/app.samariaerp.org.crt -text -noout`
-3. Use HTTP fallback: `http://app.samariaerp.org:8080`
+#### If application doesn't start:
+1. **Check application logs** in Dokploy dashboard
+2. **Verify database connection**: Check DATABASE_URL format
+3. **Check health endpoint**: Visit `/api/health` 
+4. **Restart services**: Use Dokploy restart button
 
-#### If database connection fails:
-1. Check PostgreSQL container status: `docker-compose ps`
-2. Verify DATABASE_URL environment variable
-3. Check network connectivity: `docker-compose exec app ping db`
+#### Common issues:
+- **502 Bad Gateway**: App container not healthy, check app logs
+- **SSL certificate errors**: Traefik is getting Let's Encrypt cert automatically
+- **Database connection**: Ensure DATABASE_URL points to `db:5432`
+
+### 7. **Expected URLs**
+- **Main Application**: https://app.samariaerp.org (HTTPS with Let's Encrypt SSL)
+- **HTTP Redirect**: http://app.samariaerp.org → automatically redirects to HTTPS
+- **Health Check**: https://app.samariaerp.org/api/health
+- **Admin Login**: https://app.samariaerp.org/login
+  - Username: `admin`
+  - Password: `admin123`
+
+### 8. **Dokploy Features**
+- **Automatic SSL**: Let's Encrypt certificates managed by Traefik
+- **Zero-downtime deployment**: Rolling updates
+- **Health monitoring**: Application health checks
+- **Log management**: Centralized logs in Dokploy dashboard
+- **Automatic backup**: Database backups (if configured)
+- **Domain management**: Easy domain and SSL management
+
+## 📋 **Final Checklist**
+- [ ] DNS points to server IP (A record)
+- [ ] Dokploy application configured
+- [ ] Environment variables set in Dokploy
+- [ ] Repository URL and branch configured
+- [ ] Deployment successful (green status)
+- [ ] All containers healthy (db, app)
+- [ ] Can access https://app.samariaerp.org
+- [ ] Health check responds with 200 OK
+- [ ] Admin login works
+- [ ] SSL certificate active (Let's Encrypt)
+
+## 🔧 **Dokploy Management**
+
+### Application Monitoring
+- **Status**: Check in Dokploy dashboard
+- **Logs**: Real-time logs available
+- **Resources**: CPU, Memory usage monitoring
+- **Deployments**: History and rollback options
+
+### Database Management
+```bash
+# Access database (via Dokploy terminal)
+docker-compose exec db psql -U postgres -d samaria_erp
+
+# Run migrations
+docker-compose exec app npx prisma migrate deploy
+
+# Seed database
+docker-compose exec app node prisma/seed.mjs
+```
+
+### Updates and Deployment
+1. **Push code** to Git repository
+2. **Trigger deployment** in Dokploy (automatic or manual)
+3. **Monitor deployment** progress in dashboard
+4. **Verify application** is running correctly
 
 ### 7. **Expected URLs**
 - **Main Application**: https://app.samariaerp.org (HTTPS with SSL)

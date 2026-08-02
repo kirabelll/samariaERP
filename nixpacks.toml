@@ -1,0 +1,22 @@
+[phases.setup]
+nixPkgs = ["nodejs-18_x", "openssl", "libc6-compat"]
+
+[phases.install]
+cmds = [
+    "corepack enable",
+    "corepack prepare pnpm@latest --activate",
+    "pnpm install --frozen-lockfile"
+]
+
+[phases.build]
+cmds = [
+    "pnpm prisma generate",
+    "pnpm build"
+]
+
+[start]
+cmd = "pnpm start:production"
+
+[variables]
+NODE_ENV = "production"
+NEXT_TELEMETRY_DISABLED = "1"

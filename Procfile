@@ -1,1 +1,0 @@
-web: node start-with-seed.js

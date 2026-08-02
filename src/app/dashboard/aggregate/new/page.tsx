@@ -144,78 +144,27 @@ export default function NewAggregateDispatch() {
     const fetchData = async () => {
       setLoadingData(true);
       try {
-        const [salesAgreementsRes, suppliersRes, agreementsRes, transportersRes, itemsRes] =
+        const [customersRes, suppliersRes, agreementsRes, transportersRes, itemsRes, custAgreementsRes] =
           await Promise.all([
-            fetch('/api/sales/agreements?status=Active&division=AGGREGATE&limit=1000'),
+            fetch('/api/sales/agreements/customers?division=AGGREGATE'),
             fetch('/api/supplier-agreements?status=Active&division=AGGREGATE&limit=1000'),
             fetch('/api/transporters/agreements?limit=1000'),
             fetch('/api/transporters?limit=1000'),
             fetch('/api/items?division=AGGREGATE&limit=1000'),
+            fetch('/api/sales/agreements?status=Active&division=AGGREGATE&limit=1000'),
           ]);
 
-        // Process Sales Agreements - Extract customers with active agreements
-        if (salesAgreementsRes.ok) {
-          const salesData = await salesAgreementsRes.json();
-          const customerMap = new Map<string, Customer>();
-          const custItemsMap = new Map<string, Set<string>>();
-          
-          (salesData.data || []).forEach((agr: any) => {
-            if (!agr.customerId || !agr.customer) return;
-            
-            // Parse items JSON safely
-            let items: any[] = [];
-            try {
-              items = typeof agr.items === 'string' ? JSON.parse(agr.items) : (agr.items as any[] || []);
-            } catch {
-              items = [];
-            }
-
-            // Only keep the first (most recent) agreement per customer
-            if (!customerMap.has(agr.customerId)) {
-              customerMap.set(agr.customerId, {
-                customerId: agr.customerId,
-                companyName: agr.customer.companyName,
-                phone: agr.customer.phone,
-                tin: agr.customer.tin,
-                withholding: agr.customer.withholding,
-                withholdRate: agr.customer.withholdRate,
-                creditLimit: agr.customer.creditLimit,
-                creditTermDays: agr.customer.creditTermDays,
-                // Latest agreement info
-                agreementId: agr.id,
-                agreementNo: agr.agreementNo,
-                agreementStatus: agr.status,
-                division: agr.division,
-                validFrom: agr.validFrom,
-                validTo: agr.validTo,
-                totalAmount: agr.totalAmount,
-                items,
-                terms: agr.terms,
-              });
-            }
-
-            // Track which items belong to which customer
-            if (!custItemsMap.has(agr.customerId)) {
-              custItemsMap.set(agr.customerId, new Set());
-            }
-            items.forEach((item: any) => {
-              if (item.itemId) {
-                custItemsMap.get(agr.customerId)!.add(item.itemId);
-              }
-            });
-          });
-          
-          setCustomers(Array.from(customerMap.values()));
-          setCustomerAgreementItems(custItemsMap);
+        if (customersRes.ok) {
+          const d = await customersRes.json();
+          setCustomers(d.data || []);
         }
-
-        // Process Supplier Agreements
         if (suppliersRes.ok) {
           const d = await suppliersRes.json();
+          // Extract unique suppliers, items, and prices from AGGREGATE supplier agreements
           const supplierMap = new Map<string, Supplier>();
           const itemMap = new Map<string, Item>();
+          // Key: "supplierId_itemId" → unitPrice (latest agreement first since API returns desc)
           const priceMap = new Map<string, number>();
-          
           (d.data || []).forEach((agr: any) => {
             const suppId = agr.supplier?.id || agr.supplierId;
             if (agr.supplier && !supplierMap.has(suppId)) {
@@ -226,7 +175,6 @@ export default function NewAggregateDispatch() {
                 category: agr.supplier.category,
               });
             }
-            
             // Extract items + unitPrice from agreement items JSON
             try {
               const agrItems = typeof agr.items === 'string' ? JSON.parse(agr.items) : (agr.items || []);
@@ -250,36 +198,69 @@ export default function NewAggregateDispatch() {
               });
             } catch { /* ignore parse errors */ }
           });
-          
           setSuppliers(Array.from(supplierMap.values()));
           setSupplierItemPrices(priceMap);
 
-          // Fetch all AGGREGATE items from items table (has proper names)
+          // Fetch all AGGREGATE items from items table first (has proper names)
+          const dbItemMap = new Map<string, any>();
           if (itemsRes.ok) {
             const itemsData = await itemsRes.json();
             (itemsData.data || []).forEach((dbItem: any) => {
-              if (dbItem.id && !itemMap.has(dbItem.id)) {
-                itemMap.set(dbItem.id, {
-                  id: dbItem.id,
-                  name: dbItem.name || 'Unknown',
-                  code: dbItem.code || '',
-                  unit: dbItem.unit || 'm3',
-                  category: dbItem.category || 'regular',
-                });
+              if (dbItem.id) {
+                dbItemMap.set(dbItem.id, dbItem);
+                if (!itemMap.has(dbItem.id)) {
+                  itemMap.set(dbItem.id, {
+                    id: dbItem.id,
+                    name: dbItem.name || 'Unknown',
+                    code: dbItem.code || '',
+                    unit: dbItem.unit || 'm3',
+                    category: dbItem.category || 'regular',
+                  });
+                }
               }
             });
           }
 
+          // Also extract items from AGGREGATE customer agreements (e.g. "Aggregate 01")
+          // And build customerId → Set<itemId> map to filter items per customer
+          const custItemsMap = new Map<string, Set<string>>();
+          if (custAgreementsRes.ok) {
+            const custAgrData = await custAgreementsRes.json();
+            (custAgrData.data || []).forEach((agr: any) => {
+              const custId = agr.customerId;
+              try {
+                const agrItems = typeof agr.items === 'string' ? JSON.parse(agr.items) : (agr.items || []);
+                agrItems.forEach((ai: any) => {
+                  if (ai.itemId) {
+                    // Track which items belong to which customer
+                    if (!custItemsMap.has(custId)) {
+                      custItemsMap.set(custId, new Set());
+                    }
+                    custItemsMap.get(custId)!.add(ai.itemId);
+
+                    // Add to items list if not already there
+                    if (!itemMap.has(ai.itemId)) {
+                      const dbItem = dbItemMap.get(ai.itemId);
+                      itemMap.set(ai.itemId, {
+                        id: ai.itemId,
+                        name: dbItem?.name || ai.itemName || ai.name || ai.itemId,
+                        code: dbItem?.code || '',
+                        unit: ai.unit || dbItem?.unit || 'm3',
+                        category: dbItem?.category || 'regular',
+                      });
+                    }
+                  }
+                });
+              } catch { /* ignore */ }
+            });
+          }
+          setCustomerAgreementItems(custItemsMap);
           setItems(Array.from(itemMap.values()));
         }
-
-        // Process Transporter Agreements
         if (agreementsRes.ok) {
           const d = await agreementsRes.json();
           setAgreements(d.data || []);
         }
-
-        // Process Transporters
         if (transportersRes.ok) {
           const d = await transportersRes.json();
           setTransporters(d.data || []);
@@ -294,57 +275,23 @@ export default function NewAggregateDispatch() {
     fetchData();
   }, []);
 
-  // Handle customer selection and auto-populate related fields from sales agreement
-  const handleCustomerChange = (customerId: string) => {
-    const selectedCustomer = customers.find(c => c.customerId === customerId);
-    
-    setFormData(prev => ({
-      ...prev,
-      customerId,
-      // Could auto-populate other fields from the customer's sales agreement if needed
-      // For example, if the agreement has a preferred supplier, transporter, etc.
-    }));
-
-    // Update filtered items based on customer's agreement items
-    if (selectedCustomer && selectedCustomer.items) {
-      // The customer's sales agreement items are already loaded and used in the filtering logic
-      // This is handled in the useEffect for filteredItems
-    }
-  };
-
-  // Check if customer has an active agreement when customer changes and populate agreement data
+  // Check if customer has an active agreement when customer changes
   useEffect(() => {
     if (!formData.customerId) {
       setCustomerHasAgreement(null);
       return;
     }
-    
-    // Find the selected customer from the already loaded customers data
-    const selectedCustomer = customers.find(c => c.customerId === formData.customerId);
-    if (selectedCustomer) {
-      // Customer data already comes from sales agreement, so we know they have an agreement
-      setCustomerHasAgreement(true);
-      
-      // Auto-populate agreement-related fields from the customer's sales agreement data
-      setFormData(prev => ({
-        ...prev,
-        // If the customer has a default agreement, we could set it here
-        // agreementId: selectedCustomer.agreementId || prev.agreementId,
-      }));
-    } else {
-      // Fallback: check via API call if customer not found in pre-loaded data
-      const checkCustomerAgreement = async () => {
-        try {
-          const res = await fetch(`/api/sales/agreements?customerId=${formData.customerId}&status=Active&division=AGGREGATE&limit=1`);
-          const data = await res.json();
-          setCustomerHasAgreement(data.success && data.data && data.data.length > 0);
-        } catch {
-          setCustomerHasAgreement(null);
-        }
-      };
-      checkCustomerAgreement();
-    }
-  }, [formData.customerId, customers]);
+    const checkCustomerAgreement = async () => {
+      try {
+        const res = await fetch(`/api/sales/agreements?customerId=${formData.customerId}&status=Active&division=AGGREGATE&limit=1`);
+        const data = await res.json();
+        setCustomerHasAgreement(data.success && data.data && data.data.length > 0);
+      } catch {
+        setCustomerHasAgreement(null);
+      }
+    };
+    checkCustomerAgreement();
+  }, [formData.customerId]);
 
   // Check if supplier has an active agreement when supplier changes
   useEffect(() => {
@@ -603,7 +550,7 @@ export default function NewAggregateDispatch() {
                   name="customerId"
                   required
                   value={formData.customerId}
-                  onChange={(e) => handleCustomerChange(e.target.value)}
+                  onChange={handleInputChange}
                   disabled={loadingData}
                   className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border px-3 py-2"
                 >
@@ -613,7 +560,7 @@ export default function NewAggregateDispatch() {
                   )}
                   {customers.map((customer) => (
                     <option key={customer.customerId} value={customer.customerId}>
-                      {customer.companyName} — {customer.agreementNo} ({customer.agreementStatus})
+                      {customer.companyName} — {customer.agreementNo}
                     </option>
                   ))}
                 </select>
@@ -623,26 +570,7 @@ export default function NewAggregateDispatch() {
                   </p>
                 )}
                 {formData.customerId && customerHasAgreement === true && (
-                  <div className="mt-1">
-                    <p className="text-green-600 text-xs">Active agreement found</p>
-                    {(() => {
-                      const selectedCustomer = customers.find(c => c.customerId === formData.customerId);
-                      if (selectedCustomer) {
-                        return (
-                          <div className="text-xs text-gray-600 mt-1">
-                            Agreement: {selectedCustomer.agreementNo} | Status: {selectedCustomer.agreementStatus}
-                            {selectedCustomer.totalAmount && (
-                              <span> | Total Amount: {selectedCustomer.totalAmount.toLocaleString('en-US')} ETB</span>
-                            )}
-                            {selectedCustomer.validTo && (
-                              <span> | Valid Until: {new Date(selectedCustomer.validTo).toLocaleDateString()}</span>
-                            )}
-                          </div>
-                        );
-                      }
-                      return null;
-                    })()}
-                  </div>
+                  <p className="text-green-600 text-xs mt-1">Active agreement found</p>
                 )}
               </div>
 
@@ -768,102 +696,6 @@ export default function NewAggregateDispatch() {
           </CardBody>
         </Card>
 
-       
-        {/* {formData.customerId && customerHasAgreement === true && (
-          <Card>
-            <CardHeader>
-              <h2 className="text-lg font-semibold text-gray-900">Customer Sales Agreement Details</h2>
-            </CardHeader>
-            <CardBody>
-              {(() => {
-                const selectedCustomer = customers.find(c => c.customerId === formData.customerId);
-                if (!selectedCustomer) return null;
-                
-                return (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div>
-                      <p className="text-sm text-slate-600 mb-1">Agreement Number</p>
-                      <p className="text-gray-900 font-medium">{selectedCustomer.agreementNo}</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-slate-600 mb-1">Agreement Status</p>
-                      <p className="text-gray-900 font-medium">
-                        <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
-                          selectedCustomer.agreementStatus === 'Active' 
-                            ? 'bg-green-100 text-green-800' 
-                            : 'bg-yellow-100 text-yellow-800'
-                        }`}>
-                          {selectedCustomer.agreementStatus}
-                        </span>
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-slate-600 mb-1">Division</p>
-                      <p className="text-gray-900 font-medium">{selectedCustomer.division}</p>
-                    </div>
-                    {selectedCustomer.totalAmount && (
-                      <div>
-                        <p className="text-sm text-slate-600 mb-1">Total Agreement Amount</p>
-                        <p className="text-gray-900 font-medium">{selectedCustomer.totalAmount.toLocaleString('en-US')} ETB</p>
-                      </div>
-                    )}
-                    {selectedCustomer.validFrom && (
-                      <div>
-                        <p className="text-sm text-slate-600 mb-1">Valid From</p>
-                        <p className="text-gray-900 font-medium">{new Date(selectedCustomer.validFrom).toLocaleDateString()}</p>
-                      </div>
-                    )}
-                    {selectedCustomer.validTo && (
-                      <div>
-                        <p className="text-sm text-slate-600 mb-1">Valid Until</p>
-                        <p className="text-gray-900 font-medium">{new Date(selectedCustomer.validTo).toLocaleDateString()}</p>
-                      </div>
-                    )}
-                    {selectedCustomer.creditLimit && (
-                      <div>
-                        <p className="text-sm text-slate-600 mb-1">Credit Limit</p>
-                        <p className="text-gray-900 font-medium">{selectedCustomer.creditLimit.toLocaleString('en-US')} ETB</p>
-                      </div>
-                    )}
-                    {selectedCustomer.creditTermDays && (
-                      <div>
-                        <p className="text-sm text-slate-600 mb-1">Credit Term</p>
-                        <p className="text-gray-900 font-medium">{selectedCustomer.creditTermDays} days</p>
-                      </div>
-                    )}
-                    {selectedCustomer.items && selectedCustomer.items.length > 0 && (
-                      <div className="md:col-span-2">
-                        <p className="text-sm text-slate-600 mb-2">Agreement Items</p>
-                        <div className="bg-slate-50 p-3 rounded-md">
-                          <table className="w-full text-sm">
-                            <thead>
-                              <tr className="text-left text-slate-500">
-                                <th className="pb-2">Item</th>
-                                <th className="pb-2">Quantity</th>
-                                <th className="pb-2">Unit Price</th>
-                                <th className="pb-2">Total</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {selectedCustomer.items.map((item: any, index: number) => (
-                                <tr key={index} className="border-t border-slate-200">
-                                  <td className="py-1">{item.itemName || item.name || 'N/A'}</td>
-                                  <td className="py-1">{item.quantity || 'N/A'}</td>
-                                  <td className="py-1">{item.unitPrice ? `${item.unitPrice.toLocaleString('en-US')} ETB` : 'N/A'}</td>
-                                  <td className="py-1">{item.total ? `${item.total.toLocaleString('en-US')} ETB` : 'N/A'}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })()}
-            </CardBody>
-          </Card>
-        )} */}
         {/* Agreement Selection */}
         <Card>
           <CardHeader>

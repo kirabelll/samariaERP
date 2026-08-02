@@ -86,7 +86,7 @@ log_info "Starting deployment process..."
 # Step 1: Pull latest code
 log_info "Step 1: Pulling latest code from repository..."
 ssh $HETZNER_USER@$HETZNER_IP << 'EOF'
-cd /opt/samaria-erp
+cd /opt/samariaERP
 git fetch origin
 git reset --hard origin/main
 log_success "Code pulled successfully"
@@ -95,7 +95,7 @@ EOF
 # Step 2: Environment setup
 log_info "Step 2: Setting up environment variables..."
 ssh $HETZNER_USER@$HETZNER_IP << 'EOF'
-cd /opt/samaria-erp
+cd /opt/samariaERP
 if [ ! -f .env.production ]; then
     log_warning ".env.production not found, using default configuration"
 else
@@ -106,7 +106,7 @@ EOF
 # Step 3: Build and start Docker containers
 log_info "Step 3: Building and starting Docker containers..."
 ssh $HETZNER_USER@$HETZNER_IP << 'EOF'
-cd /opt/samaria-erp
+cd /opt/samariaERP
 docker-compose -f docker-compose.yml pull
 docker-compose -f docker-compose.yml build --no-cache
 docker-compose -f docker-compose.yml up -d
@@ -119,7 +119,7 @@ sleep 30
 # Step 4: Health checks
 log_info "Step 4: Verifying container health..."
 ssh $HETZNER_USER@$HETZNER_IP << 'EOF'
-cd /opt/samaria-erp
+cd /opt/samariaERP
 echo "Checking database health..."
 docker-compose exec -T db pg_isready -U samaria -d samaria_erp
 
@@ -133,14 +133,14 @@ EOF
 # Step 5: Run Prisma migrations
 log_info "Step 5: Running Prisma migrations..."
 ssh $HETZNER_USER@$HETZNER_IP << 'EOF'
-cd /opt/samaria-erp
+cd /opt/samariaERP
 docker-compose exec -T app npx prisma migrate deploy
 EOF
 
 # Step 6: Run database seed (optional)
 log_info "Step 6: Running database seed script..."
 ssh $HETZNER_USER@$HETZNER_IP << 'EOF'
-cd /opt/samaria-erp
+cd /opt/samariaERP
 if [ -f prisma/seed.ts ]; then
     docker-compose exec -T app npm run seed || echo "Seed script not found or failed - this is optional"
 else
@@ -151,7 +151,7 @@ EOF
 # Step 7: Display deployment status
 log_info "Step 7: Displaying deployment status..."
 ssh $HETZNER_USER@$HETZNER_IP << 'EOF'
-cd /opt/samaria-erp
+cd /opt/samariaERP
 
 echo ""
 echo "========================================"
@@ -209,7 +209,7 @@ echo "  - Nginx Reverse Proxy (Port 80/443)"
 echo ""
 echo "To monitor the deployment:"
 echo "  ssh $HETZNER_USER@$HETZNER_IP"
-echo "  cd /opt/samaria-erp"
+echo "  cd /opt/samariaERP
 echo "  docker-compose logs -f app"
 echo ""
 echo "To stop the services:"

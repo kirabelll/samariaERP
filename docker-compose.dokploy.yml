@@ -1,0 +1,51 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database Service
+  db:
+    image: postgres:15-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-kirabel@123}
+      POSTGRES_DB: samaria_erp
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d samaria_erp"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # Next.js Application Service  
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.production
+    restart: always
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://postgres:${DB_PASSWORD:-kirabel@123}@db:5432/samaria_erp
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-samaria1995}
+      NEXTAUTH_URL: ${NEXTAUTH_URL:-https://app.samariaerp.org}
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-https://app.samariaerp.org}
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./uploads:/app/uploads
+      - ./logs:/app/logs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
+
+volumes:
+  postgres-data:
+    driver: local

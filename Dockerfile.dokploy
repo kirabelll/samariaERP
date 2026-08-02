@@ -1,0 +1,69 @@
+# Dokploy/Traefik optimized Dockerfile
+# ===================================
+
+FROM node:18-alpine
+
+# Install system dependencies
+RUN apk add --no-cache \
+    libc6-compat \
+    openssl \
+    curl \
+    python3 \
+    make \
+    g++
+
+WORKDIR /app
+
+# Copy package.json
+COPY package.json ./
+
+# Configure npm and install dependencies
+RUN npm config set legacy-peer-deps true && \
+    npm install --legacy-peer-deps --verbose
+
+# Copy source code
+COPY . .
+
+# Generate Prisma client
+RUN npx prisma generate
+
+# Build application
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV NODE_ENV=production
+RUN npm run build
+
+# Create directories
+RUN mkdir -p /app/uploads /app/logs
+
+# Create startup script
+RUN cat > /app/start.sh << 'EOF'
+#!/bin/sh
+set -e
+
+echo "🚀 Starting Samaria ERP for Dokploy..."
+
+# Wait for database
+echo "⏳ Waiting for database..."
+until npx prisma db push --accept-data-loss 2>/dev/null; do
+  echo "Database not ready, waiting 5 seconds..."
+  sleep 5
+done
+
+echo "✅ Database ready!"
+
+# Run migrations and seed
+npx prisma migrate deploy || true
+node prisma/seed.mjs || true
+
+echo "🌐 Starting server on port 3000..."
+exec npm start
+EOF
+
+RUN chmod +x /app/start.sh
+
+EXPOSE 3000
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=90s --retries=3 \
+    CMD curl -f http://localhost:3000/api/health || exit 1
+
+CMD ["/app/start.sh"]

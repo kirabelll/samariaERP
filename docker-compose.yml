@@ -27,7 +27,7 @@ services:
   app:
     build:
       context: .
-      dockerfile: Dockerfile.dokploy
+      dockerfile: Dockerfile
     restart: always
     environment:
       NODE_ENV: production

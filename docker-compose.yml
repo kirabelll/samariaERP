@@ -15,7 +15,7 @@ services:
     networks:
       - samaria-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U samaria -d samaria_erp"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d samaria_erp"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -31,26 +31,26 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: *****
+    container_name: samaria_app
     restart: always
     environment:
       NODE_ENV: production
-      DATABASE_URL: postgresql://postgres:kirabel@123@samaria-erp-postgresql-7fio9x:5432/samaria_erp
+      DATABASE_URL: postgresql://postgres:kirabel@123@db:5432/samaria_erp
       NEXTAUTH_SECRET: samaria1995
       NEXTAUTH_URL: https://app.samariaerp.org
       NEXT_PUBLIC_APP_URL: https://app.samariaerp.org
     ports:
-      - "127.0.0.1:80:3000"
+      - "80:3000"
     depends_on:
       db:
         condition: service_healthy
     networks:
       - samaria-network
     volumes:
-      - ./uploads:/app/public/uploads
+      - ./uploads:/app/uploads
       - ./logs:/app/logs
     healthcheck:
-      test: ["CMD", "curl", "-f", "https://app.samariaerp.org/api/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3

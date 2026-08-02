@@ -6,8 +6,8 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "node start-with-seed.js",
-    "start:next": "next start",
+    "start": "next start",
+    "start:with-seed": "node start-with-seed.js",
     "start:production": "node start-with-seed.js",
     "lint": "next lint",
     "db:generate": "prisma generate",

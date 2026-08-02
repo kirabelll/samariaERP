@@ -4,7 +4,7 @@
 FROM node:18-alpine
 
 # Install system dependencies
-RUN apk add --no-cache libc6-compat openssl curl
+RUN apk add --no-cache libc6-compat openssl curl python3 make g++
 
 # Set working directory
 WORKDIR /app
@@ -12,8 +12,16 @@ WORKDIR /app
 # Copy package.json
 COPY package.json ./
 
-# Install dependencies (will create new package-lock.json)
-RUN npm install --legacy-peer-deps --production=false
+# Set npm configuration for better compatibility
+RUN npm config set registry https://registry.npmjs.org/ && \
+    npm config set legacy-peer-deps true && \
+    npm config set fund false && \
+    npm config set audit false
+
+# Install dependencies with retries
+RUN npm install --legacy-peer-deps --no-optional --verbose || \
+    (sleep 5 && npm install --legacy-peer-deps --no-optional --verbose) || \
+    (sleep 10 && npm install --legacy-peer-deps --force --verbose)
 
 # Copy source code
 COPY . .

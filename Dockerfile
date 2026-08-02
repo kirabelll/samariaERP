@@ -6,12 +6,12 @@ FROM node:18-alpine AS deps
 RUN apk add --no-cache libc6-compat openssl
 WORKDIR /app
 
-# Copy package files
-COPY package.json package-lock.json* ./
+# Copy package files (excluding lock files to regenerate them)
+COPY package.json ./
 
-# Install dependencies using npm
-RUN npm ci --legacy-peer-deps --only=production && \
-    npm ci --legacy-peer-deps
+# Clear npm cache and install dependencies fresh
+RUN npm cache clean --force && \
+    npm install --legacy-peer-deps
 
 # Stage 2: Build the application
 FROM node:18-alpine AS builder
@@ -25,8 +25,8 @@ COPY . .
 RUN npx prisma generate
 
 # Set env for build
-ENV NEXT_TELEMETRY_DISABLED 1
-ENV NODE_ENV production
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV NODE_ENV=production
 
 # Build Next.js
 RUN npm run build
@@ -36,8 +36,8 @@ FROM node:18-alpine AS runner
 RUN apk add --no-cache libc6-compat openssl curl
 WORKDIR /app
 
-ENV NODE_ENV production
-ENV NEXT_TELEMETRY_DISABLED 1
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
 
 # Create non-root user
 RUN addgroup --system --gid 1001 nodejs && \
@@ -51,7 +51,6 @@ COPY --from=builder /app/package.json ./package.json
 
 # Copy prisma for migrations/seeding
 COPY --from=builder /app/prisma ./prisma
-COPY --from=builder /app/start-with-seed.js ./start-with-seed.js
 
 # Ensure uploads dir exists and add node_modules/.bin to PATH
 ENV PATH="/app/node_modules/.bin:$PATH"

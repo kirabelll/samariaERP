@@ -35,7 +35,7 @@ RUN npm run build
 # Create directories
 RUN mkdir -p /app/uploads /app/logs
 
-# Create startup script
+# Create startup script for standalone mode
 RUN cat > /app/start.sh << 'EOF'
 #!/bin/sh
 set -e
@@ -55,8 +55,21 @@ echo "✅ Database ready!"
 npx prisma migrate deploy || true
 node prisma/seed.mjs || true
 
-echo "🌐 Starting server on port 3000..."
-exec npm start
+echo "🌐 Starting standalone server on port 3000..."
+echo "🔗 Will be accessible at: https://app.samariaerp.org"
+echo "🔧 Binding to 0.0.0.0:3000 for Traefik access"
+
+# Set environment variables for Next.js
+export HOSTNAME="0.0.0.0"
+export PORT="3000"
+
+# Use standalone server for production
+if [ -f ".next/standalone/server.js" ]; then
+  exec node .next/standalone/server.js
+else
+  echo "⚠️  Standalone build not found, using next start..."
+  exec npm start
+fi
 EOF
 
 RUN chmod +x /app/start.sh

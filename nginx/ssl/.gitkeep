@@ -1,0 +1,11 @@
+# SSL certificates directory
+# Place your SSL certificates here:
+# - app.samariaerp.org.crt (certificate file)
+# - app.samariaerp.org.key (private key file)
+#
+# For Let's Encrypt certificates, you can mount them from the host system
+# For development, you can create self-signed certificates using:
+# openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+#   -keyout app.samariaerp.org.key \
+#   -out app.samariaerp.org.crt \
+#   -subj "/C=ET/ST=Addis Ababa/L=Addis Ababa/O=Samaria ERP/CN=app.samariaerp.org"

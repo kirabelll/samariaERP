@@ -6,12 +6,14 @@ export const dynamic = 'force-dynamic';
 /**
  * GET /api/sales/agreements/customers
  *
- * Returns customers that have an active (non-void, non-cancelled) sales agreement.
- * Groups by customer and returns only the most recent agreement per customer.
+ * Returns ALL customer-agreement combinations for the specified filters.
+ * Does NOT group by customer - returns all matching agreements.
  *
  * Query params:
- *   - division: filter by agreement division (e.g., CEMENT, CONSTRUCTION)
+ *   - division: filter by agreement division (e.g., CEMENT, CONSTRUCTION, AGGREGATE)
  *   - search: search by company name or agreement number
+ *   - status: filter by specific agreement status (Active, Draft, etc.)
+ *   - includeAll: if true, includes ALL agreements regardless of status (including Void, Cancelled)
  */
 export async function GET(request: NextRequest) {
   try {
@@ -19,11 +21,22 @@ export async function GET(request: NextRequest) {
     const division = searchParams.get('division');
     const search = searchParams.get('search');
     const status = searchParams.get('status');
+    const includeAll = searchParams.get('includeAll') === 'true'; // Show all statuses including void
 
-    // Build where clause: only active, non-void, non-cancelled agreements
-    const whereClause: any = {
-      status: status ? status : { notIn: ['Void', 'Cancelled'] },
-    };
+    // Build where clause
+    const whereClause: any = {};
+
+    // Handle status filtering
+    if (includeAll) {
+      // Show ALL agreements regardless of status when includeAll=true
+      // No status filter applied
+    } else if (status) {
+      // Filter by specific status when provided
+      whereClause.status = status;
+    } else {
+      // Default: exclude Void and Cancelled
+      whereClause.status = { notIn: ['Void', 'Cancelled'] };
+    }
 
     if (division) {
       whereClause.division = division;
@@ -56,14 +69,10 @@ export async function GET(request: NextRequest) {
       orderBy: { createdAt: 'desc' },
     });
 
-    // Group by customerId — keep only the most recent agreement per customer
-    const customerMap = new Map<string, any>();
-
-    for (const agr of agreements) {
-      if (!agr.customerId || !agr.customer) continue;
-
-      // Only keep the first (most recent) agreement per customer
-      if (!customerMap.has(agr.customerId)) {
+    // Transform all agreements to customer format (no uniqueness filtering)
+    const customerData = agreements
+      .filter(agr => agr.customerId && agr.customer)
+      .map(agr => {
         // Parse items JSON safely
         let items: any[] = [];
         try {
@@ -72,16 +81,16 @@ export async function GET(request: NextRequest) {
           items = [];
         }
 
-        customerMap.set(agr.customerId, {
+        return {
           customerId: agr.customerId,
-          companyName: agr.customer.companyName,
-          phone: agr.customer.phone,
-          tin: agr.customer.tin,
-          withholding: agr.customer.withholding,
-          withholdRate: agr.customer.withholdRate,
-          creditLimit: agr.customer.creditLimit,
-          creditTermDays: agr.customer.creditTermDays,
-          // Latest agreement info
+          companyName: agr.customer!.companyName,
+          phone: agr.customer!.phone,
+          tin: agr.customer!.tin,
+          withholding: agr.customer!.withholding,
+          withholdRate: agr.customer!.withholdRate,
+          creditLimit: agr.customer!.creditLimit,
+          creditTermDays: agr.customer!.creditTermDays,
+          // Agreement info
           agreementId: agr.id,
           agreementNo: agr.agreementNo,
           agreementStatus: agr.status,
@@ -91,16 +100,13 @@ export async function GET(request: NextRequest) {
           totalAmount: agr.totalAmount,
           items,
           terms: agr.terms,
-        });
-      }
-    }
-
-    const data = Array.from(customerMap.values());
+        };
+      });
 
     return NextResponse.json({
       success: true,
-      data,
-      total: data.length,
+      data: customerData,
+      total: customerData.length,
     });
   } catch (error: any) {
     console.error('Error fetching agreement customers:', error);

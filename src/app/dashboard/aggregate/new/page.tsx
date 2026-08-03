@@ -46,6 +46,12 @@ interface Supplier {
   companyName: string;
   code: string;
   category?: string;
+  // New fields for agreement info
+  agreementId?: string;
+  agreementNo?: string;
+  agreementStatus?: string;
+  totalAmount?: number;
+  displayName?: string;
 }
 
 interface Item {
@@ -141,6 +147,41 @@ export default function NewAggregateDispatch() {
   const [supplierHasAgreement, setSupplierHasAgreement] = useState<boolean | null>(null);
   const [checkingAgreements, setCheckingAgreements] = useState(false);
 
+  // Debug function to check what customers are being fetched
+  const debugCustomerData = async () => {
+    try {
+      console.log('=== DEBUGGING CUSTOMER DATA ===');
+      
+      // Use the dedicated debug endpoint
+      const debugResponse = await fetch('/api/debug/aggregate-customers');
+      const debugData = await debugResponse.json();
+      
+      if (debugData.success) {
+        const debug = debugData.debug;
+        console.log('Total customers in database:', debug.totalCustomers);
+        console.log('Total AGGREGATE agreements:', debug.totalAggregateAgreements);
+        console.log('Unique customers with AGGREGATE agreements:', debug.uniqueAggregateCustomers);
+        console.log('ALL customer-agreement entries:', debug.allAggregateCustomersEntries);
+        console.log('AGGREGATE agreements:', debug.aggregateAgreements);
+        console.log('Unique AGGREGATE customers:', debug.uniqueAggregateCustomers);
+        console.log('ALL AGGREGATE customer entries:', debug.allAggregateCustomers);
+        
+        alert(`Debug Results:
+Total customers: ${debug.totalCustomers}
+AGGREGATE agreements: ${debug.totalAggregateAgreements}  
+Unique AGGREGATE customers: ${debug.uniqueAggregateCustomers}
+ALL customer-agreement entries: ${debug.allAggregateCustomersEntries}
+
+Check console for detailed breakdown.`);
+      } else {
+        alert('Debug failed: ' + debugData.error);
+      }
+    } catch (error) {
+      console.error('Debug failed:', error);
+      alert('Debug failed: ' + error);
+    }
+  };
+
   // Fetch all data on mount
   useEffect(() => {
     const fetchData = async () => {
@@ -148,8 +189,8 @@ export default function NewAggregateDispatch() {
       try {
         const [customersRes, suppliersRes, agreementsRes, transportersRes, itemsRes, custAgreementsRes] =
           await Promise.all([
-            fetch('/api/sales/agreements/customers?status=Active'),
-            fetch('/api/supplier-agreements?status=Active&division=AGGREGATE&limit=1000'),
+            fetch('/api/sales/agreements/customers?division=AGGREGATE&includeAll=true'), // Show ALL AGGREGATE agreements (not unique)
+            fetch('/api/supplier-agreements?division=AGGREGATE&limit=1000&includeVoid=true'), // Show ALL supplier agreements
             fetch('/api/transporters/agreements?limit=1000'),
             fetch('/api/transporters?limit=1000'),
             fetch('/api/items?division=AGGREGATE&limit=1000'),
@@ -158,25 +199,41 @@ export default function NewAggregateDispatch() {
 
         if (customersRes.ok) {
           const d = await customersRes.json();
+          console.log('Customers API Response:', d);
+          console.log('Customers count:', d.data?.length || 0);
           setCustomers(d.data || []);
+        } else {
+          console.error('Customers API failed:', customersRes.status, customersRes.statusText);
         }
         if (suppliersRes.ok) {
           const d = await suppliersRes.json();
-          // Extract unique suppliers, items, and prices from AGGREGATE supplier agreements
-          const supplierMap = new Map<string, Supplier>();
+          console.log('Suppliers API Response:', d);
+          console.log('Suppliers count:', d.data?.length || 0);
+          
+          // Process ALL supplier agreements (no uniqueness filtering)
+          const allSuppliers: Supplier[] = [];
           const itemMap = new Map<string, Item>();
           // Key: "supplierId_itemId" → unitPrice (latest agreement first since API returns desc)
           const priceMap = new Map<string, number>();
           const suppItemsMap = new Map<string, Set<string>>();
-          (d.data || []).forEach((agr: any) => {
-            if (agr.status !== 'Active') return;
+          
+          (d.data || []).forEach((agr: any, index: number) => {
+            // Process ALL agreements, not just Active ones
             const suppId = agr.supplier?.id || agr.supplierId;
-            if (agr.supplier && !supplierMap.has(suppId)) {
-              supplierMap.set(suppId, {
+            
+            if (agr.supplier) {
+              // Add ALL supplier-agreement combinations (no uniqueness check)
+              allSuppliers.push({
                 id: suppId,
                 companyName: agr.supplier.companyName,
                 code: agr.supplier.code || '',
                 category: agr.supplier.category,
+                // Add agreement info to distinguish multiple agreements
+                agreementId: agr.id,
+                agreementNo: agr.agreementNo,
+                agreementStatus: agr.status,
+                totalAmount: agr.totalAmount,
+                displayName: `${agr.supplier.companyName} — ${agr.agreementNo}`, // For dropdown display
               });
             }
             // Extract items + unitPrice from agreement items JSON
@@ -198,8 +255,8 @@ export default function NewAggregateDispatch() {
                       category: ai.type || 'regular',
                     });
                   }
-                  // Store price per supplier+item combo (latest agreement wins)
-                  const priceKey = `${suppId}_${ai.itemId}`;
+                  // Store price per supplier+item combo (use agreement ID to make unique)
+                  const priceKey = `${agr.id}_${ai.itemId}`;
                   if (ai.unitPrice && !priceMap.has(priceKey)) {
                     priceMap.set(priceKey, ai.unitPrice);
                   }
@@ -207,7 +264,8 @@ export default function NewAggregateDispatch() {
               });
             } catch { /* ignore parse errors */ }
           });
-          setSuppliers(Array.from(supplierMap.values()));
+          
+          setSuppliers(allSuppliers); // Use all suppliers instead of unique ones
           setSupplierItemPrices(priceMap);
           setSupplierAgreementItems(suppItemsMap);
 
@@ -549,8 +607,19 @@ export default function NewAggregateDispatch() {
         >
           ← Back to Aggregate Operations
         </Link>
-        <h1 className="text-3xl font-bold text-gray-900 mt-4">New Aggregate Dispatch</h1>
-        <p className="text-gray-600 mt-1">Create a new stone/aggregate dispatch order</p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900 mt-4">New Aggregate Dispatch</h1>
+            <p className="text-gray-600 mt-1">Create a new stone/aggregate dispatch order</p>
+          </div>
+          <button 
+            onClick={debugCustomerData}
+            className="px-3 py-1 bg-orange-100 text-orange-800 rounded text-sm hover:bg-orange-200"
+            type="button"
+          >
+            🐛 Debug Customers
+          </button>
+        </div>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
@@ -606,9 +675,9 @@ export default function NewAggregateDispatch() {
                   className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border px-3 py-2"
                 >
                   <option value="">Select Supplier</option>
-                  {suppliers.map((supplier) => (
-                    <option key={supplier.id} value={supplier.id}>
-                      {supplier.companyName} ({supplier.code})
+                  {suppliers.map((supplier, index) => (
+                    <option key={`${supplier.id}_${supplier.agreementId}_${index}`} value={supplier.id}>
+                      {supplier.displayName || `${supplier.companyName} (${supplier.code})`}
                     </option>
                   ))}
                 </select>

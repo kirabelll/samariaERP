@@ -60,6 +60,7 @@ services:
         max-file: "3"
     networks:
       - default
+      - dokploy-network
     # Traefik labels for Dokploy deployment
     labels:
       - "traefik.enable=true"
@@ -79,3 +80,9 @@ services:
 volumes:
   postgres-data:
     driver: local
+
+networks:
+  default:
+    name: samaria-erp-network
+  dokploy-network:
+    external: true

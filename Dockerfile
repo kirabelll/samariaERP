@@ -23,6 +23,7 @@ RUN npx prisma generate
 # Set env for build
 ENV NEXT_TELEMETRY_DISABLED 1
 ENV NODE_ENV production
+ENV NEXT_OUTPUT_MODE standalone
 
 # Build Next.js (standalone output)
 RUN npm run build

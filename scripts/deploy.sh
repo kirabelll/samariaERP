@@ -124,7 +124,7 @@ echo "Checking database health..."
 docker-compose exec -T db pg_isready -U samaria -d samaria_erp
 
 echo "Checking application health..."
-docker-compose exec -T app curl -f http://localhost:3000/api/health || echo "Health check waiting..."
+docker-compose exec -T app curl -f http://localhost:3001/api/health || echo "Health check waiting..."
 
 echo "Checking nginx health..."
 docker-compose exec -T nginx wget --quiet --tries=1 --spider http://localhost/health || echo "Nginx health check in progress..."
@@ -204,7 +204,7 @@ echo "Timestamp: $TIMESTAMP"
 echo ""
 echo "Services deployed:"
 echo "  - PostgreSQL 15 (Port 5432)"
-echo "  - Next.js Application (Port 3000)"
+echo "  - Next.js Application (Port 3001)"
 echo "  - Nginx Reverse Proxy (Port 80/443)"
 echo ""
 echo "To monitor the deployment:"

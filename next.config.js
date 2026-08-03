@@ -1,6 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  //output: 'standalone',
+  output: process.env.NEXT_OUTPUT_MODE || 'standalone',
   skipTrailingSlashRedirect: true,
   experimental: {
     serverComponentsExternalPackages: ['pdfkit'],

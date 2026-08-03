@@ -100,7 +100,7 @@ echo "----------------------------------------"
 
 # Check Application Health
 echo "Application Health:"
-if docker-compose exec -T app curl -f -s http://localhost:3000/api/health > /dev/null 2>&1; then
+if docker-compose exec -T app curl -f -s http://localhost:3001/api/health > /dev/null 2>&1; then
     echo -e "\033[0;32m[OK]\033[0m Application is healthy"
 else
     echo -e "\033[0;31m[ERROR]\033[0m Application health check failed"
@@ -209,7 +209,7 @@ fi
 
 echo ""
 echo "Listening ports:"
-netstat -tlnp 2>/dev/null | grep -E ":80|:443|:3000|:5432" || echo "  No services listening"
+netstat -tlnp 2>/dev/null | grep -E ":80|:443|:3001|:5432" || echo "  No services listening"
 
 echo ""
 

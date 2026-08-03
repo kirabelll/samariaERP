@@ -14,6 +14,7 @@ export async function GET(request: NextRequest) {
     const division = searchParams.get('division') || '';
     const customerId = searchParams.get('customerId') || '';
     const includeVoid = searchParams.get('includeVoid') === 'true';
+    const getAll = searchParams.get('all') === 'true';
 
     const skip = (page - 1) * limit;
 
@@ -26,10 +27,11 @@ export async function GET(request: NextRequest) {
     }
     if (status) {
       whereClause.status = status;
-    } else if (!includeVoid) {
-      // By default, hide Void agreements
+    } else if (includeVoid === false || searchParams.get('includeVoid') === 'false') {
+      // Explicitly exclude Void agreements
       whereClause.status = { not: 'Void' };
     }
+    // If includeVoid is true or not specified, show all records including void
     if (division) {
       whereClause.division = division;
     }
@@ -40,8 +42,7 @@ export async function GET(request: NextRequest) {
     const [data, total] = await Promise.all([
       prisma.salesAgreement.findMany({
         where: whereClause,
-        skip,
-        take: limit,
+        ...(getAll ? {} : { skip, take: limit }),
         include: { customer: true },
         orderBy: { createdAt: 'desc' },
       }),
@@ -51,7 +52,11 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       success: true,
       data,
-      pagination: {
+      pagination: getAll ? { 
+        total, 
+        returnedAll: true,
+        message: 'All records returned without pagination' 
+      } : {
         total,
         page,
         limit,

@@ -13,6 +13,7 @@ interface ApiResponse<T> {
   success: boolean;
   data: T;
   pagination?: PaginationInfo;
+  total?: number; // For /all endpoints
   error?: string;
 }
 
@@ -50,7 +51,12 @@ export function useApiList<T>(endpoint: string, options: UseApiListOptions = {})
 
       if (json.success) {
         setData(json.data);
-        if (json.pagination) setPagination(json.pagination);
+        if (json.pagination) {
+          setPagination(json.pagination);
+        } else if (json.total !== undefined) {
+          // Handle /all endpoints that return total but no pagination
+          setPagination({ total: json.total, page: 1, limit: json.total, pages: 1 });
+        }
       } else {
         setError(json.error || 'Failed to fetch data');
       }

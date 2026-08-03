@@ -18,10 +18,11 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const division = searchParams.get('division');
     const search = searchParams.get('search');
+    const status = searchParams.get('status');
 
     // Build where clause: only active, non-void, non-cancelled agreements
     const whereClause: any = {
-      status: { notIn: ['Void', 'Cancelled'] },
+      status: status ? status : { notIn: ['Void', 'Cancelled'] },
     };
 
     if (division) {

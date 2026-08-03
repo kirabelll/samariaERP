@@ -26,9 +26,11 @@ export async function GET(request: NextRequest) {
     }
     if (status) {
       whereClause.status = status;
-    } else if (!includeVoid) {
+    } else if (includeVoid === false || searchParams.get('includeVoid') === 'false') {
+      // Explicitly exclude Void agreements
       whereClause.status = { not: 'Void' };
     }
+    // If includeVoid is true or not specified, show all records including void
     if (supplierId) {
       whereClause.supplierId = supplierId;
     }

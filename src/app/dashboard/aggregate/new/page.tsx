@@ -133,6 +133,8 @@ export default function NewAggregateDispatch() {
   const [supplierItemPrices, setSupplierItemPrices] = useState<Map<string, number>>(new Map());
   // Map: customerId → Set of itemIds from their AGGREGATE agreements
   const [customerAgreementItems, setCustomerAgreementItems] = useState<Map<string, Set<string>>>(new Map());
+  // Map: supplierId → Set of itemIds from their AGGREGATE supplier agreements
+  const [supplierAgreementItems, setSupplierAgreementItems] = useState<Map<string, Set<string>>>(new Map());
 
   // Agreement validation
   const [customerHasAgreement, setCustomerHasAgreement] = useState<boolean | null>(null);
@@ -146,7 +148,7 @@ export default function NewAggregateDispatch() {
       try {
         const [customersRes, suppliersRes, agreementsRes, transportersRes, itemsRes, custAgreementsRes] =
           await Promise.all([
-            fetch('/api/sales/agreements/customers?division=AGGREGATE'),
+            fetch('/api/sales/agreements/customers?status=Active'),
             fetch('/api/supplier-agreements?status=Active&division=AGGREGATE&limit=1000'),
             fetch('/api/transporters/agreements?limit=1000'),
             fetch('/api/transporters?limit=1000'),
@@ -165,7 +167,9 @@ export default function NewAggregateDispatch() {
           const itemMap = new Map<string, Item>();
           // Key: "supplierId_itemId" → unitPrice (latest agreement first since API returns desc)
           const priceMap = new Map<string, number>();
+          const suppItemsMap = new Map<string, Set<string>>();
           (d.data || []).forEach((agr: any) => {
+            if (agr.status !== 'Active') return;
             const suppId = agr.supplier?.id || agr.supplierId;
             if (agr.supplier && !supplierMap.has(suppId)) {
               supplierMap.set(suppId, {
@@ -180,6 +184,11 @@ export default function NewAggregateDispatch() {
               const agrItems = typeof agr.items === 'string' ? JSON.parse(agr.items) : (agr.items || []);
               agrItems.forEach((ai: any) => {
                 if (ai.itemId) {
+                  if (!suppItemsMap.has(suppId)) {
+                    suppItemsMap.set(suppId, new Set());
+                  }
+                  suppItemsMap.get(suppId)!.add(ai.itemId);
+
                   if (!itemMap.has(ai.itemId)) {
                     itemMap.set(ai.itemId, {
                       id: ai.itemId,
@@ -200,6 +209,7 @@ export default function NewAggregateDispatch() {
           });
           setSuppliers(Array.from(supplierMap.values()));
           setSupplierItemPrices(priceMap);
+          setSupplierAgreementItems(suppItemsMap);
 
           // Fetch all AGGREGATE items from items table first (has proper names)
           const dbItemMap = new Map<string, any>();
@@ -301,7 +311,7 @@ export default function NewAggregateDispatch() {
     }
     const checkSupplierAgreement = async () => {
       try {
-        const res = await fetch(`/api/supplier-agreements?supplierId=${formData.supplierId}&status=Active&limit=1`);
+        const res = await fetch(`/api/supplier-agreements?supplierId=${formData.supplierId}&status=Active&division=AGGREGATE&limit=1`);
         const data = await res.json();
         setSupplierHasAgreement(data.success && data.data && data.data.length > 0);
       } catch {
@@ -397,21 +407,30 @@ export default function NewAggregateDispatch() {
 
   // Filter items based on:
   // 1. Customer's agreement items (only show items the selected customer has in their agreement)
-  // 2. Transporter agreement items (if selected, intersect further)
-  // 3. Fallback to all items if no customer selected
+  // 2. Supplier's agreement items (only show items the selected supplier has in their agreement)
+  // 3. Transporter agreement items (if selected, intersect further)
   useEffect(() => {
     let availableItems = items;
 
     // Step 1: If customer is selected, filter to only their agreement items
     if (formData.customerId && customerAgreementItems.has(formData.customerId)) {
       const custItemIds = customerAgreementItems.get(formData.customerId)!;
-      const custFiltered = items.filter((i) => custItemIds.has(i.id));
+      const custFiltered = availableItems.filter((i) => custItemIds.has(i.id));
       if (custFiltered.length > 0) {
         availableItems = custFiltered;
       }
     }
 
-    // Step 2: If transporter agreement has specific items, intersect with those
+    // Step 2: If supplier is selected, filter to only their agreement items
+    if (formData.supplierId && supplierAgreementItems.has(formData.supplierId)) {
+      const suppItemIds = supplierAgreementItems.get(formData.supplierId)!;
+      const suppFiltered = availableItems.filter((i) => suppItemIds.has(i.id));
+      if (suppFiltered.length > 0) {
+        availableItems = suppFiltered;
+      }
+    }
+
+    // Step 3: If transporter agreement has specific items, intersect with those
     if (selectedAgreement && selectedAgreement.agreementItems && selectedAgreement.agreementItems.length > 0) {
       const agrItemIds = new Set(selectedAgreement.agreementItems.map((ai) => ai.itemId));
       const fromAgreement = availableItems.filter((i) => agrItemIds.has(i.id));
@@ -426,7 +445,7 @@ export default function NewAggregateDispatch() {
     if (formData.itemId && !availableItems.find((item) => item.id === formData.itemId)) {
       setFormData((prev) => ({ ...prev, itemId: '', aggregateValue: '' }));
     }
-  }, [formData.customerId, formData.supplierId, suppliers, items, selectedAgreement, customerAgreementItems]);
+  }, [formData.customerId, formData.supplierId, suppliers, items, selectedAgreement, customerAgreementItems, supplierAgreementItems]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;

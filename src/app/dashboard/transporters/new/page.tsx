@@ -358,7 +358,7 @@ export default function NewTransporterPage() {
                   onChange={handleTruckInputChange}
                   placeholder="e.g., AA-123-456"
                 />
-                <Select
+                {/* <Select
                   label="Truck Type"
                   name="truckType"
                   value={currentTruck.truckType}
@@ -373,7 +373,7 @@ export default function NewTransporterPage() {
                     { value: 'Volvo', label: 'Volvo' },
                     { value: 'Other', label: 'Other' },
                   ]}
-                />
+                /> */}
               </div>
 
               {currentTruck.truckType === 'Other' && (

@@ -474,6 +474,7 @@ export default function NewSalesAgreementPage() {
                         >
                           <option value="">Select</option>
                           <option value="Ton">Ton</option>
+                          <option value="m3">m3</option>
                           <option value="QT">Quintal (QT)</option>
                           <option value="Kg">Kg</option>
                           <option value="Pieces">Pieces</option>

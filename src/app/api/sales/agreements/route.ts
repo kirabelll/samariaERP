@@ -95,16 +95,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Auto-void all existing Active agreements for this customer
-    // (Draft agreements awaiting approval are kept — they'll be superseded once this one is activated)
-    await prisma.salesAgreement.updateMany({
-      where: {
-        customerId,
-        status: { notIn: ['Void', 'Cancelled', 'Expired', 'Draft', 'Rejected'] },
-      },
-      data: { status: 'Void' },
-    });
-
     // Generate agreement number
     const count = await prisma.salesAgreement.count();
     const agreementNo = `AGR-${String(count + 1).padStart(7, '0')}`;

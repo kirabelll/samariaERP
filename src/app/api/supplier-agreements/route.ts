@@ -92,16 +92,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Auto-void all existing Active agreements for this supplier
-    // (Draft agreements awaiting approval are kept — they'll be superseded once this one is activated)
-    await prisma.supplierAgreement.updateMany({
-      where: {
-        supplierId,
-        status: { notIn: ['Void', 'Cancelled', 'Expired', 'Draft', 'Rejected'] },
-      },
-      data: { status: 'Void' },
-    });
-
     // Generate agreement number
     const count = await prisma.supplierAgreement.count();
     const agreementNo = `SAG-${String(count + 1).padStart(7, '0')}`;

@@ -92,26 +92,85 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Generate agreement number
-    const count = await prisma.supplierAgreement.count();
-    const agreementNo = `SAG-${String(count + 1).padStart(7, '0')}`;
-
-    const agreement = await prisma.supplierAgreement.create({
-      data: {
-        agreementNo,
-        supplierId,
-        division: division || 'CONSTRUCTION',
-        items: typeof items === 'string' ? items : JSON.stringify(items),
-        totalAmount: parseFloat(totalAmount),
-        validFrom: new Date(validFrom),
-        validTo: new Date(validTo),
-        terms: terms || null,
-        status: 'Draft',
-        loadingSite: loadingSite || null,
-        offloadingSite: offloadingSite || null,
-        createdBy: createdBy || null,
-      },
-      include: { supplier: true },
+    // Generate unique agreement number with alphabetic suffix for uniqueness
+    const agreement = await prisma.$transaction(async (tx) => {
+      // Get the highest existing agreement number
+      const lastAgreement = await tx.supplierAgreement.findFirst({
+        where: {
+          agreementNo: {
+            startsWith: 'SAG-'
+          }
+        },
+        orderBy: {
+          agreementNo: 'desc'
+        }
+      });
+      
+      let nextNumber = 1;
+      if (lastAgreement?.agreementNo) {
+        // Extract number from SAG-0000123 or SAG-0000123A format
+        const match = lastAgreement.agreementNo.match(/SAG-(\d+)/);
+        if (match) {
+          nextNumber = parseInt(match[1]) + 1;
+        }
+      }
+      
+      // Generate base agreement number
+      let agreementNo = `SAG-${String(nextNumber).padStart(7, '0')}`;
+      
+      // Check if base number exists, if so add alphabetic suffix
+      let suffix = '';
+      let attempt = 0;
+      const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+      
+      while (true) {
+        const testAgreementNo = agreementNo + suffix;
+        
+        // Check if this number exists
+        const existing = await tx.supplierAgreement.findFirst({
+          where: { agreementNo: testAgreementNo }
+        });
+        
+        if (!existing) {
+          agreementNo = testAgreementNo;
+          break;
+        }
+        
+        // Generate next suffix: A, B, C, ..., Z, AA, AB, etc.
+        if (attempt < 26) {
+          suffix = letters[attempt];
+        } else {
+          const firstLetter = Math.floor(attempt / 26) - 1;
+          const secondLetter = attempt % 26;
+          suffix = letters[firstLetter] + letters[secondLetter];
+        }
+        
+        attempt++;
+        
+        // Safety limit
+        if (attempt > 100) {
+          throw new Error('Unable to generate unique supplier agreement number');
+        }
+      }
+      
+      // Create the agreement within the transaction
+      return await tx.supplierAgreement.create({
+        data: {
+          agreementNo,
+          supplierId,
+          division: division || 'CONSTRUCTION',
+          items: typeof items === 'string' ? items : JSON.stringify(items),
+          totalAmount: parseFloat(totalAmount),
+          validFrom: new Date(validFrom),
+          validTo: new Date(validTo),
+          terms: terms || null,
+          status: 'Draft',
+          loadingSite: loadingSite || null,
+          offloadingSite: offloadingSite || null,
+          createdBy: createdBy || null,
+        },
+        include: { supplier: true },
+      });
     });
 
     // Auto-request approval for the new agreement

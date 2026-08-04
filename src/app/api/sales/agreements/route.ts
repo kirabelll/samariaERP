@@ -95,25 +95,84 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Generate agreement number
-    const count = await prisma.salesAgreement.count();
-    const agreementNo = `AGR-${String(count + 1).padStart(7, '0')}`;
-
-    const agreement = await prisma.salesAgreement.create({
-      data: {
-        agreementNo,
-        customerId,
-        division,
-        items: typeof items === 'string' ? items : JSON.stringify(items),
-        totalAmount,
-        validFrom: new Date(validFrom),
-        validTo: new Date(validTo),
-        terms: terms || null,
-        offloadingSite: offloadingSite || null,
-        status: 'Draft',
-        createdBy: createdBy || null,
-      },
-      include: { customer: true },
+    // Generate unique agreement number with alphabetic suffix for uniqueness
+    const agreement = await prisma.$transaction(async (tx) => {
+      // Get the highest existing agreement number
+      const lastAgreement = await tx.salesAgreement.findFirst({
+        where: {
+          agreementNo: {
+            startsWith: 'AGR-'
+          }
+        },
+        orderBy: {
+          agreementNo: 'desc'
+        }
+      });
+      
+      let nextNumber = 1;
+      if (lastAgreement?.agreementNo) {
+        // Extract number from AGR-0000123 or AGR-0000123A format
+        const match = lastAgreement.agreementNo.match(/AGR-(\d+)/);
+        if (match) {
+          nextNumber = parseInt(match[1]) + 1;
+        }
+      }
+      
+      // Generate base agreement number
+      let agreementNo = `AGR-${String(nextNumber).padStart(7, '0')}`;
+      
+      // Check if base number exists, if so add alphabetic suffix
+      let suffix = '';
+      let attempt = 0;
+      const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+      
+      while (true) {
+        const testAgreementNo = agreementNo + suffix;
+        
+        // Check if this number exists
+        const existing = await tx.salesAgreement.findFirst({
+          where: { agreementNo: testAgreementNo }
+        });
+        
+        if (!existing) {
+          agreementNo = testAgreementNo;
+          break;
+        }
+        
+        // Generate next suffix: A, B, C, ..., Z, AA, AB, etc.
+        if (attempt < 26) {
+          suffix = letters[attempt];
+        } else {
+          const firstLetter = Math.floor(attempt / 26) - 1;
+          const secondLetter = attempt % 26;
+          suffix = letters[firstLetter] + letters[secondLetter];
+        }
+        
+        attempt++;
+        
+        // Safety limit
+        if (attempt > 100) {
+          throw new Error('Unable to generate unique agreement number');
+        }
+      }
+      
+      // Create the agreement within the transaction
+      return await tx.salesAgreement.create({
+        data: {
+          agreementNo,
+          customerId,
+          division,
+          items: typeof items === 'string' ? items : JSON.stringify(items),
+          totalAmount,
+          validFrom: new Date(validFrom),
+          validTo: new Date(validTo),
+          terms: terms || null,
+          offloadingSite: offloadingSite || null,
+          status: 'Draft',
+          createdBy: createdBy || null,
+        },
+        include: { customer: true },
+      });
     });
 
     // Auto-request approval for the new agreement

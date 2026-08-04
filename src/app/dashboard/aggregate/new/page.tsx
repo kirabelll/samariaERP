@@ -595,8 +595,7 @@ Check console for detailed breakdown.`);
     setIsSubmitting(false);
   };
 
-  const { truckCapacity, isCapped } = calculateValues();
-  const loaded = parseFloat(formData.loadedVolume || '0');
+  const { truckCapacity, isCapped, billableVolume, loaded } = calculateValues();
 
   return (
     <div className="space-y-6">

@@ -116,8 +116,12 @@ export async function PUT(
           supplierId: supplierId !== undefined ? (supplierId || null) : agreement.supplierId,
           supplierAgreementId: supplierAgreementId !== undefined ? (supplierAgreementId || null) : (agreement as any).supplierAgreementId,
           productType: productType || agreement.productType,
-          validFrom: validFrom ? new Date(validFrom) : agreement.validFrom,
-          validTo: validTo ? new Date(validTo) : agreement.validTo,
+          validFrom: validFrom ? (typeof validFrom === 'string' && validFrom.match(/^\d{4}-\d{2}-\d{2}$/) 
+            ? new Date(validFrom + 'T00:00:00.000Z') 
+            : new Date(validFrom)) : agreement.validFrom,
+          validTo: validTo ? (typeof validTo === 'string' && validTo.match(/^\d{4}-\d{2}-\d{2}$/) 
+            ? new Date(validTo + 'T23:59:59.999Z') 
+            : new Date(validTo)) : agreement.validTo,
           terms: terms !== undefined ? terms : agreement.terms,
           status: status || agreement.status,
           loadingSite: loadingSite !== undefined ? loadingSite : agreement.loadingSite,

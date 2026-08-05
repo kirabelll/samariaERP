@@ -99,12 +99,22 @@ export async function PUT(
       updateData.items = JSON.stringify(updateData.items);
     }
 
-    // Convert date strings to Date objects for Prisma
+    // Convert date strings to DateTime objects for Prisma
     if (updateData.validFrom && typeof updateData.validFrom === 'string') {
-      updateData.validFrom = new Date(updateData.validFrom);
+      // If it's a date-only string (YYYY-MM-DD), convert to ISO datetime
+      if (updateData.validFrom.match(/^\d{4}-\d{2}-\d{2}$/)) {
+        updateData.validFrom = new Date(updateData.validFrom + 'T00:00:00.000Z');
+      } else {
+        updateData.validFrom = new Date(updateData.validFrom);
+      }
     }
     if (updateData.validTo && typeof updateData.validTo === 'string') {
-      updateData.validTo = new Date(updateData.validTo);
+      // If it's a date-only string (YYYY-MM-DD), convert to ISO datetime
+      if (updateData.validTo.match(/^\d{4}-\d{2}-\d{2}$/)) {
+        updateData.validTo = new Date(updateData.validTo + 'T23:59:59.999Z');
+      } else {
+        updateData.validTo = new Date(updateData.validTo);
+      }
     }
 
     const updatedRecord = await prisma.supplierAgreement.update({

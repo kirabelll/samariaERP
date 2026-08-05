@@ -164,8 +164,12 @@ export async function POST(request: NextRequest) {
           supplierId: supplierId || null,
           supplierAgreementId: supplierAgreementId || null,
           productType,
-          validFrom: new Date(validFrom),
-          validTo: new Date(validTo),
+          validFrom: typeof validFrom === 'string' && validFrom.match(/^\d{4}-\d{2}-\d{2}$/) 
+            ? new Date(validFrom + 'T00:00:00.000Z') 
+            : new Date(validFrom),
+          validTo: typeof validTo === 'string' && validTo.match(/^\d{4}-\d{2}-\d{2}$/) 
+            ? new Date(validTo + 'T23:59:59.999Z') 
+            : new Date(validTo),
           terms: terms || null,
           loadingSite: loadingSite || null,
           offloadingSite: offloadingSite || null,

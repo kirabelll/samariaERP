@@ -10,6 +10,7 @@ interface FormData {
   agreementId: string;
   customerId: string;
   supplierId: string;
+  selectedSupplierAgreementId: string;
   transporterId: string;
   truckId: string;
   itemId: string;
@@ -111,6 +112,7 @@ export default function NewAggregateDispatch() {
     agreementId: '',
     customerId: '',
     supplierId: '',
+    selectedSupplierAgreementId: '',
     transporterId: '',
     truckId: '',
     itemId: '',
@@ -213,13 +215,25 @@ Check console for detailed breakdown.`);
           // Process ALL supplier agreements (no uniqueness filtering)
           const allSuppliers: Supplier[] = [];
           const itemMap = new Map<string, Item>();
-          // Key: "supplierId_itemId" → unitPrice (latest agreement first since API returns desc)
+          // Key: "agreementId_itemId" → unitPrice 
           const priceMap = new Map<string, number>();
           const suppItemsMap = new Map<string, Set<string>>();
+          
+          console.log('=== SUPPLIER AGREEMENTS DEBUG ===');
+          console.log('Total supplier agreements received:', d.data?.length || 0);
           
           (d.data || []).forEach((agr: any, index: number) => {
             // Process ALL agreements, not just Active ones
             const suppId = agr.supplier?.id || agr.supplierId;
+            
+            console.log(`Agreement ${index + 1}:`, {
+              id: agr.id,
+              agreementNo: agr.agreementNo,
+              supplierId: suppId,
+              supplierName: agr.supplier?.companyName,
+              status: agr.status,
+              totalAmount: agr.totalAmount
+            });
             
             if (agr.supplier) {
               // Add ALL supplier-agreement combinations (no uniqueness check)
@@ -239,6 +253,8 @@ Check console for detailed breakdown.`);
             // Extract items + unitPrice from agreement items JSON
             try {
               const agrItems = typeof agr.items === 'string' ? JSON.parse(agr.items) : (agr.items || []);
+              console.log(`Agreement ${agr.agreementNo} items:`, agrItems);
+              
               agrItems.forEach((ai: any) => {
                 if (ai.itemId) {
                   if (!suppItemsMap.has(suppId)) {
@@ -255,15 +271,21 @@ Check console for detailed breakdown.`);
                       category: ai.type || 'regular',
                     });
                   }
-                  // Store price per supplier+item combo (use agreement ID to make unique)
+                  // Store price per agreement+item combo
                   const priceKey = `${agr.id}_${ai.itemId}`;
                   if (ai.unitPrice && !priceMap.has(priceKey)) {
                     priceMap.set(priceKey, ai.unitPrice);
+                    console.log(`Stored price: ${priceKey} = ${ai.unitPrice}`);
                   }
                 }
               });
-            } catch { /* ignore parse errors */ }
+            } catch (e) { 
+              console.log(`Failed to parse items for agreement ${agr.agreementNo}:`, e);
+            }
           });
+          
+          console.log('Final price map:', Object.fromEntries(priceMap));
+          console.log('=== END SUPPLIER DEBUG ===');
           
           setSuppliers(allSuppliers); // Use all suppliers instead of unique ones
           setSupplierItemPrices(priceMap);
@@ -415,6 +437,11 @@ Check console for detailed breakdown.`);
     let newTransportRate: string | null = null;
     let newAggregateValue: string | null = null;
 
+    console.log('=== ITEM SELECTION DEBUG ===');
+    console.log('Selected item ID:', value);
+    console.log('Selected supplier agreement ID:', formData.selectedSupplierAgreementId);
+    console.log('Available supplier item prices:', Object.fromEntries(supplierItemPrices));
+
     // 1. Try transporter agreement items first (has both transportRate + aggregateValue)
     if (selectedAgreement && selectedAgreement.agreementItems) {
       const matched = selectedAgreement.agreementItems.find((ai) => ai.itemId === value);
@@ -423,21 +450,30 @@ Check console for detailed breakdown.`);
         if (matched.aggregateValue) {
           newAggregateValue = matched.aggregateValue.toString();
         }
+        console.log('Found in transporter agreement:', { newTransportRate, newAggregateValue });
       }
     }
 
     // 2. If no aggregate value from transporter agreement, get from supplier agreement
-    // Use supplierId + itemId combo key to get the right price for this specific supplier & item
-    const suppPriceKey = `${formData.supplierId}_${value}`;
+    // Use selectedSupplierAgreementId + itemId combo key to get the right price for this specific agreement & item
+    const suppPriceKey = `${formData.selectedSupplierAgreementId}_${value}`;
+    console.log('Looking for supplier price key:', suppPriceKey);
     if (!newAggregateValue && supplierItemPrices.has(suppPriceKey)) {
       newAggregateValue = supplierItemPrices.get(suppPriceKey)!.toString();
+      console.log('Found aggregate value from supplier agreement:', newAggregateValue);
+    } else if (!newAggregateValue) {
+      console.log('No aggregate value found for key:', suppPriceKey);
+      console.log('Available keys:', Array.from(supplierItemPrices.keys()));
     }
+
+    console.log('Final values:', { newTransportRate, newAggregateValue });
+    console.log('=== END DEBUG ===');
 
     setFormData((prev) => ({
       ...prev,
       itemId: value,
       ...(newTransportRate ? { transportRate: newTransportRate } : {}),
-      ...(newAggregateValue ? { aggregateValue: newAggregateValue } : {}),
+      ...(newAggregateValue ? { aggregateValue: newAggregateValue } : { aggregateValue: '' }),
     }));
   };
 
@@ -668,14 +704,33 @@ Check console for detailed breakdown.`);
                 <select
                   name="supplierId"
                   required
-                  value={formData.supplierId}
-                  onChange={handleInputChange}
+                  value={formData.selectedSupplierAgreementId}  // Use agreement ID for matching
+                  onChange={(e) => {
+                    // e.target.value now contains agreementId, not just supplierId
+                    const selectedAgreementId = e.target.value;
+                    const selectedSupplier = suppliers.find(s => s.agreementId === selectedAgreementId);
+                    if (selectedSupplier) {
+                      setFormData(prev => ({
+                        ...prev,
+                        supplierId: selectedSupplier.id,  // Store the actual supplier ID
+                        selectedSupplierAgreementId: selectedAgreementId,  // Store the agreement ID for price lookup
+                        aggregateValue: selectedSupplier.totalAmount != null ? selectedSupplier.totalAmount.toString() : '',
+                      }));
+                    } else {
+                      setFormData(prev => ({
+                        ...prev,
+                        supplierId: '',
+                        selectedSupplierAgreementId: '',
+                        aggregateValue: '',
+                      }));
+                    }
+                  }}
                   disabled={loadingData}
                   className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border px-3 py-2"
                 >
                   <option value="">Select Supplier</option>
                   {suppliers.map((supplier, index) => (
-                    <option key={`${supplier.id}_${supplier.agreementId}_${index}`} value={supplier.id}>
+                    <option key={`${supplier.id}_${supplier.agreementId}_${index}`} value={supplier.agreementId}>
                       {supplier.displayName || `${supplier.companyName} (${supplier.code})`}
                     </option>
                   ))}
@@ -684,9 +739,6 @@ Check console for detailed breakdown.`);
                   <p className="text-red-600 text-xs mt-1 font-medium">
                     No active Supplier Agreement found. A Supplier Agreement is required before creating a dispatch.
                   </p>
-                )}
-                {formData.supplierId && supplierHasAgreement === true && (
-                  <p className="text-green-600 text-xs mt-1">Active agreement found</p>
                 )}
               </div>
 
@@ -947,14 +999,17 @@ Check console for detailed breakdown.`);
                   name="aggregateValue"
                   value={formData.aggregateValue}
                   readOnly
-                  placeholder="Select an agreement item to auto-fill"
+                  placeholder="Select supplier and item to auto-fill"
                   step="0.01"
                   required
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-slate-50 text-slate-700 cursor-not-allowed"
                 />
-                <p className="text-xs text-slate-500 mt-1">Auto-filled from agreement — not editable</p>
-                {!formData.aggregateValue && formData.itemId && (
-                  <p className="text-xs text-amber-600 mt-1">No aggregate value found in agreement for this item. Please check the supplier agreement.</p>
+                <p className="text-xs text-slate-500 mt-1">Auto-filled from supplier agreement — not editable</p>
+                {!formData.aggregateValue && formData.itemId && formData.selectedSupplierAgreementId && (
+                  <p className="text-xs text-amber-600 mt-1">No aggregate value found in supplier agreement for this item. Please check the supplier agreement items.</p>
+                )}
+                {formData.aggregateValue && (
+                  <p className="text-xs text-green-600 mt-1">✓ Value loaded from supplier agreement</p>
                 )}
               </div>
             </div>

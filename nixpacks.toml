@@ -17,7 +17,7 @@ cmds = [
 ]
 
 [phases.build.variables]
-DATABASE_URL = "postgresql://dummy:dummy@localhost:5432/dummy"
+DATABASE_URL = "postgresql://samaria:kirabel@123@samaria-erp-samariadb-bdkfz6:5432/samaria_erp"
 
 [start]
 # Run pending migrations, copy static assets into standalone dir, then start

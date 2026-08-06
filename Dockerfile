@@ -23,7 +23,6 @@ RUN npx prisma generate
 # Set env for build
 ENV NEXT_TELEMETRY_DISABLED 1
 ENV NODE_ENV production
-ENV NEXT_OUTPUT_MODE standalone
 
 # Build Next.js (standalone output)
 RUN npm run build
@@ -74,9 +73,9 @@ RUN mkdir -p /app/uploads /app/logs /app/public/uploads && \
 
 USER nextjs
 
-EXPOSE 3001
+EXPOSE 3000
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD curl -f http://localhost:3001/api/health || exit 1
+    CMD curl -f http://localhost:3000/api/health || exit 1
 
 CMD ["node", "server.js"]

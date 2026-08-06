@@ -2,17 +2,20 @@ services:
   # PostgreSQL Database Service
   db:
     image: postgres:15-alpine
+    container_name: samaria_db
     restart: always
     environment:
-      POSTGRES_USER: postgres
+      POSTGRES_USER: samaria
       POSTGRES_PASSWORD: kirabel123
       POSTGRES_DB: samaria_erp
       POSTGRES_INITDB_ARGS: "--encoding=UTF8"
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - samaria-network
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U postgres -d samaria_erp" ]
+      test: ["CMD-SHELL", "pg_isready -U samaria -d samaria_erp"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -22,67 +25,46 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
-    networks:
-      - default
 
   # Next.js Application Service
   app:
     build:
       context: .
       dockerfile: Dockerfile
+    container_name: samaria-erp
     restart: always
-    ports:
-      - "3001:3001"
     environment:
       NODE_ENV: production
       DATABASE_URL: postgresql://postgres:kirabel123@db:5432/samaria_erp
       NEXTAUTH_SECRET: samaria1995
       NEXTAUTH_URL: https://app.samariaerp.org
       NEXT_PUBLIC_APP_URL: https://app.samariaerp.org
-      HOSTNAME: "0.0.0.0"
-      PORT: 3001
+    ports:
+      - "127.0.0.1:3000:3000"
     depends_on:
       db:
         condition: service_healthy
+    networks:
+      - samaria-network
     volumes:
-      - ./uploads:/app/uploads
+      - ./uploads:/app/public/uploads
       - ./logs:/app/logs
     healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:3001/api/health" ]
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 60s
+      start_period: 40s
     logging:
       driver: "json-file"
       options:
         max-size: "10m"
         max-file: "3"
-    networks:
-      - default
-      - dokploy-network
-    # Traefik labels for Dokploy deployment
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.samaria-app.rule=Host(`app.samariaerp.org`)"
-      - "traefik.http.routers.samaria-app.entrypoints=websecure"
-      - "traefik.http.routers.samaria-app.tls.certresolver=letsencrypt"
-      - "traefik.http.services.samaria-app.loadbalancer.server.port=3001"
-      - "traefik.http.services.samaria-app.loadbalancer.healthcheck.path=/api/health"
-      - "traefik.http.services.samaria-app.loadbalancer.healthcheck.interval=30s"
-      - "traefik.http.services.samaria-app.loadbalancer.healthcheck.timeout=10s"
-      # Redirect HTTP to HTTPS using unique middleware identifier
-      - "traefik.http.routers.samaria-app-http.rule=Host(`app.samariaerp.org`)"
-      - "traefik.http.routers.samaria-app-http.entrypoints=web"
-      - "traefik.http.routers.samaria-app-http.middlewares=samaria-redirect-https"
-      - "traefik.http.middlewares.samaria-redirect-https.redirectscheme.scheme=https"
+
+networks:
+  samaria-network:
+    driver: bridge
 
 volumes:
   postgres-data:
     driver: local
-
-networks:
-  default:
-    name: samaria-erp-network
-  dokploy-network:
-    external: true

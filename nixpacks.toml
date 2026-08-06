@@ -17,9 +17,9 @@ cmds = [
 ]
 
 [phases.build.variables]
-DATABASE_URL = "postgresql://samaria:kirabel@123@samaria-erp-samariadb-bdkfz6:5432/samaria_erp"
+DATABASE_URL = "postgresql://dummy:dummy@localhost:5432/dummy"
 
 [start]
-# Run pending migrations, copy static assets into standalone dir, then start
-cmd = "npx prisma migrate deploy && cp -r .next/static .next/standalone/.next/static && cp -r public .next/standalone/public && node .next/standalone/server.js"
+# Push schema to DB, copy static assets into standalone dir, then start
+cmd = "npx prisma db push --skip-generate && cp -r .next/static .next/standalone/.next/static && cp -r public .next/standalone/public && node .next/standalone/server.js"
 

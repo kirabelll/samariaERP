@@ -1,6 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: process.env.NEXT_OUTPUT_MODE || 'standalone',
+  output: 'standalone',
   skipTrailingSlashRedirect: true,
   experimental: {
     serverComponentsExternalPackages: ['pdfkit'],
@@ -17,8 +17,10 @@ const nextConfig = {
     remotePatterns: [
       { protocol: 'http', hostname: 'localhost' },
       { protocol: 'http', hostname: '167.235.197.55' },
+      { protocol: 'https', hostname: 'app.samariaerp.org' },
     ],
   },
 };
+
 
 module.exports = nextConfig;

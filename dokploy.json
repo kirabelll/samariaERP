@@ -1,44 +1,23 @@
 {
   "name": "samaria-erp",
   "description": "Samaria Trading ERP System",
-  "type": "compose",
-  "compose": {
-    "file": "docker-compose.yml",
+  "type": "nixpacks",
+  "nixpacks": {
     "buildPath": ".",
-    "environment": {
-      "NODE_ENV": "production",
-      "NEXT_TELEMETRY_DISABLED": "1"
-    }
+    "configFile": "nixpacks.toml"
   },
   "domains": [
     {
       "host": "app.samariaerp.org",
-      "port": 3001,
+      "port": 3000,
       "https": true,
       "certificateType": "letsencrypt"
-    }
-  ],
-  "mounts": [
-    {
-      "type": "volume",
-      "name": "postgres-data",
-      "mountPath": "/var/lib/postgresql/data"
-    },
-    {
-      "type": "bind",
-      "hostPath": "./uploads",
-      "mountPath": "/app/uploads"
-    },
-    {
-      "type": "bind", 
-      "hostPath": "./logs",
-      "mountPath": "/app/logs"
     }
   ],
   "healthCheck": {
     "enabled": true,
     "path": "/api/health",
-    "port": 3001,
+    "port": 3000,
     "interval": 30
   },
   "resources": {

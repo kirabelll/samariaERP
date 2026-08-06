@@ -1,0 +1,21 @@
+# Nixpacks configuration for Samaria ERP (Next.js 14 + Prisma)
+# https://nixpacks.com/docs/configuration/file
+
+[phases.setup]
+# Node.js with OpenSSL for Prisma
+nixPkgs = ["...", "openssl"]
+
+[phases.install]
+# legacy-peer-deps needed for this dependency tree
+cmds = ["npm install --legacy-peer-deps"]
+
+[phases.build]
+# Generate Prisma client, then build Next.js in standalone mode
+cmds = [
+  "npx prisma generate",
+  "npm run build"
+]
+
+[start]
+# Run pending migrations, then start the standalone server
+cmd = "npx prisma migrate deploy && node .next/standalone/server.js"

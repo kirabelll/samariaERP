@@ -31,7 +31,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: *****
+    container_name: samaria-erp
     restart: always
     environment:
       NODE_ENV: production

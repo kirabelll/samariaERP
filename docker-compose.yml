@@ -35,23 +35,23 @@ services:
     restart: always
     environment:
       NODE_ENV: production
-      PORT: 80
+      PORT: 3001
       DATABASE_URL: postgresql://postgres:kirabel123@db:5432/samaria_erp
       NEXTAUTH_SECRET: samaria1995
       NEXTAUTH_URL: https://app.samariaerp.org
       NEXT_PUBLIC_APP_URL: https://app.samariaerp.org
     ports:
-      - "80:80"
+      - "3001:3001"
     depends_on:
       db:
         condition: service_healthy
     networks:
-      - samaria-network
+      - samaria-network 
     volumes:
       - ./uploads:/app/public/uploads
       - ./logs:/app/logs
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:80/api/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:3001/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3

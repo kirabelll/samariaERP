@@ -10,12 +10,16 @@ nixPkgs = ["...", "openssl"]
 cmds = ["npm install --legacy-peer-deps"]
 
 [phases.build]
-# Generate Prisma client, then build Next.js in standalone mode
+# Prisma generate needs DATABASE_URL set (doesn't connect, just reads the schema)
 cmds = [
   "npx prisma generate",
   "npm run build"
 ]
 
+[phases.build.variables]
+DATABASE_URL = "postgresql://dummy:dummy@localhost:5432/dummy"
+
 [start]
 # Run pending migrations, then start the standalone server
 cmd = "npx prisma migrate deploy && node .next/standalone/server.js"
+

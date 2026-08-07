@@ -366,9 +366,8 @@ export default function EditSupplierAgreementPage() {
                   name="supplierId"
                   value={formData.supplierId}
                   onChange={handleInputChange}
-                  className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-900 ${
-                    errors.supplierId ? 'border-red-500' : 'border-slate-300'
-                  }`}
+                  className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-900 ${errors.supplierId ? 'border-red-500' : 'border-slate-300'
+                    }`}
                 >
                   <option value="">Select Supplier</option>
                   {suppliers.map((supplier) => (
@@ -392,8 +391,11 @@ export default function EditSupplierAgreementPage() {
                   className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-900"
                 >
                   <option value="CONSTRUCTION">Construction</option>
+                  <option value="cement">Cement</option>
+                  <option value="aggregate">Aggregate</option>
+                  <option value="general">General</option>
                   <option value="MEDICAL">Medical</option>
-                  <option value="BOTH">Both</option>
+                  <option value="Both">Both</option>
                 </select>
               </div>
 
@@ -406,9 +408,8 @@ export default function EditSupplierAgreementPage() {
                   name="validFrom"
                   value={formData.validFrom}
                   onChange={handleInputChange}
-                  className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-900 ${
-                    errors.validFrom ? 'border-red-500' : 'border-slate-300'
-                  }`}
+                  className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-900 ${errors.validFrom ? 'border-red-500' : 'border-slate-300'
+                    }`}
                 />
                 {errors.validFrom && (
                   <p className="text-red-500 text-sm mt-1">{errors.validFrom}</p>
@@ -424,9 +425,8 @@ export default function EditSupplierAgreementPage() {
                   name="validTo"
                   value={formData.validTo}
                   onChange={handleInputChange}
-                  className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-900 ${
-                    errors.validTo ? 'border-red-500' : 'border-slate-300'
-                  }`}
+                  className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-900 ${errors.validTo ? 'border-red-500' : 'border-slate-300'
+                    }`}
                 />
                 {errors.validTo && (
                   <p className="text-red-500 text-sm mt-1">{errors.validTo}</p>

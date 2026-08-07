@@ -9,6 +9,7 @@ import { useI18n } from '@/lib/i18n';
 interface FormData {
   agreementId: string;
   customerId: string;
+  selectedCustomerAgreementId: string;
   supplierId: string;
   selectedSupplierAgreementId: string;
   transporterId: string;
@@ -111,6 +112,7 @@ export default function NewAggregateDispatch() {
   const [formData, setFormData] = useState<FormData>({
     agreementId: '',
     customerId: '',
+    selectedCustomerAgreementId: '',
     supplierId: '',
     selectedSupplierAgreementId: '',
     transporterId: '',
@@ -506,12 +508,15 @@ Check console for detailed breakdown.`);
   useEffect(() => {
     let availableItems = items;
 
-    // Step 1: If customer is selected, filter to only their agreement items
-    if (formData.customerId && customerAgreementItems.has(formData.customerId)) {
-      const custItemIds = customerAgreementItems.get(formData.customerId)!;
-      const custFiltered = availableItems.filter((i) => custItemIds.has(i.id));
-      if (custFiltered.length > 0) {
-        availableItems = custFiltered;
+    // Step 1: If customer agreement is selected, filter to only that agreement's items
+    if (formData.selectedCustomerAgreementId) {
+      const selectedCust = customers.find(c => c.agreementId === formData.selectedCustomerAgreementId);
+      if (selectedCust && selectedCust.items && selectedCust.items.length > 0) {
+        const custItemIds = new Set(selectedCust.items.map((ai: any) => ai.itemId).filter(Boolean));
+        const custFiltered = availableItems.filter((i) => custItemIds.has(i.id));
+        if (custFiltered.length > 0) {
+          availableItems = custFiltered;
+        }
       }
     }
 
@@ -539,7 +544,7 @@ Check console for detailed breakdown.`);
     if (formData.itemId && !availableItems.find((item) => item.id === formData.itemId)) {
       setFormData((prev) => ({ ...prev, itemId: '', aggregateValue: '' }));
     }
-  }, [formData.customerId, formData.supplierId, suppliers, items, selectedAgreement, customerAgreementItems, supplierAgreementItems]);
+  }, [formData.customerId, formData.selectedCustomerAgreementId, formData.supplierId, suppliers, items, selectedAgreement, customers, customerAgreementItems, supplierAgreementItems]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -672,8 +677,28 @@ Check console for detailed breakdown.`);
                 <select
                   name="customerId"
                   required
-                  value={formData.customerId}
-                  onChange={handleInputChange}
+                  value={formData.selectedCustomerAgreementId}
+                  onChange={(e) => {
+                    const selectedAgrId = e.target.value;
+                    const selectedCustomer = customers.find(c => c.agreementId === selectedAgrId);
+                    if (selectedCustomer) {
+                      setFormData(prev => ({
+                        ...prev,
+                        customerId: selectedCustomer.customerId,
+                        selectedCustomerAgreementId: selectedAgrId,
+                        itemId: '',
+                        aggregateValue: '',
+                      }));
+                    } else {
+                      setFormData(prev => ({
+                        ...prev,
+                        customerId: '',
+                        selectedCustomerAgreementId: '',
+                        itemId: '',
+                        aggregateValue: '',
+                      }));
+                    }
+                  }}
                   disabled={loadingData}
                   className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border px-3 py-2"
                 >
@@ -681,11 +706,17 @@ Check console for detailed breakdown.`);
                   {customers.length === 0 && !loadingData && (
                     <option value="" disabled>No customers with active sales agreements found</option>
                   )}
-                  {customers.map((customer) => (
-                    <option key={customer.customerId} value={customer.customerId}>
-                      {customer.companyName} — {customer.agreementNo}
-                    </option>
-                  ))}
+                  {customers.map((customer) => {
+                    const itemNames = (customer.items || [])
+                      .map((item: any) => item.itemName || item.name || item.description || '')
+                      .filter(Boolean)
+                      .join(', ');
+                    return (
+                      <option key={`${customer.customerId}-${customer.agreementId}`} value={customer.agreementId}>
+                        {customer.companyName}{itemNames ? ` — ${itemNames}` : ` — ${customer.agreementNo}`}
+                      </option>
+                    );
+                  })}
                 </select>
                 {formData.customerId && customerHasAgreement === false && (
                   <p className="text-red-600 text-xs mt-1 font-medium">

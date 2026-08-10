@@ -39,12 +39,12 @@ export default function SupplierAgreementsPage() {
 
   // Construct filters object
   const apiFilters: Record<string, string> = {};
-  if (statusFilter === 'EXCLUDE_VOID') {
+  if (statusFilter === 'ALL') {
+    // Show all records including void
+    apiFilters.includeVoid = 'true';
+  } else if (statusFilter === 'EXCLUDE_VOID') {
     // Exclude void agreements but show all others
     apiFilters.includeVoid = 'false';
-  } else if (statusFilter === '' || !statusFilter) {
-    // Show all records including void by default
-    apiFilters.includeVoid = 'true';
   } else if (statusFilter) {
     // Show specific status
     apiFilters.status = statusFilter;
@@ -120,13 +120,13 @@ export default function SupplierAgreementsPage() {
             />
             <Select
               options={[
-                { value: '', label: 'All Agreements (Including Void)' },
                 { value: 'Active', label: 'Active Only' },
                 { value: 'Draft', label: 'Draft Only' },
                 { value: 'Expired', label: 'Expired Only' },
                 { value: 'Cancelled', label: 'Cancelled Only' },
                 { value: 'Void', label: 'Void Only' },
                 { value: 'EXCLUDE_VOID', label: 'All Active Statuses (Exclude Void)' },
+                { value: 'ALL', label: 'All Agreements (Including Void)' },
               ]}
               value={statusFilter}
               onChange={(e) => { setStatusFilter(e.target.value); setCurrentPage(1); }}

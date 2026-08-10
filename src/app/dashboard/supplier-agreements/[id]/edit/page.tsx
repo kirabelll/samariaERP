@@ -117,7 +117,7 @@ export default function EditSupplierAgreementPage() {
 
     const fetchSuppliers = async () => {
       try {
-        const res = await fetch('/api/suppliers?limit=1000');
+        const res = await fetch('/api/suppliers?limit=1000&status=Active');
         const data = await res.json();
         if (data.success) {
           setSuppliers(data.data || []);

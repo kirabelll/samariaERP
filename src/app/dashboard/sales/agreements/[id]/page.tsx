@@ -186,26 +186,23 @@ export default function SalesAgreementDetailPage() {
     parsedItems.forEach((item: any) => {
       const qty = parseFloat(item.qty) || 0;
       const price = parseFloat(item.unitPrice) || 0;
+      const itemSubtotal = qty * price;
+
       if (item.priceType === 'incl') {
-        const total = qty * price;
-        const itemSubtotal = total / 1.15;
-        const itemVat = total - itemSubtotal;
-        subtotal += itemSubtotal;
-        vatAmount += itemVat;
-        grandTotal += total;
-      } else {
-        const itemSubtotal = qty * price;
         const itemVat = itemSubtotal * 0.15;
         subtotal += itemSubtotal;
         vatAmount += itemVat;
         grandTotal += itemSubtotal + itemVat;
+      } else {
+        subtotal += itemSubtotal;
+        grandTotal += itemSubtotal;
       }
     });
 
     if (grandTotal === 0 && data?.totalAmount) {
       grandTotal = data.totalAmount;
-      subtotal = grandTotal / 1.15;
-      vatAmount = grandTotal - subtotal;
+      subtotal = grandTotal;
+      vatAmount = 0;
     }
 
     return { subtotal, vatAmount, grandTotal };
@@ -339,12 +336,11 @@ export default function SalesAgreementDetailPage() {
                     {idx > 0 && (
                       <div className={`flex-1 h-1 rounded ${isCurrentOrPast ? 'bg-green-500' : data.status === 'Rejected' ? 'bg-red-300' : 'bg-slate-200'}`} />
                     )}
-                    <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium ${
-                      isCurrent ? 'bg-blue-100 text-blue-800 ring-2 ring-blue-400' :
-                      isRejected ? 'bg-red-100 text-red-800 ring-2 ring-red-400' :
-                      isCurrentOrPast ? 'bg-green-100 text-green-800' :
-                      'bg-slate-100 text-slate-500'
-                    }`}>
+                    <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium ${isCurrent ? 'bg-blue-100 text-blue-800 ring-2 ring-blue-400' :
+                        isRejected ? 'bg-red-100 text-red-800 ring-2 ring-red-400' :
+                          isCurrentOrPast ? 'bg-green-100 text-green-800' :
+                            'bg-slate-100 text-slate-500'
+                      }`}>
                       {isCurrentOrPast && step !== data.status && <span>&#10003;</span>}
                       {step}
                     </div>
@@ -497,7 +493,7 @@ export default function SalesAgreementDetailPage() {
                     {parsedItems.map((item, index) => {
                       const qty = item.qty || 0;
                       const price = item.unitPrice || 0;
-                      const itemTotal = item.priceType === 'incl' ? (qty * price) : (qty * price * 1.15);
+                      const itemTotal = item.priceType === 'incl' ? (qty * price * 1.15) : (qty * price);
                       return (
                         <tr key={index} className="hover:bg-slate-50">
                           <td className="border border-slate-200 px-4 py-2 text-slate-900 font-medium">

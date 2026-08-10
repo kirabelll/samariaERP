@@ -193,27 +193,23 @@ export default function SupplierAgreementDetailPage() {
       } else {
         const qty = item.qty || 0;
         const price = item.unitPrice || 0;
+        const itemSubtotal = qty * price;
         if (item.priceType === 'incl') {
-          const total = qty * price;
-          const itemSubtotal = total / 1.15;
-          const itemVat = total - itemSubtotal;
-          subtotal += itemSubtotal;
-          vatAmount += itemVat;
-          grandTotal += total;
-        } else {
-          const itemSubtotal = qty * price;
           const itemVat = itemSubtotal * 0.15;
           subtotal += itemSubtotal;
           vatAmount += itemVat;
           grandTotal += itemSubtotal + itemVat;
+        } else {
+          subtotal += itemSubtotal;
+          grandTotal += itemSubtotal;
         }
       }
     });
 
     if (grandTotal === 0 && data?.totalAmount) {
       grandTotal = data.totalAmount;
-      subtotal = grandTotal / 1.15;
-      vatAmount = grandTotal - subtotal;
+      subtotal = grandTotal;
+      vatAmount = 0;
     }
 
     return { subtotal, vatAmount, grandTotal };
@@ -535,7 +531,7 @@ export default function SupplierAgreementDetailPage() {
                       const price = item.unitPrice || 0;
                       const itemTotal = item.type === 'service'
                         ? (item.amount || 0)
-                        : (item.priceType === 'incl' ? (qty * price) : (qty * price * 1.15));
+                        : (item.priceType === 'incl' ? (qty * price * 1.15) : (qty * price));
 
                       return (
                         <tr key={index} className="hover:bg-slate-50">

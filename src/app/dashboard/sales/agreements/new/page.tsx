@@ -94,19 +94,16 @@ export default function NewSalesAgreementPage() {
     agreementItems.forEach((item) => {
       const qty = parseFloat(item.qty) || 0;
       const price = parseFloat(item.unitPrice) || 0;
+      const itemSubtotal = qty * price;
+
       if (item.priceType === 'incl') {
-        const total = qty * price;
-        const itemSubtotal = total / 1.15;
-        const itemVat = total - itemSubtotal;
-        subtotal += itemSubtotal;
-        vatAmount += itemVat;
-        grandTotal += total;
-      } else {
-        const itemSubtotal = qty * price;
         const itemVat = itemSubtotal * 0.15;
         subtotal += itemSubtotal;
         vatAmount += itemVat;
         grandTotal += itemSubtotal + itemVat;
+      } else {
+        subtotal += itemSubtotal;
+        grandTotal += itemSubtotal;
       }
     });
 

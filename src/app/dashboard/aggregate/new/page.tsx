@@ -28,7 +28,7 @@ interface Customer {
   companyName: string;
   agreementNo: string;
   phone?: string;
-  tin?: string;
+  tin?: string; 
   withholding?: boolean;
   withholdRate?: number;
   creditLimit?: number;
@@ -460,8 +460,7 @@ Check console for detailed breakdown.`);
       }
     }
 
-    // 2. If no aggregate value from transporter agreement, get from supplier agreement
-    // Use selectedSupplierAgreementId + itemId combo key to get the right price for this specific agreement & item
+    
     const suppPriceKey = `${formData.selectedSupplierAgreementId}_${value}`;
     console.log('Looking for supplier price key:', suppPriceKey);
     if (!newAggregateValue && supplierItemPrices.has(suppPriceKey)) {
@@ -776,7 +775,6 @@ Check console for detailed breakdown.`);
                 </select>
                 {formData.supplierId && supplierHasAgreement === false && (
                   <p className="text-red-600 text-xs mt-1 font-medium">
-                    No active Supplier Agreement found. A Supplier Agreement is required before creating a dispatch.
                   </p>
                 )}
               </div>

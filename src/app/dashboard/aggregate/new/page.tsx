@@ -499,26 +499,32 @@ Check console for detailed breakdown.`);
   };
 
   // Filter items based on:
-  // 1. Customer's agreement items (only show items the selected customer has in their agreement)
+  // 1. Customer's agreement items (only show items the selected customer agreement has)
   // 2. Supplier's agreement items (only show items the selected supplier has in their agreement)
   // 3. Transporter agreement items (if selected, intersect further)
   useEffect(() => {
-    let availableItems = items;
+    let availableItems: Item[] = [];
 
-    // Step 1: If customer agreement is selected, filter to only that agreement's items
+    // Step 1: Require Customer Agreement selection first
     if (formData.selectedCustomerAgreementId) {
       const selectedCust = customers.find(c => c.agreementId === formData.selectedCustomerAgreementId);
       if (selectedCust && selectedCust.items && selectedCust.items.length > 0) {
-        const custItemIds = new Set(selectedCust.items.map((ai: any) => ai.itemId).filter(Boolean));
-        const custFiltered = availableItems.filter((i) => custItemIds.has(i.id));
-        if (custFiltered.length > 0) {
-          availableItems = custFiltered;
-        }
+        const custItemIds = new Set(selectedCust.items.map((ai: any) => ai.itemId || ai.id).filter(Boolean));
+        availableItems = items.filter((i) => custItemIds.has(i.id));
+      } else if (formData.customerId && customerAgreementItems.has(formData.customerId)) {
+        const custItemIds = customerAgreementItems.get(formData.customerId)!;
+        availableItems = items.filter((i) => custItemIds.has(i.id));
+      } else {
+        // Fallback if agreement items couldn't be parsed
+        availableItems = items;
       }
+    } else {
+      // No customer agreement selected -> item selection not available yet
+      availableItems = [];
     }
 
     // Step 2: If supplier is selected, filter to only their agreement items
-    if (formData.supplierId && supplierAgreementItems.has(formData.supplierId)) {
+    if (formData.supplierId && supplierAgreementItems.has(formData.supplierId) && availableItems.length > 0) {
       const suppItemIds = supplierAgreementItems.get(formData.supplierId)!;
       const suppFiltered = availableItems.filter((i) => suppItemIds.has(i.id));
       if (suppFiltered.length > 0) {
@@ -527,7 +533,7 @@ Check console for detailed breakdown.`);
     }
 
     // Step 3: If transporter agreement has specific items, intersect with those
-    if (selectedAgreement && selectedAgreement.agreementItems && selectedAgreement.agreementItems.length > 0) {
+    if (selectedAgreement && selectedAgreement.agreementItems && selectedAgreement.agreementItems.length > 0 && availableItems.length > 0) {
       const agrItemIds = new Set(selectedAgreement.agreementItems.map((ai) => ai.itemId));
       const fromAgreement = availableItems.filter((i) => agrItemIds.has(i.id));
       if (fromAgreement.length > 0) {
@@ -817,10 +823,12 @@ Check console for detailed breakdown.`);
                   required
                   value={formData.itemId}
                   onChange={(e) => handleItemChangeWithAgreementLookup(e.target.value)}
-                  disabled={loadingData}
-                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border px-3 py-2"
+                  disabled={loadingData || !formData.selectedCustomerAgreementId}
+                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border px-3 py-2 disabled:bg-gray-100 disabled:text-gray-500 cursor-pointer disabled:cursor-not-allowed"
                 >
-                  <option value="">Select Item</option>
+                  <option value="">
+                    {!formData.selectedCustomerAgreementId ? 'Select Customer Agreement First' : 'Select Item'}
+                  </option>
                   {filteredItems.map((item) => (
                     <option key={item.id} value={item.id}>
                       {item.name}{item.code ? ` (${item.code})` : ''}

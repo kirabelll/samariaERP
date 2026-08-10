@@ -7,13 +7,13 @@ nixPkgs = ["...", "openssl"]
 
 [phases.install]
 # legacy-peer-deps needed for this dependency tree
-cmds = ["npm i -g pnpm", "pnpm install --no-frozen-lockfile"]
+cmds = ["npm install --legacy-peer-deps"]
 
 [phases.build]
 # Prisma generate needs DATABASE_URL set (doesn't connect, just reads the schema)
 cmds = [
   "npx prisma generate",
-  "pnpm run build"
+  "npm run build"
 ]
 
 [phases.build.variables]

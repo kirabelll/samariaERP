@@ -194,12 +194,32 @@ Check console for detailed breakdown.`);
         const [customersRes, suppliersRes, agreementsRes, transportersRes, itemsRes, custAgreementsRes] =
           await Promise.all([
             fetch('/api/sales/agreements/customers?division=AGGREGATE&includeAll=true'), // Show ALL AGGREGATE agreements (not unique)
-            fetch('/api/supplier-agreements?division=AGGREGATE&limit=1000&status=Active'),
+            fetch('/api/supplier-agreements/all?status=Active'),
             fetch('/api/transporters/agreements?limit=1000'),
             fetch('/api/transporters?limit=1000'),
             fetch('/api/items?division=AGGREGATE&limit=1000'),
             fetch('/api/sales/agreements?status=Active&division=AGGREGATE&limit=1000'),
           ]);
+
+        // First: Fetch and store DB items with proper Item Names
+        const dbItemMap = new Map<string, any>();
+        const itemMap = new Map<string, Item>();
+
+        if (itemsRes.ok) {
+          const itemsData = await itemsRes.json();
+          (itemsData.data || []).forEach((dbItem: any) => {
+            if (dbItem.id) {
+              dbItemMap.set(dbItem.id, dbItem);
+              itemMap.set(dbItem.id, {
+                id: dbItem.id,
+                name: dbItem.name || 'Unknown',
+                code: dbItem.code || '',
+                unit: dbItem.unit || 'm3',
+                category: dbItem.category || 'regular',
+              });
+            }
+          });
+        }
 
         if (customersRes.ok) {
           const d = await customersRes.json();
@@ -209,6 +229,7 @@ Check console for detailed breakdown.`);
         } else {
           console.error('Customers API failed:', customersRes.status, customersRes.statusText);
         }
+
         if (suppliersRes.ok) {
           const d = await suppliersRes.json();
           console.log('Suppliers API Response:', d);
@@ -216,7 +237,6 @@ Check console for detailed breakdown.`);
           
           // Process all active supplier agreements (show each agreement separately)
           const allSuppliers: Supplier[] = [];
-          const itemMap = new Map<string, Item>();
           // Key: "agreementId_itemId" → unitPrice 
           const priceMap = new Map<string, number>();
           const suppItemsMap = new Map<string, Set<string>>();
@@ -255,23 +275,28 @@ Check console for detailed breakdown.`);
               console.log(`Agreement ${agr.agreementNo} items:`, agrItems);
               
               agrItems.forEach((ai: any) => {
-                if (ai.itemId) {
+                const targetItemId = ai.itemId || ai.id;
+                if (targetItemId) {
                   if (!suppItemsMap.has(suppId)) {
                     suppItemsMap.set(suppId, new Set());
                   }
-                  suppItemsMap.get(suppId)!.add(ai.itemId);
+                  suppItemsMap.get(suppId)!.add(targetItemId);
 
-                  if (!itemMap.has(ai.itemId)) {
-                    itemMap.set(ai.itemId, {
-                      id: ai.itemId,
-                      name: ai.itemName || ai.description || 'Unknown',
-                      code: ai.itemCode || '',
-                      unit: ai.unit || 'm3',
-                      category: ai.type || 'regular',
+                  const dbItem = dbItemMap.get(targetItemId);
+                  const itemName = dbItem?.name || ai.itemName || ai.name || ai.description || targetItemId;
+
+                  if (!itemMap.has(targetItemId) || itemMap.get(targetItemId)?.name === 'Unknown') {
+                    itemMap.set(targetItemId, {
+                      id: targetItemId,
+                      name: itemName,
+                      code: dbItem?.code || ai.itemCode || '',
+                      unit: dbItem?.unit || ai.unit || 'm3',
+                      category: dbItem?.category || ai.type || 'regular',
                     });
                   }
+
                   // Store price per agreement+item combo
-                  const priceKey = `${agr.id}_${ai.itemId}`;
+                  const priceKey = `${agr.id}_${targetItemId}`;
                   if (ai.unitPrice && !priceMap.has(priceKey)) {
                     priceMap.set(priceKey, ai.unitPrice);
                     console.log(`Stored price: ${priceKey} = ${ai.unitPrice}`);
@@ -290,26 +315,6 @@ Check console for detailed breakdown.`);
           setSupplierItemPrices(priceMap);
           setSupplierAgreementItems(suppItemsMap);
 
-          // Fetch all AGGREGATE items from items table first (has proper names)
-          const dbItemMap = new Map<string, any>();
-          if (itemsRes.ok) {
-            const itemsData = await itemsRes.json();
-            (itemsData.data || []).forEach((dbItem: any) => {
-              if (dbItem.id) {
-                dbItemMap.set(dbItem.id, dbItem);
-                if (!itemMap.has(dbItem.id)) {
-                  itemMap.set(dbItem.id, {
-                    id: dbItem.id,
-                    name: dbItem.name || 'Unknown',
-                    code: dbItem.code || '',
-                    unit: dbItem.unit || 'm3',
-                    category: dbItem.category || 'regular',
-                  });
-                }
-              }
-            });
-          }
-
           // Also extract items from AGGREGATE customer agreements (e.g. "Aggregate 01")
           // And build customerId → Set<itemId> map to filter items per customer
           const custItemsMap = new Map<string, Set<string>>();
@@ -320,22 +325,24 @@ Check console for detailed breakdown.`);
               try {
                 const agrItems = typeof agr.items === 'string' ? JSON.parse(agr.items) : (agr.items || []);
                 agrItems.forEach((ai: any) => {
-                  if (ai.itemId) {
+                  const targetItemId = ai.itemId || ai.id;
+                  if (targetItemId) {
                     // Track which items belong to which customer
                     if (!custItemsMap.has(custId)) {
                       custItemsMap.set(custId, new Set());
                     }
-                    custItemsMap.get(custId)!.add(ai.itemId);
+                    custItemsMap.get(custId)!.add(targetItemId);
 
-                    // Add to items list if not already there
-                    if (!itemMap.has(ai.itemId)) {
-                      const dbItem = dbItemMap.get(ai.itemId);
-                      itemMap.set(ai.itemId, {
-                        id: ai.itemId,
-                        name: dbItem?.name || ai.itemName || ai.name || ai.itemId,
-                        code: dbItem?.code || '',
-                        unit: ai.unit || dbItem?.unit || 'm3',
-                        category: dbItem?.category || 'regular',
+                    const dbItem = dbItemMap.get(targetItemId);
+                    const itemName = dbItem?.name || ai.itemName || ai.name || ai.description || targetItemId;
+
+                    if (!itemMap.has(targetItemId) || itemMap.get(targetItemId)?.name === 'Unknown') {
+                      itemMap.set(targetItemId, {
+                        id: targetItemId,
+                        name: itemName,
+                        code: dbItem?.code || ai.itemCode || '',
+                        unit: dbItem?.unit || ai.unit || 'm3',
+                        category: dbItem?.category || ai.type || 'regular',
                       });
                     }
                   }
@@ -740,7 +747,6 @@ Check console for detailed breakdown.`);
                   required
                   value={formData.selectedSupplierAgreementId}  // Use agreement ID for matching
                   onChange={(e) => {
-                    // e.target.value now contains agreementId, not just supplierId
                     const selectedAgreementId = e.target.value;
                     const selectedSupplier = suppliers.find(s => s.agreementId === selectedAgreementId);
                     if (selectedSupplier) {
@@ -748,7 +754,6 @@ Check console for detailed breakdown.`);
                         ...prev,
                         supplierId: selectedSupplier.id,  // Store the actual supplier ID
                         selectedSupplierAgreementId: selectedAgreementId,  // Store the agreement ID for price lookup
-                        aggregateValue: selectedSupplier.totalAmount != null ? selectedSupplier.totalAmount.toString() : '',
                       }));
                     } else {
                       setFormData(prev => ({
@@ -765,7 +770,7 @@ Check console for detailed breakdown.`);
                   <option value="">Select Supplier</option>
                   {suppliers.map((supplier, index) => (
                     <option key={`${supplier.id}_${supplier.agreementId}_${index}`} value={supplier.agreementId}>
-                      {supplier.displayName || `${supplier.companyName} (${supplier.code})`}
+                      {supplier.displayName || `${supplier.companyName} — ${supplier.agreementNo}`}
                     </option>
                   ))}
                 </select>
@@ -831,7 +836,7 @@ Check console for detailed breakdown.`);
                   </option>
                   {filteredItems.map((item) => (
                     <option key={item.id} value={item.id}>
-                      {item.name}{item.code ? ` (${item.code})` : ''}
+                      {item.name}
                     </option>
                   ))}
                 </select>

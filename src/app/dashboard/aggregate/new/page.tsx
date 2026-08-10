@@ -842,25 +842,14 @@ Check console for detailed breakdown.`);
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Dispatch Date *</label>
-                {(() => {
-                  const today = new Date().toISOString().split('T')[0];
-                  const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
-                  return (
-                    <>
-                      <input
-                        type="date"
-                        name="dispatchDate"
-                        value={formData.dispatchDate}
-                        onChange={handleInputChange}
-                        min={yesterday}
-                        max={today}
-                        required
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      />
-                      <p className="text-xs text-slate-500 mt-1">Only today or yesterday allowed</p>
-                    </>
-                  );
-                })()}
+                <input
+                  type="date"
+                  name="dispatchDate"
+                  value={formData.dispatchDate}
+                  onChange={handleInputChange}
+                  required
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
               </div>
 
               <Input

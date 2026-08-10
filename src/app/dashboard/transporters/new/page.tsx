@@ -7,6 +7,8 @@ import { Card, CardHeader, CardBody, CardFooter, Button, Input, Select } from '@
 interface Truck {
   id?: string;
   plateNo: string;
+  truckType: string;
+  customTruckType?: string;
   ownerName: string;
   driverName: string;
   capacity: string;
@@ -56,6 +58,8 @@ export default function NewTransporterPage() {
   const [loadingAssociations, setLoadingAssociations] = useState(false);
   const [currentTruck, setCurrentTruck] = useState<Truck>({
     plateNo: '',
+    truckType: '',
+    customTruckType: '',
     ownerName: '',
     driverName: '',
     capacity: '',
@@ -134,7 +138,14 @@ export default function NewTransporterPage() {
       alert('Please enter plate number');
       return;
     }
-
+    if (!currentTruck.truckType) {
+      alert('Please select truck type');
+      return;
+    }
+    if (currentTruck.truckType === 'Other' && !currentTruck.customTruckType?.trim()) {
+      alert('Please enter custom truck type');
+      return;
+    }
 
     setFormData((prev) => ({
       ...prev,
@@ -143,6 +154,8 @@ export default function NewTransporterPage() {
 
     setCurrentTruck({
       plateNo: '',
+      truckType: '',
+      customTruckType: '',
       ownerName: '',
       driverName: '',
       capacity: '',
@@ -184,8 +197,9 @@ export default function NewTransporterPage() {
         driverName: formData.driverName || null,
         associationId: formData.associationId || null,
         status: formData.status,
-        trucks: formData.trucks.map(({ id, ...truck }) => ({
+        trucks: formData.trucks.map(({ id, customTruckType, ...truck }) => ({
           ...truck,
+          truckType: truck.truckType === 'Other' ? customTruckType : truck.truckType,
           capacity: truck.capacity ? parseFloat(truck.capacity) : null,
         })),
       };
@@ -344,7 +358,35 @@ export default function NewTransporterPage() {
                   onChange={handleTruckInputChange}
                   placeholder="e.g., AA-123-456"
                 />
+                {/* <Select
+                  label="Truck Type"
+                  name="truckType"
+                  value={currentTruck.truckType}
+                  onChange={handleTruckInputChange}
+                  options={[
+                    { value: '', label: 'Select truck type' },
+                    { value: 'Isuzu', label: 'Isuzu' },
+                    { value: 'Hino', label: 'Hino' },
+                    { value: 'Sinotruk', label: 'Sinotruk' },
+                    { value: 'Shacman', label: 'Shacman' },
+                    { value: 'FAW', label: 'FAW' },
+                    { value: 'Volvo', label: 'Volvo' },
+                    { value: 'Other', label: 'Other' },
+                  ]}
+                /> */}
               </div>
+
+              {currentTruck.truckType === 'Other' && (
+                <div className="mb-6">
+                  <Input
+                    label="Custom Truck Type"
+                    name="customTruckType"
+                    value={currentTruck.customTruckType || ''}
+                    onChange={handleTruckInputChange}
+                    placeholder="e.g., Mercedes, DAF"
+                  />
+                </div>
+              )}
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                 <Input
@@ -417,7 +459,11 @@ export default function NewTransporterPage() {
                         Remove
                       </Button>
                     </div>
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-sm">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
+                      <div>
+                        <p className="text-xs text-slate-500 uppercase">Type</p>
+                        <p className="text-slate-900 font-medium">{truck.truckType}</p>
+                      </div>
                       <div>
                         <p className="text-xs text-slate-500 uppercase">Owner</p>
                         <p className="text-slate-900 font-medium">{truck.ownerName || '-'}</p>

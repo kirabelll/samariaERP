@@ -214,9 +214,8 @@ Check console for detailed breakdown.`);
           console.log('Suppliers API Response:', d);
           console.log('Suppliers count:', d.data?.length || 0);
           
-          // Process supplier agreements — deduplicate by supplier ID (keep first/most recent agreement)
-          const seenSupplierIds = new Set<string>();
-          const uniqueSuppliers: Supplier[] = [];
+          // Process all active supplier agreements (show each agreement separately)
+          const allSuppliers: Supplier[] = [];
           const itemMap = new Map<string, Item>();
           // Key: "agreementId_itemId" → unitPrice 
           const priceMap = new Map<string, number>();
@@ -238,21 +237,17 @@ Check console for detailed breakdown.`);
             });
             
             if (agr.supplier) {
-              // Only add each supplier once (first agreement wins since sorted by createdAt desc)
-              if (!seenSupplierIds.has(suppId)) {
-                seenSupplierIds.add(suppId);
-                uniqueSuppliers.push({
-                  id: suppId,
-                  companyName: agr.supplier.companyName,
-                  code: agr.supplier.code || '',
-                  category: agr.supplier.category,
-                  agreementId: agr.id,
-                  agreementNo: agr.agreementNo,
-                  agreementStatus: agr.status,
-                  totalAmount: agr.totalAmount,
-                  displayName: `${agr.supplier.companyName} (${agr.supplier.code || ''})`,
-                });
-              }
+              allSuppliers.push({
+                id: suppId,
+                companyName: agr.supplier.companyName,
+                code: agr.supplier.code || '',
+                category: agr.supplier.category,
+                agreementId: agr.id,
+                agreementNo: agr.agreementNo,
+                agreementStatus: agr.status,
+                totalAmount: agr.totalAmount,
+                displayName: `${agr.supplier.companyName} — ${agr.agreementNo}`,
+              });
             }
             // Extract items + unitPrice from agreement items JSON
             try {
@@ -291,7 +286,7 @@ Check console for detailed breakdown.`);
           console.log('Final price map:', Object.fromEntries(priceMap));
           console.log('=== END SUPPLIER DEBUG ===');
           
-          setSuppliers(uniqueSuppliers);
+          setSuppliers(allSuppliers);
           setSupplierItemPrices(priceMap);
           setSupplierAgreementItems(suppItemsMap);
 

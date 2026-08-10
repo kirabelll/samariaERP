@@ -92,9 +92,13 @@ export async function PUT(
               where: { id: truck.id },
               data: {
                 plateNo: truck.plateNo,
-                truckType: truck.truckType,
-                capacity: truck.capacity,
-                capacityUnit: truck.capacityUnit,
+                truckType: truck.truckType || null,
+                capacity: truck.capacity || null,
+                capacityUnit: truck.capacityUnit || null,
+                driverName: truck.driverName || null,
+                ownerName: truck.ownerName || null,
+                ownerPhone: truck.ownerPhone || null,
+                ownerTin: truck.ownerTin || null,
               },
             });
           } else {
@@ -102,9 +106,13 @@ export async function PUT(
             await tx.truck.create({
               data: {
                 plateNo: truck.plateNo,
-                truckType: truck.truckType,
-                capacity: truck.capacity,
-                capacityUnit: truck.capacityUnit,
+                truckType: truck.truckType || null,
+                capacity: truck.capacity || null,
+                capacityUnit: truck.capacityUnit || null,
+                driverName: truck.driverName || null,
+                ownerName: truck.ownerName || null,
+                ownerPhone: truck.ownerPhone || null,
+                ownerTin: truck.ownerTin || null,
                 transporterId: params.id,
                 status: 'Active',
               },

@@ -296,10 +296,11 @@ Check console for detailed breakdown.`);
                   }
 
                   // Store price per agreement+item combo
+                  const itemPrice = ai.unitPrice ?? ai.amount ?? ai.price;
                   const priceKey = `${agr.id}_${targetItemId}`;
-                  if (ai.unitPrice && !priceMap.has(priceKey)) {
-                    priceMap.set(priceKey, ai.unitPrice);
-                    console.log(`Stored price: ${priceKey} = ${ai.unitPrice}`);
+                  if (itemPrice !== undefined && itemPrice !== null && !priceMap.has(priceKey)) {
+                    priceMap.set(priceKey, parseFloat(itemPrice));
+                    console.log(`Stored price: ${priceKey} = ${itemPrice}`);
                   }
                 }
               });
@@ -449,26 +450,26 @@ Check console for detailed breakdown.`);
     console.log('Available supplier item prices:', Object.fromEntries(supplierItemPrices));
 
     // 1. Try transporter agreement items first (has both transportRate + aggregateValue)
+    // 1. Fetch aggregateValue from Supplier Agreement first
+    const suppPriceKey = `${formData.selectedSupplierAgreementId}_${value}`;
+    console.log('Looking for supplier price key:', suppPriceKey);
+    if (supplierItemPrices.has(suppPriceKey)) {
+      newAggregateValue = supplierItemPrices.get(suppPriceKey)!.toString();
+      console.log('Found aggregate value from supplier agreement:', newAggregateValue);
+    } else {
+      console.log('No aggregate value found for key in supplier agreements:', suppPriceKey);
+    }
+
+    // 2. Fetch transportRate (and aggregateValue fallback if needed) from transporter agreement items
     if (selectedAgreement && selectedAgreement.agreementItems) {
       const matched = selectedAgreement.agreementItems.find((ai) => ai.itemId === value);
       if (matched) {
         newTransportRate = matched.transportRate.toString();
-        if (matched.aggregateValue) {
+        if (!newAggregateValue && matched.aggregateValue) {
           newAggregateValue = matched.aggregateValue.toString();
         }
         console.log('Found in transporter agreement:', { newTransportRate, newAggregateValue });
       }
-    }
-
-    
-    const suppPriceKey = `${formData.selectedSupplierAgreementId}_${value}`;
-    console.log('Looking for supplier price key:', suppPriceKey);
-    if (!newAggregateValue && supplierItemPrices.has(suppPriceKey)) {
-      newAggregateValue = supplierItemPrices.get(suppPriceKey)!.toString();
-      console.log('Found aggregate value from supplier agreement:', newAggregateValue);
-    } else if (!newAggregateValue) {
-      console.log('No aggregate value found for key:', suppPriceKey);
-      console.log('Available keys:', Array.from(supplierItemPrices.keys()));
     }
 
     console.log('Final values:', { newTransportRate, newAggregateValue });
@@ -749,10 +750,16 @@ Check console for detailed breakdown.`);
                     const selectedAgreementId = e.target.value;
                     const selectedSupplier = suppliers.find(s => s.agreementId === selectedAgreementId);
                     if (selectedSupplier) {
+                      const suppPriceKey = `${selectedAgreementId}_${formData.itemId}`;
+                      const suppPrice = formData.itemId && supplierItemPrices.has(suppPriceKey)
+                        ? supplierItemPrices.get(suppPriceKey)!.toString()
+                        : null;
+
                       setFormData(prev => ({
                         ...prev,
                         supplierId: selectedSupplier.id,  // Store the actual supplier ID
                         selectedSupplierAgreementId: selectedAgreementId,  // Store the agreement ID for price lookup
+                        ...(suppPrice !== null ? { aggregateValue: suppPrice } : {}),
                       }));
                     } else {
                       setFormData(prev => ({

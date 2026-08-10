@@ -194,7 +194,7 @@ Check console for detailed breakdown.`);
         const [customersRes, suppliersRes, agreementsRes, transportersRes, itemsRes, custAgreementsRes] =
           await Promise.all([
             fetch('/api/sales/agreements/customers?division=AGGREGATE&includeAll=true'), // Show ALL AGGREGATE agreements (not unique)
-            fetch('/api/supplier-agreements?division=AGGREGATE&limit=1000&includeVoid=true'), // Show ALL supplier agreements
+            fetch('/api/supplier-agreements?division=AGGREGATE&limit=1000&status=Active'),
             fetch('/api/transporters/agreements?limit=1000'),
             fetch('/api/transporters?limit=1000'),
             fetch('/api/items?division=AGGREGATE&limit=1000'),
@@ -214,8 +214,9 @@ Check console for detailed breakdown.`);
           console.log('Suppliers API Response:', d);
           console.log('Suppliers count:', d.data?.length || 0);
           
-          // Process ALL supplier agreements (no uniqueness filtering)
-          const allSuppliers: Supplier[] = [];
+          // Process supplier agreements — deduplicate by supplier ID (keep first/most recent agreement)
+          const seenSupplierIds = new Set<string>();
+          const uniqueSuppliers: Supplier[] = [];
           const itemMap = new Map<string, Item>();
           // Key: "agreementId_itemId" → unitPrice 
           const priceMap = new Map<string, number>();
@@ -225,7 +226,6 @@ Check console for detailed breakdown.`);
           console.log('Total supplier agreements received:', d.data?.length || 0);
           
           (d.data || []).forEach((agr: any, index: number) => {
-            // Process ALL agreements, not just Active ones
             const suppId = agr.supplier?.id || agr.supplierId;
             
             console.log(`Agreement ${index + 1}:`, {
@@ -238,19 +238,21 @@ Check console for detailed breakdown.`);
             });
             
             if (agr.supplier) {
-              // Add ALL supplier-agreement combinations (no uniqueness check)
-              allSuppliers.push({
-                id: suppId,
-                companyName: agr.supplier.companyName,
-                code: agr.supplier.code || '',
-                category: agr.supplier.category,
-                // Add agreement info to distinguish multiple agreements
-                agreementId: agr.id,
-                agreementNo: agr.agreementNo,
-                agreementStatus: agr.status,
-                totalAmount: agr.totalAmount,
-                displayName: `${agr.supplier.companyName} — ${agr.agreementNo}`, // For dropdown display
-              });
+              // Only add each supplier once (first agreement wins since sorted by createdAt desc)
+              if (!seenSupplierIds.has(suppId)) {
+                seenSupplierIds.add(suppId);
+                uniqueSuppliers.push({
+                  id: suppId,
+                  companyName: agr.supplier.companyName,
+                  code: agr.supplier.code || '',
+                  category: agr.supplier.category,
+                  agreementId: agr.id,
+                  agreementNo: agr.agreementNo,
+                  agreementStatus: agr.status,
+                  totalAmount: agr.totalAmount,
+                  displayName: `${agr.supplier.companyName} (${agr.supplier.code || ''})`,
+                });
+              }
             }
             // Extract items + unitPrice from agreement items JSON
             try {
@@ -289,7 +291,7 @@ Check console for detailed breakdown.`);
           console.log('Final price map:', Object.fromEntries(priceMap));
           console.log('=== END SUPPLIER DEBUG ===');
           
-          setSuppliers(allSuppliers); // Use all suppliers instead of unique ones
+          setSuppliers(uniqueSuppliers);
           setSupplierItemPrices(priceMap);
           setSupplierAgreementItems(suppItemsMap);
 

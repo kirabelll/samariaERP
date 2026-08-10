@@ -193,10 +193,10 @@ Check console for detailed breakdown.`);
       try {
         const [customersRes, suppliersRes, agreementsRes, transportersRes, itemsRes, custAgreementsRes] =
           await Promise.all([
-            fetch('/api/sales/agreements/customers?division=AGGREGATE&includeAll=true'), // Show ALL AGGREGATE agreements (not unique)
+            fetch('/api/sales/agreements/customers?division=AGGREGATE&status=Active'),
             fetch('/api/supplier-agreements/all?status=Active'),
-            fetch('/api/transporters/agreements?limit=1000'),
-            fetch('/api/transporters?limit=1000'),
+            fetch('/api/transporters/agreements?status=Active&limit=1000'),
+            fetch('/api/transporters?status=Active&limit=1000'),
             fetch('/api/items?division=AGGREGATE&limit=1000'),
             fetch('/api/sales/agreements?status=Active&division=AGGREGATE&limit=1000'),
           ]);

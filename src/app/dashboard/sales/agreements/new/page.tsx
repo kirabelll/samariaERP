@@ -86,17 +86,35 @@ export default function NewSalesAgreementPage() {
     fetchItems();
   }, []);
 
-  const calculateTotalAmount = (): number => {
-    return agreementItems.reduce((sum, item) => {
+  const calculateTotals = () => {
+    let subtotal = 0;
+    let vatAmount = 0;
+    let grandTotal = 0;
+
+    agreementItems.forEach((item) => {
       const qty = parseFloat(item.qty) || 0;
       const price = parseFloat(item.unitPrice) || 0;
       if (item.priceType === 'incl') {
-        const subtotal = qty * (price / 1.15);
-        const vat = subtotal * 0.15;
-        return sum + subtotal + vat;
+        const total = qty * price;
+        const itemSubtotal = total / 1.15;
+        const itemVat = total - itemSubtotal;
+        subtotal += itemSubtotal;
+        vatAmount += itemVat;
+        grandTotal += total;
+      } else {
+        const itemSubtotal = qty * price;
+        const itemVat = itemSubtotal * 0.15;
+        subtotal += itemSubtotal;
+        vatAmount += itemVat;
+        grandTotal += itemSubtotal + itemVat;
       }
-      return sum + qty * price;
-    }, 0);
+    });
+
+    return { subtotal, vatAmount, grandTotal };
+  };
+
+  const calculateTotalAmount = (): number => {
+    return calculateTotals().grandTotal;
   };
 
   const handleInputChange = (
@@ -510,19 +528,35 @@ export default function NewSalesAgreementPage() {
                         >
                           Remove
                         </Button>
-                      </td>
+              </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
 
-            {/* Total Amount */}
-            <div className="mt-6 flex justify-end">
-              <div className="text-lg font-semibold text-slate-900">
-                Total Amount: ETB {calculateTotalAmount().toFixed(2)}
-              </div>
-            </div>
+            {/* Total Amount Summary */}
+            {(() => {
+              const totals = calculateTotals();
+              return (
+                <div className="mt-6 flex justify-end">
+                  <div className="text-right space-y-1 bg-slate-50 border border-slate-200 rounded-lg p-4 min-w-[280px]">
+                    <div className="text-sm text-slate-600 flex justify-between gap-4">
+                      <span>Subtotal:</span>
+                      <span className="font-medium text-slate-900">ETB {totals.subtotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    </div>
+                    <div className="text-sm text-slate-600 flex justify-between gap-4">
+                      <span>VAT (15%):</span>
+                      <span className="font-medium text-slate-900">ETB {totals.vatAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    </div>
+                    <div className="text-base font-bold text-slate-900 flex justify-between gap-4 border-t border-slate-200 pt-2 mt-2">
+                      <span>Total Amount:</span>
+                      <span>ETB {totals.grandTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
           </CardBody>
         </Card>
 

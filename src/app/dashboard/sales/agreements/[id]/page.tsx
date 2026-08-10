@@ -178,6 +178,41 @@ export default function SalesAgreementDetailPage() {
     );
   }
 
+  const calculateTotals = () => {
+    let subtotal = 0;
+    let vatAmount = 0;
+    let grandTotal = 0;
+
+    parsedItems.forEach((item: any) => {
+      const qty = parseFloat(item.qty) || 0;
+      const price = parseFloat(item.unitPrice) || 0;
+      if (item.priceType === 'incl') {
+        const total = qty * price;
+        const itemSubtotal = total / 1.15;
+        const itemVat = total - itemSubtotal;
+        subtotal += itemSubtotal;
+        vatAmount += itemVat;
+        grandTotal += total;
+      } else {
+        const itemSubtotal = qty * price;
+        const itemVat = itemSubtotal * 0.15;
+        subtotal += itemSubtotal;
+        vatAmount += itemVat;
+        grandTotal += itemSubtotal + itemVat;
+      }
+    });
+
+    if (grandTotal === 0 && data?.totalAmount) {
+      grandTotal = data.totalAmount;
+      subtotal = grandTotal / 1.15;
+      vatAmount = grandTotal - subtotal;
+    }
+
+    return { subtotal, vatAmount, grandTotal };
+  };
+
+  const totals = data ? calculateTotals() : { subtotal: 0, vatAmount: 0, grandTotal: 0 };
+
   return (
     <div className="space-y-6">
       {/* Breadcrumb */}
@@ -242,13 +277,33 @@ export default function SalesAgreementDetailPage() {
                   {formatDate(data.validTo)}
                 </p>
               </div>
-              <div className="bg-blue-100 p-4 rounded-lg">
-                <label className="text-xs font-semibold text-slate-700 uppercase tracking-wide">
-                  Total Amount
-                </label>
-                <p className="text-xl font-bold text-blue-900 mt-1">
-                  {formatCurrency(data.totalAmount)} ETB
-                </p>
+              <div className="bg-blue-50 border border-blue-200 p-4 rounded-lg md:col-span-2">
+                <div className="grid grid-cols-3 gap-4 text-center">
+                  <div>
+                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                      Subtotal
+                    </label>
+                    <p className="text-lg font-bold text-slate-900 mt-1">
+                      {formatCurrency(totals.subtotal)} ETB
+                    </p>
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                      VAT (15%)
+                    </label>
+                    <p className="text-lg font-bold text-slate-900 mt-1">
+                      {formatCurrency(totals.vatAmount)} ETB
+                    </p>
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-slate-700 uppercase tracking-wide">
+                      Total Amount (Incl. 15% VAT)
+                    </label>
+                    <p className="text-xl font-extrabold text-blue-900 mt-1">
+                      {formatCurrency(totals.grandTotal)} ETB
+                    </p>
+                  </div>
+                </div>
               </div>
               <div>
                 <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
@@ -430,25 +485,44 @@ export default function SalesAgreementDetailPage() {
                       <th className="border border-slate-200 px-4 py-2 text-right text-sm font-semibold text-slate-900">
                         Unit Price
                       </th>
+                      <th className="border border-slate-200 px-4 py-2 text-center text-sm font-semibold text-slate-900">
+                        VAT Type
+                      </th>
+                      <th className="border border-slate-200 px-4 py-2 text-right text-sm font-semibold text-slate-900">
+                        Total Amount
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
-                    {parsedItems.map((item, index) => (
-                      <tr key={index} className="hover:bg-slate-50">
-                        <td className="border border-slate-200 px-4 py-2 text-slate-900">
-                          {item.itemName || item.itemId}
-                        </td>
-                        <td className="border border-slate-200 px-4 py-2 text-slate-900">
-                          {item.qty}
-                        </td>
-                        <td className="border border-slate-200 px-4 py-2 text-slate-900">
-                          {item.unit || 'N/A'}
-                        </td>
-                        <td className="border border-slate-200 px-4 py-2 text-right text-slate-900">
-                          {formatCurrency(item.unitPrice)}
-                        </td>
-                      </tr>
-                    ))}
+                    {parsedItems.map((item, index) => {
+                      const qty = item.qty || 0;
+                      const price = item.unitPrice || 0;
+                      const itemTotal = item.priceType === 'incl' ? (qty * price) : (qty * price * 1.15);
+                      return (
+                        <tr key={index} className="hover:bg-slate-50">
+                          <td className="border border-slate-200 px-4 py-2 text-slate-900 font-medium">
+                            {item.itemName || item.itemId}
+                          </td>
+                          <td className="border border-slate-200 px-4 py-2 text-slate-900">
+                            {item.qty}
+                          </td>
+                          <td className="border border-slate-200 px-4 py-2 text-slate-900">
+                            {item.unit || 'N/A'}
+                          </td>
+                          <td className="border border-slate-200 px-4 py-2 text-right text-slate-900">
+                            {formatCurrency(item.unitPrice)}
+                          </td>
+                          <td className="border border-slate-200 px-4 py-2 text-center text-slate-900 text-xs font-semibold">
+                            <span className={`px-2 py-1 rounded-full ${item.priceType === 'incl' ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'}`}>
+                              {item.priceType === 'incl' ? 'Incl. VAT (15%)' : 'Excl. VAT'}
+                            </span>
+                          </td>
+                          <td className="border border-slate-200 px-4 py-2 text-right text-slate-900 font-bold">
+                            {formatCurrency(itemTotal)}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

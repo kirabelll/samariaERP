@@ -25,6 +25,7 @@ interface AgreementItemRow {
   qty?: string;
   unit?: string;
   unitPrice?: string;
+  priceType?: 'excl' | 'incl';
   description?: string;
   amount?: string;
 }
@@ -51,7 +52,7 @@ export default function NewSupplierAgreementPage() {
   });
 
   const [agreementItems, setAgreementItems] = useState<AgreementItemRow[]>([
-    { id: 1, type: 'regular', itemId: '', qty: '', unit: '', unitPrice: '' },
+    { id: 1, type: 'regular', itemId: '', qty: '', unit: '', unitPrice: '', priceType: 'excl' },
   ]);
 
   const [errors, setErrors] = useState<FormErrors>({});
@@ -90,16 +91,41 @@ export default function NewSupplierAgreementPage() {
     fetchItems();
   }, []);
 
-  const calculateTotalAmount = (): number => {
-    return agreementItems.reduce((sum, item) => {
+  const calculateTotals = () => {
+    let subtotal = 0;
+    let vatAmount = 0;
+    let grandTotal = 0;
+
+    agreementItems.forEach((item) => {
       if (item.type === 'regular') {
         const qty = parseFloat(item.qty || '0') || 0;
         const price = parseFloat(item.unitPrice || '0') || 0;
-        return sum + qty * price;
+        if (item.priceType === 'incl') {
+          const total = qty * price;
+          const itemSubtotal = total / 1.15;
+          const itemVat = total - itemSubtotal;
+          subtotal += itemSubtotal;
+          vatAmount += itemVat;
+          grandTotal += total;
+        } else {
+          const itemSubtotal = qty * price;
+          const itemVat = itemSubtotal * 0.15;
+          subtotal += itemSubtotal;
+          vatAmount += itemVat;
+          grandTotal += itemSubtotal + itemVat;
+        }
       } else {
-        return sum + (parseFloat(item.amount || '0') || 0);
+        const amt = parseFloat(item.amount || '0') || 0;
+        subtotal += amt;
+        grandTotal += amt;
       }
-    }, 0);
+    });
+
+    return { subtotal, vatAmount, grandTotal };
+  };
+
+  const calculateTotalAmount = (): number => {
+    return calculateTotals().grandTotal;
   };
 
   const handleInputChange = (
@@ -132,7 +158,7 @@ export default function NewSupplierAgreementPage() {
     const newId = Math.max(...agreementItems.map((i) => i.id), 0) + 1;
     setAgreementItems([
       ...agreementItems,
-      { id: newId, type: 'regular', itemId: '', qty: '', unit: '', unitPrice: '' },
+      { id: newId, type: 'regular', itemId: '', qty: '', unit: '', unitPrice: '', priceType: 'excl' },
     ]);
   };
 
@@ -156,6 +182,9 @@ export default function NewSupplierAgreementPage() {
     if (!formData.supplierId) {
       newErrors.supplierId = 'Supplier is required';
     }
+    if (!formData.division) {
+      newErrors.division = 'Division is required';
+    }
     if (!formData.validFrom) {
       newErrors.validFrom = 'Valid From date is required';
     }
@@ -163,7 +192,15 @@ export default function NewSupplierAgreementPage() {
       newErrors.validTo = 'Valid To date is required';
     }
 
-    const hasValidItems = agreementItems.some((item) => {
+    if (formData.validFrom && formData.validTo) {
+      const from = new Date(formData.validFrom);
+      const to = new Date(formData.validTo);
+      if (to <= from) {
+        newErrors.validTo = 'Valid To must be after Valid From';
+      }
+    }
+
+    const hasValidItem = agreementItems.some((item) => {
       if (item.type === 'regular') {
         return item.itemId && item.qty && item.unitPrice;
       } else {
@@ -171,8 +208,8 @@ export default function NewSupplierAgreementPage() {
       }
     });
 
-    if (!hasValidItems) {
-      newErrors.items = 'At least one item or service is required';
+    if (!hasValidItem) {
+      newErrors.items = 'At least one valid item or service is required';
     }
 
     setErrors(newErrors);
@@ -198,14 +235,23 @@ export default function NewSupplierAgreementPage() {
         })
         .map((item) => {
           if (item.type === 'regular') {
+            const qty = parseFloat(item.qty || '0');
+            const unitPrice = parseFloat(item.unitPrice || '0');
+            let amount = qty * unitPrice;
+            if (item.priceType === 'incl') {
+              const subtotal = qty * (unitPrice / 1.15);
+              const vat = subtotal * 0.15;
+              amount = subtotal + vat;
+            }
             return {
               type: 'regular',
               itemId: item.itemId,
               itemName: items.find((i) => i.id === item.itemId)?.name || item.itemName,
-              qty: parseFloat(item.qty || '0'),
+              qty,
               unit: item.unit,
-              unitPrice: parseFloat(item.unitPrice || '0'),
-              amount: (parseFloat(item.qty || '0') * parseFloat(item.unitPrice || '0')),
+              unitPrice,
+              priceType: item.priceType || 'excl',
+              amount,
             };
           } else {
             return {
@@ -433,7 +479,7 @@ export default function NewSupplierAgreementPage() {
                           Remove
                         </Button>
                       </div>
-                      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
                         <div>
                           <label className="block text-sm font-medium text-slate-700 mb-2">
                             Item
@@ -497,6 +543,19 @@ export default function NewSupplierAgreementPage() {
                             className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-900 text-sm"
                           />
                         </div>
+                        <div>
+                          <label className="block text-sm font-medium text-slate-700 mb-2">
+                            VAT Type
+                          </label>
+                          <select
+                            value={item.priceType || 'excl'}
+                            onChange={(e) => handleItemChange(item.id, { priceType: e.target.value as 'excl' | 'incl' })}
+                            className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-900 text-sm"
+                          >
+                            <option value="excl">Excl. VAT</option>
+                            <option value="incl">Incl. VAT (15%)</option>
+                          </select>
+                        </div>
                       </div>
                     </div>
                   ) : (
@@ -546,11 +605,28 @@ export default function NewSupplierAgreementPage() {
               ))}
             </div>
 
-            <div className="mt-6 flex justify-end">
-              <div className="text-lg font-semibold text-slate-900">
-                Total Amount: ETB {calculateTotalAmount().toFixed(2)}
-              </div>
-            </div>
+            {/* Total Amount Summary */}
+            {(() => {
+              const totals = calculateTotals();
+              return (
+                <div className="mt-6 flex justify-end">
+                  <div className="text-right space-y-1 bg-slate-50 border border-slate-200 rounded-lg p-4 min-w-[280px]">
+                    <div className="text-sm text-slate-600 flex justify-between gap-4">
+                      <span>Subtotal:</span>
+                      <span className="font-medium text-slate-900">ETB {totals.subtotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    </div>
+                    <div className="text-sm text-slate-600 flex justify-between gap-4">
+                      <span>VAT (15%):</span>
+                      <span className="font-medium text-slate-900">ETB {totals.vatAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    </div>
+                    <div className="text-base font-bold text-slate-900 flex justify-between gap-4 border-t border-slate-200 pt-2 mt-2">
+                      <span>Total Amount:</span>
+                      <span>ETB {totals.grandTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
           </CardBody>
         </Card>
 

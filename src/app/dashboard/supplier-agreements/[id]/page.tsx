@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { Card, CardHeader, CardBody, Button, Badge } from '@/components/ui';
+import { ConfirmDialog } from '@/components/ui/Modal';
 
 interface AgreementItem {
   type: 'regular' | 'service';
@@ -13,6 +14,7 @@ interface AgreementItem {
   qty?: number;
   unit?: string;
   unitPrice?: number;
+  priceType?: string;
   amount?: number;
   description?: string;
 }
@@ -22,7 +24,8 @@ interface SupplierAgreementData {
   agreementNo: string;
   supplierId: string;
   supplier?: {
-    name: string;
+    companyName?: string;
+    name?: string;
     code: string;
   };
   division: string;
@@ -50,6 +53,30 @@ export default function SupplierAgreementDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [updatingStatus, setUpdatingStatus] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    try {
+      const response = await fetch(`/api/supplier-agreements/${recordId}?permanent=true`, {
+        method: 'DELETE',
+      });
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Failed to delete agreement');
+      }
+
+      alert('Supplier Agreement deleted successfully!');
+      router.push('/dashboard/supplier-agreements');
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to delete agreement');
+    } finally {
+      setDeleting(false);
+      setShowDeleteModal(false);
+    }
+  };
 
   const fetchData = async () => {
     try {
@@ -241,6 +268,9 @@ export default function SupplierAgreementDetailPage() {
           <div className="flex gap-3">
             <Button variant="primary" size="lg" onClick={handleEdit}>
               Edit
+            </Button>
+            <Button variant="danger" size="lg" onClick={() => setShowDeleteModal(true)}>
+              Delete
             </Button>
             <Button variant="outline" size="lg" onClick={handleBack}>
               Back
@@ -455,7 +485,7 @@ export default function SupplierAgreementDetailPage() {
                   Supplier
                 </label>
                 <p className="text-lg font-medium text-slate-900 mt-1">
-                  {data.supplier?.companyName || 'N/A'}
+                  {data.supplier?.companyName || data.supplier?.name || 'N/A'}
                 </p>
               </div>
               <div>
@@ -574,6 +604,18 @@ export default function SupplierAgreementDetailPage() {
           )}
         </CardBody>
       </Card>
+
+      <ConfirmDialog
+        isOpen={showDeleteModal}
+        onClose={() => setShowDeleteModal(false)}
+        onConfirm={handleDelete}
+        title="Delete Supplier Agreement"
+        message={`Are you sure you want to permanently delete agreement ${data.agreementNo}? This action cannot be undone.`}
+        confirmText="Delete"
+        cancelText="Cancel"
+        isDangerous={true}
+        isLoading={deleting}
+      />
     </div>
   );
 }

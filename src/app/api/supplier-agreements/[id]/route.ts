@@ -138,6 +138,9 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
+    const searchParams = request.nextUrl.searchParams;
+    const isPermanent = searchParams.get('permanent') === 'true' || searchParams.get('hard') === 'true';
+
     const record = await prisma.supplierAgreement.findUnique({
       where: { id: params.id },
     });
@@ -149,13 +152,20 @@ export async function DELETE(
       );
     }
 
+    if (isPermanent) {
+      await prisma.supplierAgreement.delete({
+        where: { id: params.id },
+      });
+      return NextResponse.json({ success: true, message: 'Supplier agreement permanently deleted' });
+    }
+
     // Soft delete - set status to Cancelled
     const deletedRecord = await prisma.supplierAgreement.update({
       where: { id: params.id },
       data: { status: 'Cancelled' },
     });
 
-    return NextResponse.json({ success: true, message: 'Record deleted successfully', data: deletedRecord });
+    return NextResponse.json({ success: true, message: 'Record cancelled successfully', data: deletedRecord });
   } catch (error: any) {
     console.error('Error deleting record:', error);
     return NextResponse.json(

@@ -4,13 +4,14 @@ import React, { useState } from 'react';
 import Link from 'next/link';
 import { useI18n } from '@/lib/i18n';
 import { Card, CardBody, Table, Badge, Button, Input, Select } from '@/components/ui';
+import { ConfirmDialog } from '@/components/ui/Modal';
 import type { ColumnDef } from '@/components/ui';
 import { useApiList } from '@/hooks/useApi';
 
 interface SupplierAgreement {
   id: string;
   agreementNo: string;
-  supplier: { id: string; name: string };
+  supplier: { id: string; companyName?: string; name?: string };
   totalAmount: number;
   validFrom: string;
   validTo: string;
@@ -24,6 +25,30 @@ export default function SupplierAgreementsPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(50); // Increased default to 50
   const [debugInfo, setDebugInfo] = useState<any>(null);
+  const [deleteTarget, setDeleteTarget] = useState<SupplierAgreement | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    setIsDeleting(true);
+    try {
+      const res = await fetch(`/api/supplier-agreements/${deleteTarget.id}?permanent=true`, {
+        method: 'DELETE',
+      });
+      const result = await res.json();
+      if (res.ok && result.success) {
+        alert('Supplier agreement deleted successfully');
+        window.location.reload();
+      } else {
+        alert(result.error || 'Failed to delete agreement');
+      }
+    } catch (err: any) {
+      alert('Error deleting agreement: ' + err.message);
+    } finally {
+      setIsDeleting(false);
+      setDeleteTarget(null);
+    }
+  };
 
   const showDebugInfo = async () => {
     try {
@@ -63,7 +88,7 @@ export default function SupplierAgreementsPage() {
     {
       header: 'Supplier',
       accessor: 'supplier',
-      render: (_val, row) => row.supplier?.companyName || '-',
+      render: (_val, row) => row.supplier?.companyName || row.supplier?.name || '-',
     },
     {
       header: 'Total (ETB)',
@@ -88,11 +113,21 @@ export default function SupplierAgreementsPage() {
     {
       header: 'Actions',
       accessor: 'id',
-      render: (id) => (
+      render: (_val, row) => (
         <div className="flex gap-2">
-          <Link href={`/dashboard/supplier-agreements/${id}`}>
+          <Link href={`/dashboard/supplier-agreements/${row.id}`}>
             <Button size="sm" variant="outline">View</Button>
           </Link>
+          <Link href={`/dashboard/supplier-agreements/${row.id}/edit`}>
+            <Button size="sm" variant="secondary">Edit</Button>
+          </Link>
+          <Button
+            size="sm"
+            variant="danger"
+            onClick={() => setDeleteTarget(row)}
+          >
+            Delete
+          </Button>
         </div>
       ),
     },
@@ -176,6 +211,18 @@ export default function SupplierAgreementsPage() {
           />
         </CardBody>
       </Card>
+
+      <ConfirmDialog
+        isOpen={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={handleDelete}
+        title="Delete Supplier Agreement"
+        message={`Are you sure you want to permanently delete supplier agreement "${deleteTarget?.agreementNo}"? This action cannot be undone.`}
+        confirmText="Delete"
+        cancelText="Cancel"
+        isDangerous={true}
+        isLoading={isDeleting}
+      />
     </div>
   );
 }

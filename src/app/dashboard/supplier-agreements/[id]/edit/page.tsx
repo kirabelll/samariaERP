@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { Card, CardHeader, CardBody, CardFooter, Button, Input, Select } from '@/components/ui';
+import { ConfirmDialog } from '@/components/ui/Modal';
 
 interface Supplier {
   id: string;
@@ -50,6 +51,30 @@ export default function EditSupplierAgreementPage() {
   const [formData, setFormData] = useState<any>({});
   const [agreementItems, setAgreementItems] = useState<AgreementItemRow[]>([]);
   const [errors, setErrors] = useState<FormErrors>({});
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    try {
+      const response = await fetch(`/api/supplier-agreements/${recordId}?permanent=true`, {
+        method: 'DELETE',
+      });
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Failed to delete agreement');
+      }
+
+      alert('Supplier Agreement deleted successfully!');
+      router.push('/dashboard/supplier-agreements');
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to delete agreement');
+    } finally {
+      setDeleting(false);
+      setShowDeleteModal(false);
+    }
+  };
 
   useEffect(() => {
     const fetchData = async () => {
@@ -685,12 +710,21 @@ export default function EditSupplierAgreementPage() {
         </Card>
 
         <Card>
-          <CardFooter>
+          <CardFooter className="flex justify-between items-center">
+            <Button
+              type="button"
+              variant="danger"
+              size="lg"
+              onClick={() => setShowDeleteModal(true)}
+              disabled={submitting || deleting}
+            >
+              Delete Agreement
+            </Button>
             <div className="flex gap-4">
-              <Button type="submit" variant="primary" size="lg" isLoading={submitting}>
+              <Button type="submit" variant="primary" size="lg" isLoading={submitting} disabled={deleting}>
                 Save Changes
               </Button>
-              <Button type="button" variant="outline" size="lg" onClick={handleBack}>
+              <Button type="button" variant="outline" size="lg" onClick={handleBack} disabled={submitting || deleting}>
                 Cancel
               </Button>
             </div>
@@ -703,6 +737,18 @@ export default function EditSupplierAgreementPage() {
           </div>
         )}
       </form>
+
+      <ConfirmDialog
+        isOpen={showDeleteModal}
+        onClose={() => setShowDeleteModal(false)}
+        onConfirm={handleDelete}
+        title="Delete Supplier Agreement"
+        message={`Are you sure you want to permanently delete agreement ${data?.agreementNo || ''}? This action cannot be undone.`}
+        confirmText="Delete"
+        cancelText="Cancel"
+        isDangerous={true}
+        isLoading={deleting}
+      />
     </div>
   );
 }

@@ -183,9 +183,9 @@ export async function POST(request: NextRequest) {
       await requestApproval({
         module: 'SupplierAgreement',
         recordId: agreement.id,
-        recordRef: agreementNo,
+        recordRef: agreement.agreementNo,
         amount: parseFloat(totalAmount) || 0,
-        description: `Supplier Agreement ${agreementNo} — ${parseFloat(totalAmount).toLocaleString('en-US')} ETB for ${supplierName}`,
+        description: `Supplier Agreement ${agreement.agreementNo} — ${parseFloat(totalAmount).toLocaleString('en-US')} ETB for ${supplierName}`,
         requesterId: createdBy || '',
       });
     } catch (e) {

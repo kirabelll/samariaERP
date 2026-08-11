@@ -378,17 +378,22 @@ Check console for detailed breakdown.`);
       setCustomerHasAgreement(null);
       return;
     }
+    // If customer is in our loaded active customers list, they have an active agreement
+    if (customers.some(c => c.customerId === formData.customerId || c.agreementId === formData.selectedCustomerAgreementId)) {
+      setCustomerHasAgreement(true);
+      return;
+    }
     const checkCustomerAgreement = async () => {
       try {
         const res = await fetch(`/api/sales/agreements?customerId=${formData.customerId}&status=Active&division=AGGREGATE&limit=1`);
         const data = await res.json();
-        setCustomerHasAgreement(data.success && data.data && data.data.length > 0);
+        setCustomerHasAgreement(data.success && Boolean(data.data && data.data.length > 0));
       } catch {
         setCustomerHasAgreement(null);
       }
     };
     checkCustomerAgreement();
-  }, [formData.customerId]);
+  }, [formData.customerId, formData.selectedCustomerAgreementId, customers]);
 
   // Check if supplier has an active agreement when supplier changes
   useEffect(() => {
@@ -396,17 +401,22 @@ Check console for detailed breakdown.`);
       setSupplierHasAgreement(null);
       return;
     }
+    // If supplier is in our loaded active suppliers list, they have an active agreement
+    if (suppliers.some(s => s.id === formData.supplierId || s.agreementId === formData.selectedSupplierAgreementId)) {
+      setSupplierHasAgreement(true);
+      return;
+    }
     const checkSupplierAgreement = async () => {
       try {
-        const res = await fetch(`/api/supplier-agreements?supplierId=${formData.supplierId}&status=Active&division=AGGREGATE&limit=1`);
+        const res = await fetch(`/api/supplier-agreements?supplierId=${formData.supplierId}&status=Active&limit=1`);
         const data = await res.json();
-        setSupplierHasAgreement(data.success && data.data && data.data.length > 0);
+        setSupplierHasAgreement(data.success && Boolean(data.data && data.data.length > 0));
       } catch {
         setSupplierHasAgreement(null);
       }
     };
     checkSupplierAgreement();
-  }, [formData.supplierId]);
+  }, [formData.supplierId, formData.selectedSupplierAgreementId, suppliers]);
 
   // Handle agreement selection — auto-populate everything
   const handleAgreementChange = (value: string) => {
@@ -1006,7 +1016,6 @@ Check console for detailed breakdown.`);
                 step="0.01"
                 required
               />
-
               <div>
                 <Input
                   label={

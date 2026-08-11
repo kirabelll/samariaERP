@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { Card, CardHeader, CardBody, CardFooter, Button, Input } from '@/components/ui';
+import { ConfirmDialog } from '@/components/ui/Modal';
 
 interface Customer { id: string; companyName: string; }
 interface Item { id: string; code: string; name: string; unit: string; }
@@ -19,6 +20,30 @@ export default function SalesAgreementEditPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [agreementNo, setAgreementNo] = useState('');
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    try {
+      const response = await fetch(`/api/sales/agreements/${recordId}?permanent=true`, {
+        method: 'DELETE',
+      });
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Failed to delete agreement');
+      }
+
+      alert('Sales Agreement deleted successfully!');
+      router.push('/dashboard/sales/agreements');
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to delete agreement');
+    } finally {
+      setDeleting(false);
+      setShowDeleteModal(false);
+    }
+  };
 
   const [formData, setFormData] = useState({
     customerId: '',
@@ -338,14 +363,39 @@ export default function SalesAgreementEditPage() {
         </Card>
 
         <Card>
-          <CardFooter>
+          <CardFooter className="flex justify-between items-center">
+            <Button
+              type="button"
+              variant="danger"
+              size="lg"
+              onClick={() => setShowDeleteModal(true)}
+              disabled={submitting || deleting}
+            >
+              Delete Agreement
+            </Button>
             <div className="flex gap-4">
-              <Button type="submit" variant="primary" size="lg" isLoading={submitting}>Save Changes</Button>
-              <Button type="button" variant="outline" size="lg" onClick={handleBack}>Cancel</Button>
+              <Button type="submit" variant="primary" size="lg" isLoading={submitting} disabled={deleting}>
+                Save Changes
+              </Button>
+              <Button type="button" variant="outline" size="lg" onClick={handleBack} disabled={submitting || deleting}>
+                Cancel
+              </Button>
             </div>
           </CardFooter>
         </Card>
       </form>
+
+      <ConfirmDialog
+        isOpen={showDeleteModal}
+        onClose={() => setShowDeleteModal(false)}
+        onConfirm={handleDelete}
+        title="Delete Sales Agreement"
+        message={`Are you sure you want to permanently delete agreement ${agreementNo}? This action cannot be undone.`}
+        confirmText="Delete"
+        cancelText="Cancel"
+        isDangerous={true}
+        isLoading={deleting}
+      />
     </div>
   );
 }

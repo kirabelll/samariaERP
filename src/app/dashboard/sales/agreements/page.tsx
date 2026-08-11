@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import Link from 'next/link';
 import { useI18n } from '@/lib/i18n';
 import { Card, CardBody, Table, Badge, Button, Input, Select } from '@/components/ui';
+import { ConfirmDialog } from '@/components/ui/Modal';
 import type { ColumnDef } from '@/components/ui';
 import { useApiList } from '@/hooks/useApi';
 
@@ -26,6 +27,30 @@ export default function SalesAgreementsPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(50); // Increased default to 50
   const [debugInfo, setDebugInfo] = useState<any>(null);
+  const [deleteTarget, setDeleteTarget] = useState<SalesAgreement | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    setIsDeleting(true);
+    try {
+      const res = await fetch(`/api/sales/agreements/${deleteTarget.id}?permanent=true`, {
+        method: 'DELETE',
+      });
+      const result = await res.json();
+      if (res.ok && result.success) {
+        alert('Sales agreement deleted successfully');
+        window.location.reload();
+      } else {
+        alert(result.error || 'Failed to delete agreement');
+      }
+    } catch (err: any) {
+      alert('Error deleting agreement: ' + err.message);
+    } finally {
+      setIsDeleting(false);
+      setDeleteTarget(null);
+    }
+  };
 
   const showDebugInfo = async () => {
     try {
@@ -103,11 +128,18 @@ export default function SalesAgreementsPage() {
     {
       header: 'Actions',
       accessor: 'id',
-      render: (id) => (
+      render: (_val, row) => (
         <div className="flex gap-2">
-          <Link href={`/dashboard/sales/agreements/${id}`}>
+          <Link href={`/dashboard/sales/agreements/${row.id}`}>
             <Button size="sm" variant="outline">View</Button>
           </Link>
+          <Button
+            size="sm"
+            variant="danger"
+            onClick={() => setDeleteTarget(row)}
+          >
+            Delete
+          </Button>
         </div>
       ),
     },
@@ -205,6 +237,18 @@ export default function SalesAgreementsPage() {
           />
         </CardBody>
       </Card>
+
+      <ConfirmDialog
+        isOpen={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={handleDelete}
+        title="Delete Sales Agreement"
+        message={`Are you sure you want to permanently delete sales agreement "${deleteTarget?.agreementNo}"? This action cannot be undone.`}
+        confirmText="Delete"
+        cancelText="Cancel"
+        isDangerous={true}
+        isLoading={isDeleting}
+      />
     </div>
   );
 }

@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { Card, CardHeader, CardBody, Button, Badge } from '@/components/ui';
+import { ConfirmDialog } from '@/components/ui/Modal';
 
 interface ItemData {
   code: string;
@@ -46,6 +47,30 @@ export default function ItemDetailPage() {
   const [data, setData] = useState<ItemData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    try {
+      const response = await fetch(`/api/items/${recordId}?permanent=true`, {
+        method: 'DELETE',
+      });
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Failed to delete item');
+      }
+
+      alert('Item deleted successfully!');
+      router.push('/dashboard/items');
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to delete item');
+    } finally {
+      setDeleting(false);
+      setShowDeleteModal(false);
+    }
+  };
 
   useEffect(() => {
     const fetchData = async () => {
@@ -154,6 +179,9 @@ export default function ItemDetailPage() {
           <div className="flex gap-3">
             <Button variant="primary" size="lg" onClick={handleEdit}>
               Edit
+            </Button>
+            <Button variant="danger" size="lg" onClick={() => setShowDeleteModal(true)}>
+              Delete
             </Button>
             <Button variant="outline" size="lg" onClick={handleBack}>
               Back
@@ -265,6 +293,18 @@ export default function ItemDetailPage() {
           )}
         </CardBody>
       </Card>
+
+      <ConfirmDialog
+        isOpen={showDeleteModal}
+        onClose={() => setShowDeleteModal(false)}
+        onConfirm={handleDelete}
+        title="Delete Item"
+        message={`Are you sure you want to permanently delete item "${data.name}"? This action cannot be undone.`}
+        confirmText="Delete"
+        cancelText="Cancel"
+        isDangerous={true}
+        isLoading={deleting}
+      />
     </div>
   );
 }

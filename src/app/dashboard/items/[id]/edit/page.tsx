@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { Card, CardHeader, CardBody, CardFooter, Button, Input, Select } from '@/components/ui';
+import { ConfirmDialog } from '@/components/ui/Modal';
 
 interface ItemFormData {
   code: string;
@@ -83,6 +84,30 @@ export default function ItemEditPage() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    try {
+      const response = await fetch(`/api/items/${recordId}?permanent=true`, {
+        method: 'DELETE',
+      });
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Failed to delete item');
+      }
+
+      alert('Item deleted successfully!');
+      router.push('/dashboard/items');
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to delete item');
+    } finally {
+      setDeleting(false);
+      setShowDeleteModal(false);
+    }
+  };
   const [formData, setFormData] = useState<ItemFormData>({
     code: '',
     name: '',
@@ -407,17 +432,39 @@ export default function ItemEditPage() {
             )}
 
             {/* Form Actions */}
-            <div className="border-t border-slate-200 pt-8 flex gap-3 justify-end">
-              <Button variant="outline" onClick={handleBack} disabled={submitting}>
-                Cancel
+            <div className="border-t border-slate-200 pt-8 flex justify-between items-center">
+              <Button
+                type="button"
+                variant="danger"
+                onClick={() => setShowDeleteModal(true)}
+                disabled={submitting || deleting}
+              >
+                Delete Item
               </Button>
-              <Button variant="primary" type="submit" disabled={submitting}>
-                {submitting ? 'Saving...' : 'Save Changes'}
-              </Button>
+              <div className="flex gap-3">
+                <Button variant="outline" onClick={handleBack} disabled={submitting || deleting}>
+                  Cancel
+                </Button>
+                <Button variant="primary" type="submit" disabled={submitting || deleting}>
+                  {submitting ? 'Saving...' : 'Save Changes'}
+                </Button>
+              </div>
             </div>
           </form>
         </CardBody>
       </Card>
+
+      <ConfirmDialog
+        isOpen={showDeleteModal}
+        onClose={() => setShowDeleteModal(false)}
+        onConfirm={handleDelete}
+        title="Delete Item"
+        message={`Are you sure you want to permanently delete item "${formData.name}"? This action cannot be undone.`}
+        confirmText="Delete"
+        cancelText="Cancel"
+        isDangerous={true}
+        isLoading={deleting}
+      />
     </div>
   );
 }

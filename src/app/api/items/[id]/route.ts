@@ -85,6 +85,9 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
+    const searchParams = request.nextUrl.searchParams;
+    const isPermanent = searchParams.get('permanent') === 'true' || searchParams.get('hard') === 'true';
+
     const item = await prisma.item.findUnique({
       where: { id: params.id },
     });
@@ -94,6 +97,13 @@ export async function DELETE(
         { success: false, error: 'Item not found' },
         { status: 404 }
       );
+    }
+
+    if (isPermanent) {
+      await prisma.item.delete({
+        where: { id: params.id },
+      });
+      return NextResponse.json({ success: true, message: 'Item permanently deleted' });
     }
 
     // Soft delete - set status to Inactive

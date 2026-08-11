@@ -4,11 +4,12 @@ import React, { useState } from 'react';
 import Link from 'next/link';
 import { useI18n } from '@/lib/i18n';
 import { Card, CardBody, Table, Badge, Button, Input, Select } from '@/components/ui';
+import { ConfirmDialog } from '@/components/ui/Modal';
 import type { ColumnDef } from '@/components/ui';
 import { useApiList } from '@/hooks/useApi';
 
 interface Item {
-  id: number;
+  id: string | number;
   code: string;
   name: string;
   nameAmharic: string;
@@ -26,6 +27,8 @@ export default function ItemsPage() {
   const [categoryFilter, setCategoryFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
+  const [deleteTarget, setDeleteTarget] = useState<Item | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   const pageSize = 10;
 
   const { data, pagination, loading, error } = useApiList<Item>('/api/items', {
@@ -34,6 +37,28 @@ export default function ItemsPage() {
     search: searchTerm,
     filters: { category: categoryFilter, status: statusFilter },
   });
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    setIsDeleting(true);
+    try {
+      const res = await fetch(`/api/items/${deleteTarget.id}?permanent=true`, {
+        method: 'DELETE',
+      });
+      const result = await res.json();
+      if (res.ok && result.success) {
+        alert('Item deleted successfully');
+        window.location.reload();
+      } else {
+        alert(result.error || 'Failed to delete item');
+      }
+    } catch (err: any) {
+      alert('Error deleting item: ' + err.message);
+    } finally {
+      setIsDeleting(false);
+      setDeleteTarget(null);
+    }
+  };
 
   const columns: ColumnDef<Item>[] = [
     { header: 'Code', accessor: 'code', sortable: true },
@@ -50,14 +75,21 @@ export default function ItemsPage() {
     {
       header: 'Actions',
       accessor: 'id',
-      render: (id) => (
+      render: (_val, row) => (
         <div className="flex gap-2">
-          <Link href={`/dashboard/items/${id}`}>
+          <Link href={`/dashboard/items/${row.id}`}>
             <Button size="sm" variant="outline">View</Button>
           </Link>
-          <Link href={`/dashboard/items/${id}/edit`}>
+          <Link href={`/dashboard/items/${row.id}/edit`}>
             <Button size="sm" variant="secondary">Edit</Button>
           </Link>
+          <Button
+            size="sm"
+            variant="danger"
+            onClick={() => setDeleteTarget(row)}
+          >
+            Delete
+          </Button>
         </div>
       ),
     },
@@ -123,6 +155,18 @@ export default function ItemsPage() {
           />
         </CardBody>
       </Card>
+
+      <ConfirmDialog
+        isOpen={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={handleDelete}
+        title="Delete Item"
+        message={`Are you sure you want to permanently delete item "${deleteTarget?.name}"? This action cannot be undone.`}
+        confirmText="Delete"
+        cancelText="Cancel"
+        isDangerous={true}
+        isLoading={isDeleting}
+      />
     </div>
   );
 }

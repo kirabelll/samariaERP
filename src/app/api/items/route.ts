@@ -87,9 +87,38 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Generate item code
-    const count = await prisma.item.count();
-    const code = `ITEM-${String(count + 1).padStart(5, '0')}`;
+    // Generate unique item code safely
+    let code = body.code;
+    if (code) {
+      const existing = await prisma.item.findUnique({ where: { code } });
+      if (existing) {
+        return NextResponse.json(
+          { success: false, error: `Item code "${code}" already exists.` },
+          { status: 400 }
+        );
+      }
+    } else {
+      const lastItem = await prisma.item.findFirst({
+        orderBy: { createdAt: 'desc' },
+        select: { code: true },
+      });
+
+      let nextNumber = 1;
+      if (lastItem?.code) {
+        const match = lastItem.code.match(/ITEM-(\d+)/);
+        if (match) {
+          nextNumber = parseInt(match[1], 10) + 1;
+        }
+      }
+
+      code = `ITEM-${String(nextNumber).padStart(5, '0')}`;
+      let exists = await prisma.item.findUnique({ where: { code } });
+      while (exists) {
+        nextNumber++;
+        code = `ITEM-${String(nextNumber).padStart(5, '0')}`;
+        exists = await prisma.item.findUnique({ where: { code } });
+      }
+    }
 
     const item = await prisma.item.create({
       data: {

@@ -516,7 +516,7 @@ Check console for detailed breakdown.`);
   };
 
   // Filter items based on:
-  // 1. Customer's agreement items (only show items the selected customer agreement has)
+  // 1. Customer's agreement items (only show items from the selected customer agreement with Customer Agreement Item Name)
   // 2. Supplier's agreement items (only show items the selected supplier has in their agreement)
   // 3. Transporter agreement items (if selected, intersect further)
   useEffect(() => {
@@ -526,8 +526,31 @@ Check console for detailed breakdown.`);
     if (formData.selectedCustomerAgreementId) {
       const selectedCust = customers.find(c => c.agreementId === formData.selectedCustomerAgreementId);
       if (selectedCust && selectedCust.items && selectedCust.items.length > 0) {
-        const custItemIds = new Set(selectedCust.items.map((ai: any) => ai.itemId || ai.id).filter(Boolean));
-        availableItems = items.filter((i) => custItemIds.has(i.id));
+        const custItems: Item[] = [];
+        const seenIds = new Set<string>();
+
+        selectedCust.items.forEach((ai: any) => {
+          const targetItemId = ai.itemId || ai.id;
+          if (targetItemId && !seenIds.has(targetItemId)) {
+            seenIds.add(targetItemId);
+            const dbItem = items.find((i) => i.id === targetItemId);
+            const itemName = ai.itemName || ai.name || ai.description || dbItem?.name || targetItemId;
+            custItems.push({
+              id: targetItemId,
+              name: itemName,
+              code: dbItem?.code || ai.itemCode || '',
+              unit: dbItem?.unit || ai.unit || 'm3',
+              category: dbItem?.category || ai.type || 'regular',
+            });
+          }
+        });
+
+        if (custItems.length > 0) {
+          availableItems = custItems;
+        } else {
+          const custItemIds = new Set(selectedCust.items.map((ai: any) => ai.itemId || ai.id).filter(Boolean));
+          availableItems = items.filter((i) => custItemIds.has(i.id));
+        }
       } else if (formData.customerId && customerAgreementItems.has(formData.customerId)) {
         const custItemIds = customerAgreementItems.get(formData.customerId)!;
         availableItems = items.filter((i) => custItemIds.has(i.id));

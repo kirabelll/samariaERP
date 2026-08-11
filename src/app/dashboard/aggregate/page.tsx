@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import Link from 'next/link';
 import { useI18n } from '@/lib/i18n';
 import { Card, CardBody, Table, Badge, Button, Input, Select } from '@/components/ui';
+import { ConfirmDialog } from '@/components/ui/Modal';
 import type { ColumnDef } from '@/components/ui';
 import { useApiList } from '@/hooks/useApi';
 
@@ -37,6 +38,8 @@ export default function AggregateOperationsPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
+  const [deleteTarget, setDeleteTarget] = useState<AggregateDelivery | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   const pageSize = 10;
 
   const { data, pagination, loading, error } = useApiList<AggregateDelivery>('/api/aggregate', {
@@ -45,6 +48,28 @@ export default function AggregateOperationsPage() {
     search: searchTerm,
     filters: { status: statusFilter },
   });
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    setIsDeleting(true);
+    try {
+      const res = await fetch(`/api/aggregate/${deleteTarget.id}?permanent=true`, {
+        method: 'DELETE',
+      });
+      const result = await res.json();
+      if (res.ok && result.success) {
+        alert('Aggregate dispatch deleted successfully');
+        window.location.reload();
+      } else {
+        alert(result.error || 'Failed to delete aggregate dispatch');
+      }
+    } catch (err: any) {
+      alert('Error deleting dispatch: ' + err.message);
+    } finally {
+      setIsDeleting(false);
+      setDeleteTarget(null);
+    }
+  };
 
   const columns: ColumnDef<AggregateDelivery>[] = [
     { header: 'Dispatch No', accessor: 'dispatchNo', sortable: true },
@@ -96,10 +121,22 @@ export default function AggregateOperationsPage() {
     {
       header: 'Actions',
       accessor: 'id',
-      render: (id) => (
-        <Link href={`/dashboard/aggregate/${id}`}>
-          <Button size="sm" variant="outline">View</Button>
-        </Link>
+      render: (_val, row) => (
+        <div className="flex gap-2">
+          <Link href={`/dashboard/aggregate/${row.id}`}>
+            <Button size="sm" variant="outline">View</Button>
+          </Link>
+          <Link href={`/dashboard/aggregate/${row.id}/edit`}>
+            <Button size="sm" variant="secondary">Edit</Button>
+          </Link>
+          <Button
+            size="sm"
+            variant="danger"
+            onClick={() => setDeleteTarget(row)}
+          >
+            Delete
+          </Button>
+        </div>
       ),
     },
   ];
@@ -150,6 +187,18 @@ export default function AggregateOperationsPage() {
           />
         </CardBody>
       </Card>
+
+      <ConfirmDialog
+        isOpen={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={handleDelete}
+        title="Delete Aggregate Dispatch"
+        message={`Are you sure you want to permanently delete dispatch ${deleteTarget?.dispatchNo}? This action cannot be undone.`}
+        confirmText="Delete"
+        cancelText="Cancel"
+        isDangerous={true}
+        isLoading={isDeleting}
+      />
     </div>
   );
 }

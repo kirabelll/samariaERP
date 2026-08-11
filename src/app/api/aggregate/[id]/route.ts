@@ -76,11 +76,52 @@ export async function PUT(
     const body = await request.json();
 
     // Safe destructuring - strip protected fields
-    const { id, createdAt, transporter, truck, customer, supplier, ...updateData } = body;
+    const { id, createdAt, transporter, truck, customer, supplier, item, ...updateData } = body;
+
+    // Recalculate derived financial fields if volume or rate parameters are present
+    const loadedVolume = updateData.loadedVolume !== undefined ? parseFloat(updateData.loadedVolume) : delivery.loadedVolume;
+    const deliveredVolume = updateData.deliveredVolume !== undefined
+      ? (updateData.deliveredVolume !== null && updateData.deliveredVolume !== '' ? parseFloat(updateData.deliveredVolume) : null)
+      : delivery.deliveredVolume;
+    const transportRate = updateData.transportRate !== undefined ? parseFloat(updateData.transportRate) : delivery.transportRate;
+    const aggregateValue = updateData.aggregateValue !== undefined ? parseFloat(updateData.aggregateValue) : delivery.aggregateValue;
+
+    const truckIdToUse = updateData.truckId || delivery.truckId;
+    let truckCapacity = 0;
+    if (truckIdToUse) {
+      const truckRec = await prisma.truck.findUnique({ where: { id: truckIdToUse } });
+      if (truckRec?.capacity) truckCapacity = parseFloat(String(truckRec.capacity));
+    }
+
+    const billableVolume = (truckCapacity > 0 && loadedVolume > truckCapacity) ? truckCapacity : loadedVolume;
+    const grossTruckFee = billableVolume * transportRate;
+
+    let shortageVolume: number | null = null;
+    let shortageDeduction: number | null = null;
+    if (deliveredVolume !== null && deliveredVolume !== undefined) {
+      shortageVolume = Math.max(0, loadedVolume - deliveredVolume);
+      shortageDeduction = shortageVolume * aggregateValue;
+    }
+
+    const netTruckPayment = grossTruckFee - (shortageDeduction || 0);
+
+    const dataToSave = {
+      ...updateData,
+      loadedVolume,
+      deliveredVolume,
+      transportRate,
+      aggregateValue,
+      grossTruckFee: updateData.grossTruckFee !== undefined ? parseFloat(updateData.grossTruckFee) : grossTruckFee,
+      shortageVolume: updateData.shortageVolume !== undefined ? (updateData.shortageVolume !== null ? parseFloat(updateData.shortageVolume) : null) : shortageVolume,
+      shortageDeduction: updateData.shortageDeduction !== undefined ? (updateData.shortageDeduction !== null ? parseFloat(updateData.shortageDeduction) : null) : shortageDeduction,
+      netTruckPayment: updateData.netTruckPayment !== undefined ? parseFloat(updateData.netTruckPayment) : netTruckPayment,
+      ...(updateData.dispatchDate ? { dispatchDate: new Date(updateData.dispatchDate) } : {}),
+      ...(updateData.deliveryDate ? { deliveryDate: new Date(updateData.deliveryDate) } : {}),
+    };
 
     const updatedDelivery = await prisma.aggregateDelivery.update({
       where: { id: params.id },
-      data: updateData,
+      data: dataToSave,
       include: {
         transporter: true,
         truck: true,
@@ -88,7 +129,7 @@ export async function PUT(
     });
 
     // Resolve customer and supplier names
-    const [customerData, supplierData, item] = await Promise.all([
+    const [customerData, supplierData, itemData] = await Promise.all([
       prisma.customer.findUnique({
         where: { id: updatedDelivery.customerId },
         select: { id: true, companyName: true, code: true },
@@ -107,7 +148,7 @@ export async function PUT(
       ...updatedDelivery,
       customer: customerData,
       supplier: supplierData,
-      item,
+      item: itemData,
     };
 
     return NextResponse.json({ success: true, data });
@@ -291,6 +332,9 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
+    const searchParams = request.nextUrl.searchParams;
+    const isPermanent = searchParams.get('permanent') === 'true' || searchParams.get('hard') === 'true';
+
     const delivery = await prisma.aggregateDelivery.findUnique({
       where: { id: params.id },
     });
@@ -302,7 +346,19 @@ export async function DELETE(
       );
     }
 
-    // Soft delete by setting status to 'Cancelled'
+    if (isPermanent) {
+      // Hard delete from database
+      await prisma.aggregateDelivery.delete({
+        where: { id: params.id },
+      });
+
+      return NextResponse.json({
+        success: true,
+        message: 'Aggregate delivery permanently deleted',
+      });
+    }
+
+    // Default: Soft delete by setting status to 'Cancelled'
     const deletedDelivery = await prisma.aggregateDelivery.update({
       where: { id: params.id },
       data: { status: 'Cancelled' },

@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { Card, CardHeader, CardBody, CardFooter, Button } from '@/components/ui';
+import { ConfirmDialog } from '@/components/ui/Modal';
 import FileUpload from '@/components/ui/FileUpload';
 import { uploadDocument, fetchDocuments } from '@/lib/upload-helper';
 
@@ -74,6 +75,29 @@ export default function AggregateDetailPage() {
   const [invoiceFiles, setInvoiceFiles] = useState<File[]>([]);
   const [padNumberInput, setPadNumberInput] = useState('');
   const [savingPadNumber, setSavingPadNumber] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/aggregate/${id}?permanent=true`, {
+        method: 'DELETE',
+      });
+      const result = await res.json();
+      if (res.ok && result.success) {
+        alert('Aggregate dispatch deleted successfully');
+        router.push('/dashboard/aggregate');
+      } else {
+        alert(result.error || 'Failed to delete aggregate dispatch');
+      }
+    } catch (err: any) {
+      alert('Error deleting dispatch: ' + err.message);
+    } finally {
+      setDeleting(false);
+      setShowDeleteModal(false);
+    }
+  };
 
   useEffect(() => {
     // Check if the id is a known sub-route and redirect if necessary
@@ -302,6 +326,20 @@ export default function AggregateDetailPage() {
               Settlement occurs automatically when payment is processed via Payment Voucher or Bank Transaction.
             </span>
           )}
+          <Button
+            variant="outline"
+            size="lg"
+            onClick={() => router.push(`/dashboard/aggregate/${id}/edit`)}
+          >
+            Edit
+          </Button>
+          <Button
+            variant="danger"
+            size="lg"
+            onClick={() => setShowDeleteModal(true)}
+          >
+            Delete
+          </Button>
           <Button variant="outline" size="lg" onClick={handleBack}>
             Back
           </Button>
@@ -597,6 +635,18 @@ export default function AggregateDetailPage() {
           </div>
         </CardFooter>
       </Card>
+
+      <ConfirmDialog
+        isOpen={showDeleteModal}
+        onClose={() => setShowDeleteModal(false)}
+        onConfirm={handleDelete}
+        title="Delete Aggregate Dispatch"
+        message={`Are you sure you want to permanently delete dispatch ${delivery.dispatchNo}? This action cannot be undone.`}
+        confirmText="Delete"
+        cancelText="Cancel"
+        isDangerous={true}
+        isLoading={deleting}
+      />
     </div>
   );
 }

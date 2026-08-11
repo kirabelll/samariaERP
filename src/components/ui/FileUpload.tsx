@@ -11,6 +11,7 @@ interface FileUploadProps {
   label?: string;
   helperText?: string;
   icon?: ReactNode;
+  accept?: string;
 }
 
 interface FilePreview {

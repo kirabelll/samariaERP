@@ -197,7 +197,7 @@ Check console for detailed breakdown.`);
             fetch('/api/supplier-agreements/all?status=Active'),
             fetch('/api/transporters/agreements?status=Active&limit=1000'),
             fetch('/api/transporters?status=Active&limit=1000'),
-            fetch('/api/items?division=AGGREGATE&limit=1000'),
+            fetch('/api/items?limit=1000'),
             fetch('/api/sales/agreements?status=Active&division=AGGREGATE&limit=1000'),
           ]);
 
@@ -534,7 +534,8 @@ Check console for detailed breakdown.`);
           if (targetItemId && !seenIds.has(targetItemId)) {
             seenIds.add(targetItemId);
             const dbItem = items.find((i) => i.id === targetItemId);
-            const itemName = ai.itemName || ai.name || ai.description || dbItem?.name || targetItemId;
+            // Prioritize Item table name column (dbItem.name)
+            const itemName = dbItem?.name || ai.itemName || ai.name || ai.description || targetItemId;
             custItems.push({
               id: targetItemId,
               name: itemName,
@@ -749,17 +750,11 @@ Check console for detailed breakdown.`);
                   {customers.length === 0 && !loadingData && (
                     <option value="" disabled>No customers with active sales agreements found</option>
                   )}
-                  {customers.map((customer) => {
-                    const itemNames = (customer.items || [])
-                      .map((item: any) => item.itemName || item.name || item.description || '')
-                      .filter(Boolean)
-                      .join(', ');
-                    return (
-                      <option key={`${customer.customerId}-${customer.agreementId}`} value={customer.agreementId}>
-                        {customer.companyName}{itemNames ? ` — ${itemNames}` : ` — ${customer.agreementNo}`}
-                      </option>
-                    );
-                  })}
+                  {customers.map((customer) => (
+                    <option key={`${customer.customerId}-${customer.agreementId}`} value={customer.agreementId}>
+                      {customer.companyName}
+                    </option>
+                  ))}
                 </select>
                 {formData.customerId && customerHasAgreement === false && (
                   <p className="text-red-600 text-xs mt-1 font-medium">

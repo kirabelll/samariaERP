@@ -17,7 +17,8 @@ export type BadgeStatus =
   | 'Near Expiry'
   | 'In Custody'
   | 'Submitted'
-  | 'In Transit';
+  | 'In Transit'
+  | 'Deactivated';
 
 interface BadgeProps {
   status: string;
@@ -41,6 +42,7 @@ const statusColors: Record<string, { bg: string; fg: string }> = {
   Rejected:     { bg: 'rgba(255,59,48,.10)',   fg: '#D70015' },
   Cancelled:    { bg: 'rgba(255,59,48,.10)',   fg: '#D70015' },
   Expired:      { bg: 'rgba(255,59,48,.10)',   fg: '#D70015' },
+  Deactivated:  { bg: 'rgba(255,59,48,.10)',   fg: '#D70015' },
   'Near Expiry':{ bg: 'rgba(255,149,0,.10)',   fg: '#C93400' },
   'In Custody': { bg: 'rgba(255,204,0,.15)',   fg: '#8C6D00' },
   Void:         { bg: 'rgba(142,142,147,.10)', fg: '#636366' },

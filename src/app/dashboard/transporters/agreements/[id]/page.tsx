@@ -144,6 +144,25 @@ export default function AgreementDetailsPage() {
     );
   }
 
+  const handleDeactivate = async () => {
+    if (!confirm('Are you sure you want to deactivate this agreement? Once deactivated, it CANNOT be reactivated.')) return;
+    try {
+      const res = await fetch(`/api/transporters/agreements/${agreementId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'Deactivated' }),
+      });
+      const result = await res.json();
+      if (result.success) {
+        setAgreement((prev) => (prev ? { ...prev, status: 'Deactivated' } : prev));
+      } else {
+        alert(result.error || 'Failed to deactivate agreement');
+      }
+    } catch {
+      alert('Failed to deactivate agreement');
+    }
+  };
+
   const deliverySites = getDeliverySites();
 
   return (
@@ -181,11 +200,30 @@ export default function AgreementDetailsPage() {
             </Badge>
           </div>
           <div className="flex gap-3">
+            <Button variant="primary" size="lg" onClick={() => router.push(`/dashboard/transporters/agreements/${agreementId}/edit`)}>
+              Edit
+            </Button>
+            {agreement.status !== 'Deactivated' && (
+              <Button
+                variant="outline"
+                size="lg"
+                onClick={handleDeactivate}
+                className="text-red-600 border-red-300 hover:bg-red-50"
+              >
+                Deactivate
+              </Button>
+            )}
             <Button variant="outline" size="lg" onClick={handleBack}>
               Back
             </Button>
           </div>
         </CardHeader>
+
+        {agreement.status === 'Deactivated' && (
+          <div className="bg-red-50 border border-red-200 rounded-lg p-3 mx-6 mt-4 text-sm text-red-800 font-medium">
+            This agreement is deactivated and cannot be reactivated.
+          </div>
+        )}
 
         <CardBody className="space-y-8">
           {/* Agreement Details */}

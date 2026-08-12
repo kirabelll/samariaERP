@@ -109,6 +109,32 @@ export async function PUT(
       );
     }
 
+    // Status transition validation
+    if (status && status !== agreement.status) {
+      const allowedTransitions: Record<string, string[]> = {
+        Draft: ['Active', 'Rejected', 'Cancelled', 'Deactivated'],
+        Active: ['Expired', 'Cancelled', 'Void', 'Deactivated'],
+        Rejected: ['Draft', 'Deactivated'],
+        Expired: ['Active', 'Cancelled', 'Deactivated'],
+        Cancelled: ['Active', 'Deactivated'],
+        Deactivated: [],
+      };
+
+      const allowed = allowedTransitions[agreement.status] || [];
+      if (!allowed.includes(status)) {
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              agreement.status === 'Deactivated'
+                ? 'Deactivated agreements cannot be reactivated'
+                : `Cannot transition from "${agreement.status}" to "${status}". Allowed: ${allowed.join(', ') || 'none'}`,
+          },
+          { status: 400 }
+        );
+      }
+    }
+
     const updatedAgreement = await prisma.$transaction(async (tx) => {
       const updated = await tx.transporterAgreement.update({
         where: { id: params.id },

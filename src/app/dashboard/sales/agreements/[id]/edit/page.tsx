@@ -48,6 +48,7 @@ export default function SalesAgreementEditPage() {
   const [formData, setFormData] = useState({
     customerId: '',
     division: 'CONSTRUCTION',
+    status: '',
     validFrom: '',
     validTo: '',
     terms: '',
@@ -80,6 +81,7 @@ export default function SalesAgreementEditPage() {
           setFormData({
             customerId: d.customerId || '',
             division: d.division || 'CONSTRUCTION',
+            status: d.status || 'Draft',
             validFrom: d.validFrom?.split('T')[0] || '',
             validTo: d.validTo?.split('T')[0] || '',
             terms: d.terms || '',
@@ -169,6 +171,7 @@ export default function SalesAgreementEditPage() {
         body: JSON.stringify({
           customerId: formData.customerId,
           division: formData.division,
+          status: formData.status,
           items: JSON.stringify(itemsData),
           totalAmount,
           validFrom: formData.validFrom,
@@ -249,6 +252,33 @@ export default function SalesAgreementEditPage() {
                 <label className="block text-sm font-medium text-slate-900 mb-2">Valid To *</label>
                 <input type="date" name="validTo" value={formData.validTo} onChange={handleChange}
                   className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-900" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-900 mb-2">Status</label>
+                <select
+                  name="status"
+                  value={formData.status || ''}
+                  onChange={handleChange}
+                  disabled={formData.status === 'Deactivated'}
+                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-900 disabled:bg-slate-100 disabled:text-slate-500"
+                >
+                  {formData.status === 'Deactivated' ? (
+                    <option value="Deactivated">Deactivated</option>
+                  ) : (
+                    <>
+                      <option value="Draft">Draft</option>
+                      <option value="Active">Active</option>
+                      <option value="Expired">Expired</option>
+                      <option value="Cancelled">Cancelled</option>
+                      <option value="Deactivated">Deactivated</option>
+                    </>
+                  )}
+                </select>
+                {formData.status === 'Deactivated' ? (
+                  <p className="text-xs text-red-600 font-semibold mt-1">
+                    This agreement is deactivated and cannot be reactivated.
+                  </p>
+                ) : null}
               </div>
             </div>
 

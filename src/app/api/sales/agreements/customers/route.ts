@@ -34,8 +34,8 @@ export async function GET(request: NextRequest) {
       // Filter by specific status when provided
       whereClause.status = status;
     } else {
-      // Default: exclude Void and Cancelled
-      whereClause.status = { notIn: ['Void', 'Cancelled'] };
+      // Default: exclude Void, Cancelled, and Deactivated
+      whereClause.status = { notIn: ['Void', 'Cancelled', 'Deactivated'] };
     }
 
     if (division) {

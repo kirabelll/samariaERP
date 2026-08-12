@@ -112,17 +112,24 @@ export async function PUT(
     // Status transition validation for the approval workflow
     if (updateData.status && updateData.status !== record.status) {
       const allowedTransitions: Record<string, string[]> = {
-        Draft: ['Active', 'Rejected', 'Cancelled'],
-        Active: ['Expired', 'Cancelled', 'Void'],
-        Rejected: ['Draft'],
-        Expired: ['Active'],
-        Cancelled: ['Active'],
+        Draft: ['Active', 'Rejected', 'Cancelled', 'Deactivated'],
+        Active: ['Expired', 'Cancelled', 'Void', 'Deactivated'],
+        Rejected: ['Draft', 'Deactivated'],
+        Expired: ['Active', 'Cancelled', 'Deactivated'],
+        Cancelled: ['Active', 'Deactivated'],
+        Deactivated: [],
       };
 
       const allowed = allowedTransitions[record.status] || [];
       if (!allowed.includes(updateData.status)) {
         return NextResponse.json(
-          { success: false, error: `Cannot transition from "${record.status}" to "${updateData.status}". Allowed: ${allowed.join(', ') || 'none'}` },
+          {
+            success: false,
+            error:
+              record.status === 'Deactivated'
+                ? 'Deactivated agreements cannot be reactivated'
+                : `Cannot transition from "${record.status}" to "${updateData.status}". Allowed: ${allowed.join(', ') || 'none'}`,
+          },
           { status: 400 }
         );
       }

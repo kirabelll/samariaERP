@@ -139,16 +139,50 @@ export default function TransporterAgreementEditEditPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {["agreementNo","transporterId","productType","validFrom","validTo","terms","status"].map((field) => (
                   <div key={field}>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">
+                    <label className="block text-sm font-medium text-slate-700 mb-2 capitalize">
                       {field.replace(/([A-Z])/g, ' $1').trim()}
                     </label>
-                    <Input
-                      type="text"
-                      name={field}
-                      value={formData[field] !== undefined ? String(formData[field]) : ''}
-                      onChange={handleChange}
-                      placeholder={field}
-                    />
+                    {field === 'status' ? (
+                      <div>
+                        <select
+                          name="status"
+                          value={formData.status || ''}
+                          onChange={handleChange}
+                          disabled={data?.status === 'Deactivated'}
+                          className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-900 disabled:bg-slate-100 disabled:text-slate-500"
+                        >
+                          {data?.status === 'Deactivated' ? (
+                            <option value="Deactivated">Deactivated</option>
+                          ) : (
+                            <>
+                              <option value="Draft">Draft</option>
+                              <option value="Active">Active</option>
+                              <option value="Expired">Expired</option>
+                              <option value="Cancelled">Cancelled</option>
+                              <option value="Deactivated">Deactivated</option>
+                            </>
+                          )}
+                        </select>
+                        {data?.status === 'Deactivated' ? (
+                          <p className="text-xs text-red-600 font-semibold mt-1">
+                            This agreement is deactivated and cannot be reactivated.
+                          </p>
+                        ) : formData.status === 'Deactivated' ? (
+                          <p className="text-xs text-amber-600 font-medium mt-1">
+                            Warning: Deactivating an agreement is permanent and cannot be reactivated once saved.
+                          </p>
+                        ) : null}
+                      </div>
+                    ) : (
+                      <Input
+                        type={field.toLowerCase().includes('date') ? 'date' : 'text'}
+                        name={field}
+                        value={formData[field] !== undefined ? String(formData[field]) : ''}
+                        onChange={handleChange}
+                        placeholder={field}
+                        disabled={field === 'agreementNo'}
+                      />
+                    )}
                   </div>
                 ))}
               </div>

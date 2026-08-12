@@ -91,6 +91,7 @@ export default function EditSupplierAgreementPage() {
         setFormData({
           supplierId: result.data.supplierId,
           division: result.data.division,
+          status: result.data.status || 'Draft',
           validFrom: result.data.validFrom?.split('T')[0],
           validTo: result.data.validTo?.split('T')[0],
           terms: result.data.terms || '',
@@ -335,6 +336,7 @@ export default function EditSupplierAgreementPage() {
       const submitData = {
         supplierId: formData.supplierId,
         division: formData.division,
+        status: formData.status,
         items: itemsData,
         totalAmount: calculateTotalAmount(),
         validFrom: formData.validFrom,
@@ -507,7 +509,38 @@ export default function EditSupplierAgreementPage() {
                 />
                 <p className="text-xs text-slate-500 mt-1">Where materials are loaded/picked up from the supplier</p>
               </div>
-              {/* Offloading site is managed in Sales Agreements, not supplier agreements */}
+
+              <div>
+                <label className="block text-sm font-medium text-slate-900 mb-3">Status</label>
+                <select
+                  name="status"
+                  value={formData.status || ''}
+                  onChange={handleInputChange}
+                  disabled={data?.status === 'Deactivated'}
+                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-900 disabled:bg-slate-100 disabled:text-slate-500"
+                >
+                  {data?.status === 'Deactivated' ? (
+                    <option value="Deactivated">Deactivated</option>
+                  ) : (
+                    <>
+                      <option value="Draft">Draft</option>
+                      <option value="Active">Active</option>
+                      <option value="Expired">Expired</option>
+                      <option value="Cancelled">Cancelled</option>
+                      <option value="Deactivated">Deactivated</option>
+                    </>
+                  )}
+                </select>
+                {data?.status === 'Deactivated' ? (
+                  <p className="text-xs text-red-600 font-semibold mt-1">
+                    This agreement is deactivated and cannot be reactivated.
+                  </p>
+                ) : formData.status === 'Deactivated' ? (
+                  <p className="text-xs text-amber-600 font-medium mt-1">
+                    Warning: Deactivating an agreement is permanent and cannot be reactivated once saved.
+                  </p>
+                ) : null}
+              </div>
             </div>
 
             <div>

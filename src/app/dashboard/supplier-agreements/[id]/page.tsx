@@ -151,20 +151,8 @@ export default function SupplierAgreementDetailPage() {
   };
 
   const getBadgeStatus = (status?: string) => {
-    switch (status) {
-      case 'Active':
-        return 'Active';
-      case 'Draft':
-        return 'Draft';
-      case 'Rejected':
-        return 'Rejected';
-      case 'Expired':
-        return 'Rejected';
-      case 'Cancelled':
-        return 'Rejected';
-      default:
-        return 'Draft';
-    }
+    if (!status) return 'Draft';
+    return status;
   };
 
   const formatDate = (date?: string) => {
@@ -406,6 +394,11 @@ export default function SupplierAgreementDetailPage() {
                 This agreement has been rejected. It can be revised and resubmitted.
               </div>
             )}
+            {data.status === 'Deactivated' && (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4 text-sm text-red-800 font-medium">
+                This agreement is deactivated and cannot be reactivated.
+              </div>
+            )}
           </div>
 
           {/* Status Actions */}
@@ -471,6 +464,17 @@ export default function SupplierAgreementDetailPage() {
                   isLoading={updatingStatus}
                 >
                   Reactivate Agreement
+                </Button>
+              )}
+              {data.status !== 'Deactivated' && (
+                <Button
+                  variant="outline"
+                  size="md"
+                  onClick={() => handleStatusChange('Deactivated')}
+                  isLoading={updatingStatus}
+                  className="text-red-600 border-red-300 hover:bg-red-50"
+                >
+                  Deactivate Agreement
                 </Button>
               )}
             </div>

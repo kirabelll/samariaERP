@@ -11,6 +11,7 @@ import { useApiList } from '@/hooks/useApi';
 interface AggregateDelivery {
   id: string;
   dispatchNo: string;
+  padNumber?: string | null;
   customerId: string;
   supplierId: string;
   transporterId: string;
@@ -73,6 +74,11 @@ export default function AggregateOperationsPage() {
 
   const columns: ColumnDef<AggregateDelivery>[] = [
     { header: 'Dispatch No', accessor: 'dispatchNo', sortable: true },
+    {
+      header: 'Pad / Receipt No',
+      accessor: 'padNumber',
+      render: (_val, row) => row.padNumber || '-',
+    },
     {
       header: 'Customer',
       accessor: 'customer',
@@ -153,7 +159,7 @@ export default function AggregateOperationsPage() {
       <Card>
         <CardBody>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            <Input placeholder="Search by dispatch no..." value={searchTerm} onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }} />
+            <Input placeholder="Search by dispatch or pad/receipt no..." value={searchTerm} onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }} />
             <Select
               options={[
                 { value: '', label: 'All Statuses' },

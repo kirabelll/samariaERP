@@ -14,12 +14,24 @@ export async function GET(request: NextRequest) {
     const startDate = searchParams.get('startDate') || '';
     const endDate = searchParams.get('endDate') || '';
 
+    const sortBy = searchParams.get('sortBy') || 'dispatchNo';
+    const sortOrder = searchParams.get('sortOrder') || 'asc';
+
+    let orderByClause: any = { dispatchNo: 'asc' };
+    if (sortBy) {
+      const validFields = ['dispatchNo', 'dispatchDate', 'padNumber', 'loadedVolume', 'deliveredVolume', 'status'];
+      if (validFields.includes(sortBy)) {
+        orderByClause = { [sortBy]: sortOrder.toLowerCase() === 'desc' ? 'desc' : 'asc' };
+      }
+    }
+
     const skip = (page - 1) * limit;
 
     const whereClause: any = {};
     if (search) {
       whereClause.OR = [
         { dispatchNo: { contains: search, mode: 'insensitive' } },
+        { padNumber: { contains: search, mode: 'insensitive' } },
       ];
     }
     if (status) {
@@ -44,7 +56,7 @@ export async function GET(request: NextRequest) {
           transporter: true,
           truck: true,
         },
-        orderBy: { dispatchDate: 'desc' },
+        orderBy: orderByClause,
       }),
       prisma.aggregateDelivery.count({ where: whereClause }),
     ]);

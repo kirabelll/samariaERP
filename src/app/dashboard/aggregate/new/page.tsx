@@ -326,8 +326,8 @@ Check console for detailed breakdown.`);
               try {
                 const agrItems = typeof agr.items === 'string' ? JSON.parse(agr.items) : (agr.items || []);
                 agrItems.forEach((ai: any) => {
-                  const targetItemId = ai.itemId || ai.id;
-                  if (targetItemId) {
+                  const targetItemId = ai.itemId || (ai.id && dbItemMap.has(ai.id) ? ai.id : null);
+                  if (targetItemId && dbItemMap.has(targetItemId)) {
                     // Track which items belong to which customer
                     if (!custItemsMap.has(custId)) {
                       custItemsMap.set(custId, new Set());
@@ -335,15 +335,13 @@ Check console for detailed breakdown.`);
                     custItemsMap.get(custId)!.add(targetItemId);
 
                     const dbItem = dbItemMap.get(targetItemId);
-                    const itemName = dbItem?.name || ai.itemName || ai.name || ai.description || targetItemId;
-
-                    if (!itemMap.has(targetItemId) || itemMap.get(targetItemId)?.name === 'Unknown') {
+                    if (dbItem && (!itemMap.has(targetItemId) || itemMap.get(targetItemId)?.name === 'Unknown')) {
                       itemMap.set(targetItemId, {
                         id: targetItemId,
-                        name: itemName,
-                        code: dbItem?.code || ai.itemCode || '',
-                        unit: dbItem?.unit || ai.unit || 'm3',
-                        category: dbItem?.category || ai.type || 'regular',
+                        name: dbItem.name || ai.itemName || ai.name || ai.description || targetItemId,
+                        code: dbItem.code || ai.itemCode || '',
+                        unit: dbItem.unit || ai.unit || 'm3',
+                        category: dbItem.category || ai.type || 'regular',
                       });
                     }
                   }

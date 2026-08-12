@@ -80,6 +80,12 @@ export default function EditAggregateDispatchPage() {
   const [transporters, setTransporters] = useState<Transporter[]>([]);
   const [trucks, setTrucks] = useState<Truck[]>([]);
   const [items, setItems] = useState<Item[]>([]);
+  const [filteredItems, setFilteredItems] = useState<Item[]>([]);
+
+  // Map: customerId → Set of itemIds from their AGGREGATE sales agreements
+  const [customerAgreementItems, setCustomerAgreementItems] = useState<Map<string, Set<string>>>(new Map());
+  // Map: supplierId → Set of itemIds from their AGGREGATE supplier agreements
+  const [supplierAgreementItems, setSupplierAgreementItems] = useState<Map<string, Set<string>>>(new Map());
 
   // Form state
   const [formData, setFormData] = useState({
@@ -112,12 +118,16 @@ export default function EditAggregateDispatchPage() {
           suppliersRes,
           transportersRes,
           itemsRes,
+          custAgreementsRes,
+          suppAgreementsRes,
         ] = await Promise.all([
           fetch(`/api/aggregate/${id}`),
           fetch('/api/customers?limit=1000'),
           fetch('/api/suppliers?limit=1000'),
           fetch('/api/transporters?status=Active&limit=1000'),
-          fetch('/api/items?division=AGGREGATE&limit=1000'),
+          fetch('/api/items?limit=1000'),
+          fetch('/api/sales/agreements?status=Active&division=AGGREGATE&limit=1000'),
+          fetch('/api/supplier-agreements/all?status=Active'),
         ]);
 
         const deliveryData = await deliveryRes.json();
@@ -153,11 +163,70 @@ export default function EditAggregateDispatchPage() {
           }
         }
 
-        // Populate items
+        // Populate items database map
+        const dbItemMap = new Map<string, Item>();
         if (itemsRes.ok) {
           const itemData = await itemsRes.json();
-          setItems(itemData.data || []);
+          (itemData.data || []).forEach((dbItem: any) => {
+            dbItemMap.set(dbItem.id, {
+              id: dbItem.id,
+              name: dbItem.name || 'Unknown',
+              code: dbItem.code || '',
+              unit: dbItem.unit || 'm3',
+            });
+          });
         }
+
+        // Parse customer agreement items (customerId -> Set of itemIds from Item table)
+        const custItemsMap = new Map<string, Set<string>>();
+        if (custAgreementsRes.ok) {
+          const custAgrData = await custAgreementsRes.json();
+          (custAgrData.data || []).forEach((agr: any) => {
+            const custId = agr.customerId || agr.customer?.id;
+            if (!custId) return;
+            try {
+              const agrItems = typeof agr.items === 'string' ? JSON.parse(agr.items) : (agr.items || []);
+              agrItems.forEach((ai: any) => {
+                // Strictly use ai.itemId (or ai.id if it matches a valid Item.id in dbItemMap)
+                const targetItemId = ai.itemId || (ai.id && dbItemMap.has(ai.id) ? ai.id : null);
+                if (targetItemId && dbItemMap.has(targetItemId)) {
+                  if (!custItemsMap.has(custId)) {
+                    custItemsMap.set(custId, new Set());
+                  }
+                  custItemsMap.get(custId)!.add(targetItemId);
+                }
+              });
+            } catch { /* ignore */ }
+          });
+        }
+        setCustomerAgreementItems(custItemsMap);
+
+        // Parse supplier agreement items (supplierId -> Set of itemIds from Item table)
+        const suppItemsMap = new Map<string, Set<string>>();
+        if (suppAgreementsRes.ok) {
+          const suppAgrData = await suppAgreementsRes.json();
+          (suppAgrData.data || []).forEach((agr: any) => {
+            const suppId = agr.supplierId || agr.supplier?.id;
+            if (!suppId) return;
+            try {
+              const agrItems = typeof agr.items === 'string' ? JSON.parse(agr.items) : (agr.items || []);
+              agrItems.forEach((ai: any) => {
+                const targetItemId = ai.itemId || (ai.id && dbItemMap.has(ai.id) ? ai.id : null);
+                if (targetItemId && dbItemMap.has(targetItemId)) {
+                  if (!suppItemsMap.has(suppId)) {
+                    suppItemsMap.set(suppId, new Set());
+                  }
+                  suppItemsMap.get(suppId)!.add(targetItemId);
+                }
+              });
+            } catch { /* ignore */ }
+          });
+        }
+        setSupplierAgreementItems(suppItemsMap);
+
+        // Final items list strictly contains items from the Item database table
+        const allItemsList = Array.from(dbItemMap.values());
+        setItems(allItemsList);
 
         // Pre-fill form values
         setFormData({
@@ -189,6 +258,35 @@ export default function EditAggregateDispatchPage() {
     fetchAllData();
   }, [id]);
 
+  // Dynamically filter items list based on selected customer & supplier
+  useEffect(() => {
+    let available = [...items];
+
+    // Filter by customer's agreement items if customer is selected and has agreement items
+    if (formData.customerId && customerAgreementItems.has(formData.customerId)) {
+      const custItemIds = customerAgreementItems.get(formData.customerId)!;
+      const filteredByCust = available.filter(
+        (i) => custItemIds.has(i.id) || i.id === formData.itemId
+      );
+      if (filteredByCust.length > 0) {
+        available = filteredByCust;
+      }
+    }
+
+    // Intersect with supplier's agreement items if supplier is selected
+    if (formData.supplierId && supplierAgreementItems.has(formData.supplierId)) {
+      const suppItemIds = supplierAgreementItems.get(formData.supplierId)!;
+      const filteredBySupp = available.filter(
+        (i) => suppItemIds.has(i.id) || i.id === formData.itemId
+      );
+      if (filteredBySupp.length > 0) {
+        available = filteredBySupp;
+      }
+    }
+
+    setFilteredItems(available);
+  }, [formData.customerId, formData.supplierId, formData.itemId, items, customerAgreementItems, supplierAgreementItems]);
+
   // When transporter changes, update available trucks
   const handleTransporterChange = (transporterId: string) => {
     const selectedTransporter = transporters.find((t) => t.id === transporterId);
@@ -202,7 +300,19 @@ export default function EditAggregateDispatchPage() {
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
+    if (name === 'customerId') {
+      const newCustItemIds = customerAgreementItems.get(value);
+      setFormData((prev) => {
+        const isItemValid = !prev.itemId || !newCustItemIds || newCustItemIds.has(prev.itemId);
+        return {
+          ...prev,
+          customerId: value,
+          itemId: isItemValid ? prev.itemId : '',
+        };
+      });
+    } else {
+      setFormData((prev) => ({ ...prev, [name]: value }));
+    }
   };
 
   // Calculations
@@ -444,7 +554,14 @@ export default function EditAggregateDispatchPage() {
 
               {/* Item */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Item *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Item *
+                  {formData.customerId && customerAgreementItems.has(formData.customerId) && (
+                    <span className="ml-2 text-xs font-normal text-blue-600 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                      Filtered by customer agreement ({filteredItems.length})
+                    </span>
+                  )}
+                </label>
                 <select
                   name="itemId"
                   required
@@ -453,7 +570,7 @@ export default function EditAggregateDispatchPage() {
                   className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border px-3 py-2"
                 >
                   <option value="">Select Item</option>
-                  {items.map((i) => (
+                  {filteredItems.map((i) => (
                     <option key={i.id} value={i.id}>
                       {i.name} ({i.unit})
                     </option>

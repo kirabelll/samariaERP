@@ -93,8 +93,8 @@ export default function NewCementLiftingPage() {
       .catch(console.error)
       .finally(checkDone);
 
-    // Fetch customers from sales agreements
-    fetch('/api/sales/agreements/customers')
+    // Fetch customers from sales agreements (only active CEMENT division agreements)
+    fetch('/api/sales/agreements/customers?division=CEMENT&status=Active')
       .then(r => r.json())
       .then(json => {
         if (json.success && json.data) {
@@ -169,7 +169,7 @@ export default function NewCementLiftingPage() {
       .finally(() => setLoadingCoupons(false));
   }, [purchaseId, purchases]);
 
-  // Check if the selected customer has an Active sales agreement
+  // Check if the selected customer has an Active CEMENT sales agreement
   useEffect(() => {
     if (!customerId) {
       setCustomerHasActiveAgreement(true);
@@ -177,7 +177,7 @@ export default function NewCementLiftingPage() {
       return;
     }
     setCheckingAgreement(true);
-    fetch(`/api/sales/agreements?customerId=${customerId}&status=Active&limit=1`)
+    fetch(`/api/sales/agreements?customerId=${customerId}&status=Active&division=CEMENT&limit=1`)
       .then(r => r.json())
       .then(json => {
         if (json.success) {
@@ -372,27 +372,27 @@ export default function NewCementLiftingPage() {
         <CardBody className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Customer *</label>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Customer (Cement Sales Agreement) *</label>
               <select
                 value={customerId}
                 onChange={(e) => setCustomerId(e.target.value)}
                 className="block w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
                 required
               >
-                <option value="">Select Customer</option>
+                <option value="">Select Customer (Cement Agreement)</option>
                 {customers.map((c) => (
                   <option key={c.value} value={c.value}>{c.label}</option>
                 ))}
               </select>
               {!loadingData && customers.length === 0 && (
-                <p className="text-amber-600 text-xs mt-1">No customers with active sales agreements found.</p>
+                <p className="text-amber-600 text-xs mt-1">No customers with active Cement division sales agreements found.</p>
               )}
               {checkingAgreement && (
-                <p className="text-blue-600 text-xs mt-1">Checking agreement status...</p>
+                <p className="text-blue-600 text-xs mt-1">Checking Cement agreement status...</p>
               )}
               {customerId && !checkingAgreement && !customerHasActiveAgreement && (
                 <div className="bg-red-50 border border-red-300 rounded-lg px-3 py-2 mt-2 text-sm text-red-700 font-medium">
-                  This customer does not have an Active sales agreement. Lifting cannot be created.
+                  This customer does not have an Active Cement division sales agreement. Lifting cannot be created.
                 </div>
               )}
               {loadingCredit && customerId && (

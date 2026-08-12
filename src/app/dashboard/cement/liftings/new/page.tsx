@@ -71,8 +71,8 @@ export default function NewCementLiftingPage() {
       })
       .catch(console.error);
 
-    // Fetch customers from sales agreements (only customers with active agreements)
-    fetch('/api/sales/agreements/customers')
+    // Fetch customers from sales agreements (only customers with active CEMENT agreements)
+    fetch('/api/sales/agreements/customers?division=CEMENT&status=Active')
       .then(r => r.json())
       .then(json => {
         if (json.success) {
@@ -270,7 +270,7 @@ export default function NewCementLiftingPage() {
                 className="block w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
                 required
               >
-                <option value="">Select Customer</option>
+                <option value="">Select Customer (Cement Agreement)</option>
                 {customers.map((c) => (
                   <option key={c.value} value={c.value}>{c.label}</option>
                 ))}

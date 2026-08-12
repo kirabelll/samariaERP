@@ -168,11 +168,33 @@ export default function NewTransporterPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!validateForm()) {
+    let trucksToSubmit = [...formData.trucks];
+    // If the user typed a truck plate number but forgot to click "Add Truck"
+    if (trucksToSubmit.length === 0 && currentTruck.plateNo.trim()) {
+      const pendingTruck = { ...currentTruck, id: Date.now().toString() };
+      trucksToSubmit = [pendingTruck];
+      setFormData((prev) => ({ ...prev, trucks: trucksToSubmit }));
+    }
+
+    const newErrors: FormErrors = {};
+    if (!formData.companyName.trim()) {
+      newErrors.companyName = 'Company name is required';
+    }
+    if (!formData.phone.trim()) {
+      newErrors.phone = 'Phone is required';
+    }
+    if (trucksToSubmit.length === 0) {
+      newErrors.trucks = 'At least one truck is required. Please add a truck plate number.';
+    }
+
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors);
       return;
     }
 
     setIsSubmitting(true);
+    setErrors({});
+
     try {
       const payload = {
         companyName: formData.companyName,
@@ -184,9 +206,9 @@ export default function NewTransporterPage() {
         driverName: formData.driverName || null,
         associationId: formData.associationId || null,
         status: formData.status,
-        trucks: formData.trucks.map(({ id, ...truck }) => ({
+        trucks: trucksToSubmit.map(({ id, ...truck }) => ({
           ...truck,
-          capacity: truck.capacity ? parseFloat(truck.capacity) : null,
+          capacity: truck.capacity !== '' && !isNaN(Number(truck.capacity)) ? Number(truck.capacity) : null,
         })),
       };
 
@@ -199,9 +221,9 @@ export default function NewTransporterPage() {
       if (!data.success) throw new Error(data.error || 'Failed to create transporter');
       alert('Transporter created successfully!');
       router.push('/dashboard/transporters');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error submitting form:', error);
-      setErrors({ submit: 'Failed to create transporter' });
+      setErrors({ submit: error.message || 'Failed to create transporter' });
     } finally {
       setIsSubmitting(false);
     }

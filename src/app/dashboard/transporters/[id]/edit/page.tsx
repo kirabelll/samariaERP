@@ -137,9 +137,9 @@ export default function EditTransporterPage() {
       if (!data.success) throw new Error(data.error || 'Failed to update');
       alert('Transporter updated successfully!');
       router.push(`/dashboard/transporters/${transporterId}`);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error:', error);
-      setErrors({ submit: 'Failed to update transporter' });
+      setErrors({ submit: error.message || 'Failed to update transporter' });
     } finally { setIsSubmitting(false); }
   };
 

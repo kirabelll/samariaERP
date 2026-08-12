@@ -91,10 +91,52 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Check duplicate plate numbers within submission
+    const plateNumbers = trucks
+      .map((t: any) => (t.plateNo ? String(t.plateNo).trim() : ''))
+      .filter(Boolean);
+
+    const dupInInput = plateNumbers.filter(
+      (item, index) => plateNumbers.indexOf(item) !== index
+    );
+    if (dupInInput.length > 0) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Duplicate plate numbers in submission: ${Array.from(new Set(dupInInput)).join(', ')}`,
+        },
+        { status: 400 }
+      );
+    }
+
+    // Check if plate numbers already exist in database
+    const existingTrucks = await prisma.truck.findMany({
+      where: { plateNo: { in: plateNumbers, mode: 'insensitive' } },
+      select: { plateNo: true },
+    });
+
+    if (existingTrucks.length > 0) {
+      const existingPlates = existingTrucks.map((t) => t.plateNo).join(', ');
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Truck(s) with plate number(s) [${existingPlates}] already exist in the database.`,
+        },
+        { status: 400 }
+      );
+    }
+
     // Create transporter and trucks in a transaction
     const result = await prisma.$transaction(async (tx) => {
       const count = await tx.transporter.count();
-      const code = generateCode('TRA', count + 1);
+      let nextSeq = count + 1;
+      let code = generateCode('TRA', nextSeq);
+
+      // Guarantee code uniqueness
+      while (await tx.transporter.findUnique({ where: { code } })) {
+        nextSeq++;
+        code = generateCode('TRA', nextSeq);
+      }
 
       const transporter = await tx.transporter.create({
         data: {
@@ -121,10 +163,13 @@ export async function POST(request: NextRequest) {
         trucks.map((truck: any) =>
           tx.truck.create({
             data: {
-              plateNo: truck.plateNo,
+              plateNo: String(truck.plateNo).trim(),
               transporterId: transporter.id,
               truckType: truck.truckType || null,
-              capacity: truck.capacity || null,
+              capacity:
+                truck.capacity !== null && truck.capacity !== undefined && !isNaN(Number(truck.capacity))
+                  ? Number(truck.capacity)
+                  : null,
               capacityUnit: truck.capacityUnit || null,
               driverName: truck.driverName || null,
               ownerName: truck.ownerName || null,
@@ -145,8 +190,16 @@ export async function POST(request: NextRequest) {
     );
   } catch (error: any) {
     console.error('Error creating transporter:', error);
+    if (error.code === 'P2002') {
+      const target = error.meta?.target;
+      const targetField = Array.isArray(target) ? target.join(', ') : target || 'field';
+      return NextResponse.json(
+        { success: false, error: `A record with this ${targetField} already exists.` },
+        { status: 400 }
+      );
+    }
     return NextResponse.json(
-      { success: false, error: error.message },
+      { success: false, error: error.message || 'Failed to create transporter' },
       { status: 500 }
     );
   }

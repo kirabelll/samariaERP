@@ -171,3 +171,61 @@ export async function PATCH(
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }
+
+// DELETE — delete a weighbridge entry
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const entry = await prisma.cementWeighbridge.findUnique({
+      where: { id: params.id },
+    });
+
+    if (!entry) {
+      return NextResponse.json({ success: false, error: 'Entry not found' }, { status: 404 });
+    }
+
+    await prisma.cementWeighbridge.delete({
+      where: { id: params.id },
+    });
+
+    // If this was a BUYER weighbridge linked to a lifting, update the lifting's buyerWeighbridgeQty
+    if (entry.liftingId && entry.weighbridgeType === 'BUYER') {
+      try {
+        const buyerEntries = await prisma.cementWeighbridge.findMany({
+          where: {
+            liftingId: entry.liftingId,
+            weighbridgeType: 'BUYER',
+            verified: true,
+          },
+          select: { netWeight: true },
+        });
+
+        const totalBuyerWeight = buyerEntries.reduce((sum, e) => sum + Number(e.netWeight), 0);
+        const lifting = await prisma.cementLifting.findUnique({
+          where: { id: entry.liftingId },
+          select: { factoryWeight: true },
+        });
+
+        if (lifting) {
+          const shortage = Number(lifting.factoryWeight) - totalBuyerWeight;
+          await prisma.cementLifting.update({
+            where: { id: entry.liftingId },
+            data: {
+              buyerWeighbridgeQty: totalBuyerWeight,
+              shortageQty: shortage > 0 ? shortage : 0,
+            },
+          });
+        }
+      } catch (err) {
+        console.error('[Weighbridge DELETE] Failed to recalculate lifting buyer weight:', err);
+      }
+    }
+
+    return NextResponse.json({ success: true, message: 'Weighbridge entry deleted successfully' });
+  } catch (error: any) {
+    console.error('[Weighbridge DELETE] Error:', error);
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  }
+}

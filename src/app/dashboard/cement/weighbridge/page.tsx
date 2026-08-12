@@ -185,6 +185,24 @@ export default function WeighbridgeRegister() {
     }
   };
 
+  const handleDelete = async (entryId: string, weighbridgeNo: string) => {
+    if (!confirm(`Are you sure you want to delete weighbridge entry "${weighbridgeNo}"? This action cannot be undone.`)) return;
+    try {
+      const res = await fetch(`/api/cement/weighbridge/${entryId}`, {
+        method: 'DELETE',
+      });
+      const result = await res.json();
+      if (result.success) {
+        alert('Weighbridge entry deleted successfully');
+        fetchEntries();
+      } else {
+        alert(result.error || 'Failed to delete weighbridge entry');
+      }
+    } catch (err) {
+      alert('Error deleting weighbridge entry');
+    }
+  };
+
   const formatDate = (dateString: string) => {
     try {
       return new Date(dateString).toLocaleDateString();
@@ -290,6 +308,18 @@ export default function WeighbridgeRegister() {
           className="px-3 py-1 text-xs font-medium rounded-full bg-orange-100 text-orange-700 hover:bg-orange-200 transition-colors cursor-pointer"
         >
           Pending — Click to Verify
+        </button>
+      ),
+    },
+    {
+      header: 'Actions',
+      accessor: 'id' as const,
+      render: (_: string, row: WeighbridgeEntry) => (
+        <button
+          onClick={() => handleDelete(row.id, row.weighbridgeNo)}
+          className="px-3 py-1 text-xs font-medium rounded-md bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 transition-colors cursor-pointer"
+        >
+          Delete
         </button>
       ),
     },

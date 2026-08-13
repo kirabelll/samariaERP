@@ -218,11 +218,12 @@ export async function GET(request: NextRequest) {
         const parsed = typeof agr.items === 'string' ? JSON.parse(agr.items) : (agr.items as any[] || []);
         if (Array.isArray(parsed)) {
           parsed.forEach((item: any) => {
-            if (item.itemId && item.unitPrice) {
+            const itemTotal = item.amount ?? item.totalAmount ?? item.unitPrice;
+            if (item.itemId && itemTotal) {
               const priceKey = `${agr.supplierId}_${item.itemId}`;
               // Only set if not already set (first = latest agreement wins)
               if (!supplierPriceMap.has(priceKey)) {
-                supplierPriceMap.set(priceKey, item.unitPrice);
+                supplierPriceMap.set(priceKey, itemTotal);
               }
             }
           });

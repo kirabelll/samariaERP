@@ -24,8 +24,8 @@ export async function GET(
       );
     }
 
-    // Resolve customer and supplier names from their IDs
-    const [customer, supplier, item] = await Promise.all([
+    // Resolve customer and supplier names from their IDs, plus active agreement prices
+    const [customer, supplier, item, salesAgr, suppAgr] = await Promise.all([
       prisma.customer.findUnique({
         where: { id: delivery.customerId },
         select: { id: true, companyName: true, code: true },
@@ -38,13 +38,62 @@ export async function GET(
         where: { id: delivery.itemId },
         select: { id: true, name: true, code: true, unit: true },
       }),
+      prisma.salesAgreement.findFirst({
+        where: {
+          customerId: delivery.customerId,
+          status: { notIn: ['Void', 'Cancelled'] },
+        },
+        select: { items: true },
+        orderBy: { createdAt: 'desc' },
+      }),
+      prisma.supplierAgreement.findFirst({
+        where: {
+          supplierId: delivery.supplierId,
+          status: { notIn: ['Void', 'Cancelled'] },
+        },
+        select: { items: true },
+        orderBy: { createdAt: 'desc' },
+      }),
     ]);
+
+    let customerPrice = delivery.aggregateValue;
+    if (salesAgr?.items) {
+      try {
+        const parsed = typeof salesAgr.items === 'string' ? JSON.parse(salesAgr.items) : (salesAgr.items as any[] || []);
+        const matched = parsed.find((i: any) => (i.itemId || i.id) === delivery.itemId);
+        if (matched) {
+          customerPrice = matched.unitPrice ?? matched.amount ?? matched.totalAmount ?? customerPrice;
+        }
+      } catch { /* ignore */ }
+    }
+
+    let supplierPrice = delivery.aggregateValue;
+    if (suppAgr?.items) {
+      try {
+        const parsed = typeof suppAgr.items === 'string' ? JSON.parse(suppAgr.items) : (suppAgr.items as any[] || []);
+        const matched = parsed.find((i: any) => (i.itemId || i.id) === delivery.itemId);
+        if (matched) {
+          supplierPrice = matched.amount ?? matched.totalAmount ?? matched.unitPrice ?? supplierPrice;
+        }
+      } catch { /* ignore */ }
+    }
+
+    const loadedVol = delivery.loadedVolume || 0;
+    const deliveredVol = delivery.deliveredVolume ?? delivery.loadedVolume ?? 0;
+    const customerReceivable = loadedVol * customerPrice;
+    const supplierPayable = deliveredVol * supplierPrice;
+    const netAmount = customerReceivable - supplierPayable;
 
     const data = {
       ...delivery,
       customer,
       supplier,
       item,
+      customerPrice,
+      supplierPrice,
+      customerReceivable,
+      supplierPayable,
+      netAmount,
     };
 
     return NextResponse.json({ success: true, data });

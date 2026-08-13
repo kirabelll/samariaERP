@@ -30,6 +30,11 @@ interface DeliveryData {
   status: string;
   dispatchDate: string;
   deliveryDate: string | null;
+  customerPrice?: number;
+  supplierPrice?: number;
+  customerReceivable?: number;
+  supplierPayable?: number;
+  netAmount?: number;
   customer: {
     id: string;
     companyName: string;
@@ -566,38 +571,88 @@ export default function AggregateDetailPage() {
           <h2 className="text-lg font-semibold text-slate-900">Financial Summary</h2>
         </CardHeader>
         <CardBody>
-          <div className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
-                <label className="block text-xs font-medium text-slate-600 mb-1">Transport Rate (ETB/m³)</label>
-                <p className="text-2xl font-bold text-slate-900">{delivery.transportRate.toFixed(2)}</p>
-              </div>
-              <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
-                <label className="block text-xs font-medium text-slate-600 mb-1">Aggregate Value (ETB/m³)</label>
-                <p className="text-2xl font-bold text-slate-900">{delivery.aggregateValue.toFixed(2)}</p>
-              </div>
-            </div>
+          {(() => {
+            const custPrice = delivery.customerPrice ?? delivery.aggregateValue;
+            const suppPrice = delivery.supplierPrice ?? delivery.aggregateValue;
+            const loadedVol = delivery.loadedVolume || 0;
+            const deliveredVol = delivery.deliveredVolume ?? delivery.loadedVolume ?? 0;
+            const custReceivable = loadedVol * custPrice;
+            const suppPayable = deliveredVol * suppPrice;
+            const netMatAmount = custReceivable - suppPayable;
 
-            <div className="border-t pt-4 space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
-                  <label className="block text-xs font-medium text-slate-600 mb-1">Gross Truck Fee (ETB)</label>
-                  <p className="text-2xl font-bold text-slate-900">{Number(delivery.grossTruckFee).toLocaleString('en-US')}</p>
-                </div>
-                {delivery.shortageDeduction !== null && (
-                  <div className="bg-red-50 p-4 rounded-lg border border-red-200">
-                    <label className="block text-xs font-medium text-slate-600 mb-1">Shortage Deduction (ETB)</label>
-                    <p className="text-2xl font-bold text-red-600">{Number(delivery.shortageDeduction).toLocaleString('en-US')}</p>
+            return (
+              <div className="space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Transport Rate (ETB/m³)</label>
+                    <p className="text-2xl font-bold text-slate-900">{delivery.transportRate.toFixed(2)}</p>
                   </div>
-                )}
-              </div>
+                  <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Total Amount (ETB)</label>
+                    <p className="text-2xl font-bold text-slate-900">
+                      {(deliveredVol * delivery.aggregateValue).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </p>
+                  </div>
+                </div>
 
-              <div className="bg-green-50 p-4 rounded-lg border border-green-200">
-                <label className="block text-sm font-medium text-slate-600 mb-2">Net Truck Payment (ETB)</label>
-                <p className="text-3xl font-bold text-green-700">{Number(delivery.netTruckPayment).toLocaleString('en-US')}</p>
+                {/* Accounts Receivable & Payable */}
+                <div className="border-t pt-4 space-y-3">
+                  <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Material Accounts Summary</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="bg-emerald-50 p-4 rounded-lg border border-emerald-200">
+                      <label className="block text-xs font-medium text-emerald-800 mb-1">Customer Receivable (ETB)</label>
+                      <p className="text-2xl font-bold text-emerald-900">
+                        {custReceivable.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </p>
+                      <p className="text-xs text-emerald-700 mt-1">
+                        Loaded Vol ({loadedVol.toFixed(2)} m³) × {custPrice.toFixed(2)} ETB/m³
+                      </p>
+                    </div>
+
+                    <div className="bg-amber-50 p-4 rounded-lg border border-amber-200">
+                      <label className="block text-xs font-medium text-amber-800 mb-1">Supplier Payable (ETB)</label>
+                      <p className="text-2xl font-bold text-amber-900">
+                        {suppPayable.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </p>
+                      <p className="text-xs text-amber-700 mt-1">
+                        Delivered Vol ({deliveredVol.toFixed(2)} m³) × {suppPrice.toFixed(2)} ETB/m³
+                      </p>
+                    </div>
+
+                    <div className="bg-indigo-50 p-4 rounded-lg border border-indigo-200">
+                      <label className="block text-xs font-medium text-indigo-800 mb-1">Net Material Amount (ETB)</label>
+                      <p className={`text-2xl font-bold ${netMatAmount >= 0 ? 'text-indigo-900' : 'text-red-600'}`}>
+                        {netMatAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </p>
+                      <p className="text-xs text-indigo-700 mt-1">Customer Receivable − Supplier Payable</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Transport Fees */}
+                <div className="border-t pt-4 space-y-4">
+                  <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Transport Fee & Payment</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
+                      <label className="block text-xs font-medium text-slate-600 mb-1">Gross Truck Fee (ETB)</label>
+                      <p className="text-2xl font-bold text-slate-900">{Number(delivery.grossTruckFee).toLocaleString('en-US')}</p>
+                    </div>
+                    {delivery.shortageDeduction !== null && (
+                      <div className="bg-red-50 p-4 rounded-lg border border-red-200">
+                        <label className="block text-xs font-medium text-slate-600 mb-1">Shortage Deduction (ETB)</label>
+                        <p className="text-2xl font-bold text-red-600">{Number(delivery.shortageDeduction).toLocaleString('en-US')}</p>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="bg-green-50 p-4 rounded-lg border border-green-200">
+                    <label className="block text-sm font-medium text-slate-600 mb-2">Net Truck Payment (ETB)</label>
+                    <p className="text-3xl font-bold text-green-700">{Number(delivery.netTruckPayment).toLocaleString('en-US')}</p>
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
+            );
+          })()}
         </CardBody>
       </Card>
 

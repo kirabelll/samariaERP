@@ -295,12 +295,12 @@ Check console for detailed breakdown.`);
                     });
                   }
 
-                  // Store price per agreement+item combo
-                  const itemPrice = ai.unitPrice ?? ai.amount ?? ai.price;
+                  // Store price per agreement+item combo: fetch Total Amount instead of Unit Price / Amount
+                  const itemPrice = ai.amount ?? ai.totalAmount ?? ai.unitPrice ?? ai.price;
                   const priceKey = `${agr.id}_${targetItemId}`;
                   if (itemPrice !== undefined && itemPrice !== null && !priceMap.has(priceKey)) {
                     priceMap.set(priceKey, parseFloat(itemPrice));
-                    console.log(`Stored price: ${priceKey} = ${itemPrice}`);
+                    console.log(`Stored price (Total Amount): ${priceKey} = ${itemPrice}`);
                   }
                 }
               });

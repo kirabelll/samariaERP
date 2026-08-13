@@ -38,6 +38,8 @@ export default function AggregateOperationsPage() {
   const { t } = useI18n();
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [deleteTarget, setDeleteTarget] = useState<AggregateDelivery | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -47,7 +49,11 @@ export default function AggregateOperationsPage() {
     page: currentPage,
     limit: pageSize,
     search: searchTerm,
-    filters: { status: statusFilter },
+    filters: {
+      status: statusFilter,
+      startDate: startDate,
+      endDate: endDate,
+    },
   });
 
   const handleDelete = async () => {
@@ -115,7 +121,7 @@ export default function AggregateOperationsPage() {
       render: (val) => val != null ? Number(val).toLocaleString('en-US', { minimumFractionDigits: 2 }) : '-',
     },
     {
-      header: 'Date',
+      header: 'Dispatch Date',
       accessor: 'dispatchDate',
       render: (val) => val ? new Date(val).toLocaleDateString() : '-',
     },
@@ -158,20 +164,64 @@ export default function AggregateOperationsPage() {
 
       <Card>
         <CardBody>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            <Input placeholder="Search by dispatch or pad/receipt no..." value={searchTerm} onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }} />
-            <Select
-              options={[
-                { value: '', label: 'All Statuses' },
-                { value: 'Dispatched', label: 'Dispatched' },
-                { value: 'Delivered', label: 'Delivered' },
-                { value: 'Verified', label: 'Verified' },
-                { value: 'Settled', label: 'Settled' },
-                { value: 'Cancelled', label: 'Cancelled' },
-              ]}
-              value={statusFilter}
-              onChange={(e) => { setStatusFilter(e.target.value); setCurrentPage(1); }}
-            />
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Search</label>
+              <Input
+                placeholder="Search by dispatch or pad/receipt no..."
+                value={searchTerm}
+                onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Status</label>
+              <Select
+                options={[
+                  { value: '', label: 'All Statuses' },
+                  { value: 'Dispatched', label: 'Dispatched' },
+                  { value: 'Delivered', label: 'Delivered' },
+                  { value: 'Verified', label: 'Verified' },
+                  { value: 'Settled', label: 'Settled' },
+                  { value: 'Cancelled', label: 'Cancelled' },
+                ]}
+                value={statusFilter}
+                onChange={(e) => { setStatusFilter(e.target.value); setCurrentPage(1); }}
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Dispatch Date From</label>
+              <Input
+                type="date"
+                value={startDate}
+                onChange={(e) => { setStartDate(e.target.value); setCurrentPage(1); }}
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Dispatch Date To</label>
+              <div className="flex gap-2">
+                <Input
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => { setEndDate(e.target.value); setCurrentPage(1); }}
+                />
+                {(startDate || endDate || statusFilter || searchTerm) && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setSearchTerm('');
+                      setStatusFilter('');
+                      setStartDate('');
+                      setEndDate('');
+                      setCurrentPage(1);
+                    }}
+                    title="Clear Filters"
+                  >
+                    Clear
+                  </Button>
+                )}
+              </div>
+            </div>
           </div>
           <div className="mt-4 text-sm text-gray-600">
             {loading ? 'Loading...' : `Showing ${data.length} of ${pagination.total} deliveries`}

@@ -25,6 +25,7 @@ export default function NewCementPurchasePage() {
   const [quantity, setQuantity] = useState('');
   const [unitPrice, setUnitPrice] = useState('');
   const [includeVat, setIncludeVat] = useState(false);
+  const [includeWithholding, setIncludeWithholding] = useState(true);
   const [purchaseDate, setPurchaseDate] = useState(new Date().toISOString().split('T')[0]);
   const [notes, setNotes] = useState('');
   const [loading, setLoading] = useState(false);
@@ -72,7 +73,8 @@ export default function NewCementPurchasePage() {
     ? parseFloat(quantity) * parseFloat(unitPrice)
     : 0;
   const vatAmount = includeVat ? subtotal * 0.15 : 0;
-  const grandTotal = subtotal + vatAmount;
+  const withholdingAmount = includeWithholding ? subtotal * 0.03 : 0;
+  const grandTotal = subtotal + vatAmount - withholdingAmount;
 
   const insufficientBalance = selectedBank ? grandTotal > selectedBank.balance : false;
   const canSubmit = !insufficientBalance || (isCredit && creditConfirmed);
@@ -107,6 +109,8 @@ export default function NewCementPurchasePage() {
           totalAmount: grandTotal,
           vatRate: includeVat ? 15 : 0,
           vatAmount: vatAmount,
+          withholdingRate: includeWithholding ? 3 : 0,
+          withholdingAmount: withholdingAmount,
           paymentDate: purchaseDate,
           status: 'Pending',
           isCredit: isCredit,
@@ -357,7 +361,7 @@ export default function NewCementPurchasePage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Purchase Date *</label>
                 <input
@@ -379,6 +383,20 @@ export default function NewCementPurchasePage() {
                   <div>
                     <span className="text-sm font-medium text-slate-700">Include 15% VAT</span>
                     <p className="text-xs text-slate-500">Check if factory charges VAT</p>
+                  </div>
+                </label>
+              </div>
+              <div className="flex items-end">
+                <label className="flex items-center gap-3 cursor-pointer bg-slate-50 rounded-xl px-4 py-3 w-full border border-slate-200">
+                  <input
+                    type="checkbox"
+                    checked={includeWithholding}
+                    onChange={(e) => setIncludeWithholding(e.target.checked)}
+                    className="w-5 h-5 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <div>
+                    <span className="text-sm font-medium text-slate-700">Deduct 3% Withholding</span>
+                    <p className="text-xs text-slate-500">Deduct 3% tax withholding</p>
                   </div>
                 </label>
               </div>
@@ -419,11 +437,17 @@ export default function NewCementPurchasePage() {
               {includeVat && (
                 <div className="flex justify-between text-sm">
                   <span className="text-slate-600">VAT (15%):</span>
-                  <span className="font-medium text-amber-700">{formatCurrency(vatAmount)}</span>
+                  <span className="font-medium text-amber-700">+{formatCurrency(vatAmount)}</span>
+                </div>
+              )}
+              {includeWithholding && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-slate-600">Withholding Tax Deduction (3%):</span>
+                  <span className="font-medium text-red-600">-{formatCurrency(withholdingAmount)}</span>
                 </div>
               )}
               <div className="border-t pt-3 flex justify-between">
-                <span className="text-[#1D1D1F] font-semibold text-lg">Grand Total:</span>
+                <span className="text-[#1D1D1F] font-semibold text-lg">Grand Total (Net Payable):</span>
                 <span className="text-2xl font-bold text-[#1D1D1F]">
                   {formatCurrency(grandTotal)}
                 </span>

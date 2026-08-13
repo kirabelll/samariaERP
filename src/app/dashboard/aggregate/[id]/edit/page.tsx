@@ -630,9 +630,9 @@ export default function EditAggregateDispatchPage() {
               </div>
               <div>
                 <Input
-                  label="Pad Number"
+                  label="Delivery Pad / Receipt Number (Mandatory for Verification)"
                   name="padNumber"
-                  placeholder="Enter pad number"
+                  placeholder="e.g. PAD-9842"
                   value={formData.padNumber}
                   onChange={handleInputChange}
                 />

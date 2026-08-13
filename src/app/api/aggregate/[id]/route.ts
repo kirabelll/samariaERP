@@ -86,6 +86,17 @@ export async function PUT(
     const transportRate = updateData.transportRate !== undefined ? parseFloat(updateData.transportRate) : delivery.transportRate;
     const aggregateValue = updateData.aggregateValue !== undefined ? parseFloat(updateData.aggregateValue) : delivery.aggregateValue;
 
+    // Enforce mandatory Delivery Pad / Receipt Number when setting status to Verified
+    if (updateData.status === 'Verified') {
+      const effectivePadNumber = updateData.padNumber !== undefined ? updateData.padNumber : delivery.padNumber;
+      if (!effectivePadNumber || !effectivePadNumber.trim()) {
+        return NextResponse.json(
+          { success: false, error: 'Cannot verify: Delivery Pad / Receipt Number is mandatory before verifying an aggregate dispatch.' },
+          { status: 400 }
+        );
+      }
+    }
+
     const truckIdToUse = updateData.truckId || delivery.truckId;
     let truckCapacity = 0;
     if (truckIdToUse) {
@@ -196,6 +207,15 @@ export async function PATCH(
     const updateData: any = {};
 
     if (status !== undefined) {
+      if (status === 'Verified') {
+        const effectivePadNumber = padNumber !== undefined ? padNumber : delivery.padNumber;
+        if (!effectivePadNumber || !effectivePadNumber.trim()) {
+          return NextResponse.json(
+            { success: false, error: 'Cannot verify: Delivery Pad / Receipt Number is mandatory before verifying an aggregate dispatch.' },
+            { status: 400 }
+          );
+        }
+      }
       updateData.status = status;
     }
 

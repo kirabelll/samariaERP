@@ -6,6 +6,7 @@ import { Card, CardHeader, CardBody, Button, Badge, Input } from '@/components/u
 interface Dispatch {
   id: string;
   dispatchNo: string;
+  padNumber?: string | null;
   transporter: { companyName: string; name?: string } | null;
   truck: { plateNo: string } | null;
   loadedVolume: number;
@@ -65,6 +66,11 @@ export default function ShortageVerificationPage() {
   };
 
   const handleVerify = async (dispatchId: string) => {
+    const dispatch = dispatches.find((d) => d.id === dispatchId);
+    if (!dispatch?.padNumber || !dispatch.padNumber.trim()) {
+      alert(`Cannot verify dispatch ${dispatch?.dispatchNo || ''}: Delivery Pad / Receipt Number is mandatory before verifying. Please open the dispatch details page and save the Pad Number first.`);
+      return;
+    }
     try {
       setVerifying(dispatchId);
       const response = await fetch(`/api/aggregate/${dispatchId}`, {
@@ -73,11 +79,12 @@ export default function ShortageVerificationPage() {
         body: JSON.stringify({ status: 'Verified' }),
       });
 
-      if (!response.ok) throw new Error('Verification failed');
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.error || 'Verification failed');
       await fetchDispatches();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error verifying dispatch:', error);
-      alert('Failed to verify dispatch');
+      alert(error.message || 'Failed to verify dispatch');
     } finally {
       setVerifying(null);
     }
@@ -138,7 +145,10 @@ export default function ShortageVerificationPage() {
                   <thead>
                     <tr style={{ borderBottom: '1px solid #E5E5E7', backgroundColor: '#F5F5F7' }}>
                       <th className="px-6 py-4 text-left font-semibold" style={{ color: '#1D1D1F' }}>
-                        Dispatch No
+                        Dispatch #
+                      </th>
+                      <th className="px-6 py-4 text-left font-semibold" style={{ color: '#1D1D1F' }}>
+                        Pad #
                       </th>
                       <th className="px-6 py-4 text-left font-semibold" style={{ color: '#1D1D1F' }}>
                         Transporter
@@ -171,6 +181,13 @@ export default function ShortageVerificationPage() {
                       <tr key={dispatch.id} style={{ borderBottom: '1px solid #E5E5E7' }}>
                         <td className="px-6 py-4 font-medium" style={{ color: '#1D1D1F' }}>
                           {dispatch.dispatchNo}
+                        </td>
+                        <td className="px-6 py-4 text-xs font-semibold">
+                          {dispatch.padNumber ? (
+                            <span className="text-slate-900 font-mono bg-slate-100 px-2 py-1 rounded">{dispatch.padNumber}</span>
+                          ) : (
+                            <span className="text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded">Missing Pad #</span>
+                          )}
                         </td>
                         <td className="px-6 py-4" style={{ color: '#1D1D1F' }}>
                           {dispatch.transporter?.companyName || dispatch.transporter?.name || '-'}

@@ -203,6 +203,11 @@ export default function AggregateDetailPage() {
   };
 
   const handleVerify = async () => {
+    const padNo = padNumberInput.trim() || delivery?.padNumber?.trim();
+    if (!padNo) {
+      alert('Cannot verify: Delivery Pad / Receipt Number is mandatory. Please enter and save the Delivery Pad / Receipt Number first.');
+      return;
+    }
     if (!confirm('Verify this delivery? This confirms the shortage calculations are correct.')) return;
     setUpdating(true);
     try {
@@ -415,20 +420,31 @@ export default function AggregateDetailPage() {
       </Card>
 
       {/* Pad Number */}
-      <Card>
+      <Card className={!delivery.padNumber ? 'border-2 border-amber-300 bg-amber-50/50' : ''}>
         <CardHeader>
-          <h2 className="text-lg font-semibold text-slate-900">Pad Number</h2>
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-slate-900">
+              Delivery Pad / Receipt Number <span className="text-red-500">*</span>
+            </h2>
+            {!delivery.padNumber && (
+              <span className="text-xs font-semibold text-amber-800 bg-amber-100 border border-amber-200 px-2.5 py-1 rounded-full">
+                Required for Verification
+              </span>
+            )}
+          </div>
         </CardHeader>
         <CardBody>
           <div className="flex items-end gap-3">
             <div className="flex-1">
-              <label className="block text-sm font-medium text-slate-700 mb-1">Delivery Pad / Receipt Number</label>
+              <label className="block text-sm font-medium text-slate-700 mb-1">
+                Delivery Pad / Receipt Number <span className="text-red-500">*</span>
+              </label>
               <input
                 type="text"
-                value={padNumberInput || delivery.padNumber || ''}
+                value={padNumberInput !== '' ? padNumberInput : (delivery.padNumber || '')}
                 onChange={(e) => setPadNumberInput(e.target.value)}
                 className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                placeholder="Enter pad number"
+                placeholder="e.g. PAD-9842"
               />
             </div>
             <Button
@@ -439,6 +455,11 @@ export default function AggregateDetailPage() {
               {savingPadNumber ? 'Saving...' : 'Save'}
             </Button>
           </div>
+          {!delivery.padNumber && (
+            <p className="text-xs text-amber-700 font-medium mt-2">
+              ⚠️ Mandatory: Aggregate dispatches cannot be verified without a Delivery Pad / Receipt Number.
+            </p>
+          )}
         </CardBody>
       </Card>
 

@@ -210,3 +210,155 @@ export async function PUT(
     );
   }
 }
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const lifting = await prisma.cementLifting.findUnique({
+      where: { id: params.id },
+      include: {
+        purchase: true,
+        invoices: { select: { id: true, invoiceNo: true, status: true } },
+      },
+    });
+
+    if (!lifting) {
+      return NextResponse.json(
+        { success: false, error: 'Cement lifting not found' },
+        { status: 404 }
+      );
+    }
+
+    // Check for linked active (non-cancelled) invoices
+    const activeInvoices = lifting.invoices.filter((inv) => inv.status !== 'Cancelled');
+    if (activeInvoices.length > 0) {
+      const invNumbers = activeInvoices.map((inv) => inv.invoiceNo).join(', ');
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Cannot delete lifting ${lifting.liftingNo} because it has active sales invoice(s) attached: ${invNumbers}. Cancel or delete the invoice(s) first.`,
+        },
+        { status: 400 }
+      );
+    }
+
+    // 1. Revert coupon status if used by this lifting
+    if (lifting.couponId) {
+      try {
+        const coupon = await prisma.coupon.findUnique({
+          where: { id: lifting.couponId },
+          select: { id: true, status: true },
+        });
+        if (coupon && coupon.status === 'USED') {
+          await prisma.coupon.update({
+            where: { id: lifting.couponId },
+            data: { status: 'COLLECTED', usedDate: null },
+          });
+        }
+      } catch (couponErr) {
+        console.error('[Lifting DELETE] Error reverting coupon status:', couponErr);
+      }
+    }
+
+    // 2. Revert factory balance
+    try {
+      const existingBalance = await prisma.cementBalance.findUnique({
+        where: {
+          purchaseId_factoryId: {
+            purchaseId: lifting.purchaseId,
+            factoryId: lifting.factoryId,
+          },
+        },
+      });
+
+      if (existingBalance) {
+        const newLiftedQty = Math.max(0, existingBalance.liftedQty - lifting.factoryWeight);
+        await prisma.cementBalance.update({
+          where: {
+            purchaseId_factoryId: {
+              purchaseId: lifting.purchaseId,
+              factoryId: lifting.factoryId,
+            },
+          },
+          data: {
+            liftedQty: newLiftedQty,
+            remainingQty: Math.max(0, existingBalance.initialQty - newLiftedQty),
+            lastUpdated: new Date(),
+          },
+        });
+      }
+    } catch (balErr) {
+      console.error('[Lifting DELETE] Error updating cement balance:', balErr);
+    }
+
+    // 3. Revert purchase balance remaining
+    try {
+      const remainingLifted = await prisma.cementLifting.aggregate({
+        where: {
+          purchaseId: lifting.purchaseId,
+          id: { not: params.id },
+          status: { in: ['Lifted', 'Delivered', 'Verified'] },
+        },
+        _sum: { factoryWeight: true },
+      });
+
+      const purchaseQty = Number(lifting.purchase?.quantityTons || 0);
+      const remainingLiftedWeight = Number(remainingLifted._sum.factoryWeight || 0);
+      const newPurchaseBalance = Math.max(0, purchaseQty - remainingLiftedWeight);
+
+      await prisma.cementPurchase.update({
+        where: { id: lifting.purchaseId },
+        data: {
+          balanceRemaining: newPurchaseBalance,
+          status: newPurchaseBalance > 0 ? 'Active' : 'Exhausted',
+        },
+      });
+    } catch (purchErr) {
+      console.error('[Lifting DELETE] Error updating purchase balance:', purchErr);
+    }
+
+    // 4. Delete auto-generated CementPenalty records linked to this lifting
+    try {
+      await prisma.cementPenalty.deleteMany({
+        where: { liftingId: params.id },
+      });
+    } catch (penErr) {
+      console.error('[Lifting DELETE] Error deleting linked penalties:', penErr);
+    }
+
+    // 5. Unlink weighbridge entries
+    try {
+      await prisma.cementWeighbridge.updateMany({
+        where: { liftingId: params.id },
+        data: { liftingId: null },
+      });
+    } catch (wbErr) {
+      console.error('[Lifting DELETE] Error unlinking weighbridge entries:', wbErr);
+    }
+
+    // 6. Delete the cement lifting record
+    await prisma.cementLifting.delete({
+      where: { id: params.id },
+    });
+
+    notify({
+      module: 'CEMENT',
+      event: 'cement_lifting_deleted',
+      details: { liftingNo: lifting.liftingNo, factoryWeight: lifting.factoryWeight },
+    });
+
+    return NextResponse.json({
+      success: true,
+      message: `Cement lifting ${lifting.liftingNo} deleted successfully`,
+    });
+  } catch (error: any) {
+    console.error('Error deleting cement lifting:', error);
+    return NextResponse.json(
+      { success: false, error: error.message },
+      { status: 500 }
+    );
+  }
+}
+

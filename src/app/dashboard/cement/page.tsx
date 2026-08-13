@@ -4,9 +4,9 @@ import React, { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useI18n } from '@/lib/i18n';
-import { Card, CardBody, CardHeader, Table, Badge, Button, Input, Select } from '@/components/ui';
+import { Card, CardBody, CardHeader, Table, Badge, Button, Input, Select, ConfirmDialog } from '@/components/ui';
 import type { ColumnDef } from '@/components/ui';
-import { useApiList } from '@/hooks/useApi';
+import { useApiList, apiDelete } from '@/hooks/useApi';
 import { StatCard } from '@/components/ui/Card';
 
 interface CementPurchase {
@@ -49,6 +49,9 @@ function CementOperationsContent() {
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 10;
 
+  const [deleteTarget, setDeleteTarget] = useState<CementLifting | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
   const purchases = useApiList<CementPurchase>('/api/cement/purchases', {
     page: activeTab === 'purchases' ? currentPage : 1,
     limit: pageSize,
@@ -62,6 +65,25 @@ function CementOperationsContent() {
     search: activeTab === 'liftings' ? searchTerm : '',
     filters: activeTab === 'liftings' ? { status: statusFilter } : {},
   });
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      const res = await apiDelete(`/api/cement/liftings/${deleteTarget.id}`);
+      if (res.success) {
+        setDeleteTarget(null);
+        liftings.refetch();
+        purchases.refetch();
+      } else {
+        alert(res.error || 'Failed to delete cement lifting');
+      }
+    } catch (err: any) {
+      alert(err.message || 'Error deleting cement lifting');
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   const purchaseColumns: ColumnDef<CementPurchase>[] = [
     { header: 'Purchase No', accessor: 'purchaseNo', sortable: true },
@@ -93,7 +115,20 @@ function CementOperationsContent() {
     { header: 'Status', accessor: 'status', render: (status) => <Badge status={status as any}>{status}</Badge> },
     {
       header: 'Actions', accessor: 'id',
-      render: (id) => <Link href={`/dashboard/cement/liftings/${id}`}><Button size="sm" variant="outline">View</Button></Link>,
+      render: (id, row) => (
+        <div className="flex items-center gap-2">
+          <Link href={`/dashboard/cement/liftings/${id}`}>
+            <Button size="sm" variant="outline">View</Button>
+          </Link>
+          <Button
+            size="sm"
+            variant="danger"
+            onClick={() => setDeleteTarget(row)}
+          >
+            Delete
+          </Button>
+        </div>
+      ),
     },
   ];
 
@@ -210,6 +245,19 @@ function CementOperationsContent() {
           )}
         </CardBody>
       </Card>
+
+      <ConfirmDialog
+        isOpen={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={handleDelete}
+        title="Delete Cement Lifting"
+        message={`Are you sure you want to delete lifting "${deleteTarget?.liftingNo}"? This action will revert factory balance and coupon status if applicable.`}
+        confirmText="Delete"
+        cancelText="Cancel"
+        isDangerous={true}
+        isLoading={deleting}
+      />
     </div>
   );
 }
+

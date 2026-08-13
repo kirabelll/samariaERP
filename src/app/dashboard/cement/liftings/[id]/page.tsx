@@ -2,9 +2,9 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
-import { Card, CardBody, CardHeader, Badge, Button, Input } from '@/components/ui';
-import { ChevronLeft, Loader, Truck, Factory, Weight, FileText, Receipt, User, CreditCard, AlertTriangle } from 'lucide-react';
+import { useParams, useRouter } from 'next/navigation';
+import { Card, CardBody, CardHeader, Badge, Button, Input, ConfirmDialog } from '@/components/ui';
+import { ChevronLeft, Loader, Truck, Factory, Weight, FileText, Receipt, User, CreditCard, AlertTriangle, Trash2 } from 'lucide-react';
 
 interface CementLifting {
   id: string;
@@ -47,18 +47,41 @@ interface CementLifting {
 
 export default function CementLiftingDetailPage() {
   const params = useParams();
+  const router = useRouter();
   const id = params.id as string;
 
   const [lifting, setLifting] = useState<CementLifting | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [transitioning, setTransitioning] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   // Buyer weighbridge data
   const [buyerWbEntries, setBuyerWbEntries] = useState<Array<{ weighbridgeNo: string; netWeight: number; verified: boolean; weighbridgeDate: string }>>([]);
   const [buyerWbTotal, setBuyerWbTotal] = useState<number>(0);
   const [manualBuyerQty, setManualBuyerQty] = useState<string>('');
   const [showDeliveryPanel, setShowDeliveryPanel] = useState(false);
+
+  const handleDelete = async () => {
+    try {
+      setDeleting(true);
+      const res = await fetch(`/api/cement/liftings/${id}`, {
+        method: 'DELETE',
+      });
+      const result = await res.json();
+      if (result.success) {
+        setShowDeleteModal(false);
+        router.push('/dashboard/cement?tab=liftings');
+      } else {
+        alert(result.error || 'Failed to delete lifting');
+      }
+    } catch (err) {
+      alert('Error deleting lifting');
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   const fetchBuyerWeighbridge = async () => {
     try {
@@ -286,6 +309,14 @@ export default function CementLiftingDetailPage() {
               {transitioning ? 'Updating...' : 'Mark as Verified'}
             </Button>
           )}
+          <Button
+            variant="danger"
+            size="sm"
+            onClick={() => setShowDeleteModal(true)}
+          >
+            <Trash2 className="w-4 h-4" />
+            Delete
+          </Button>
         </div>
       </div>
 
@@ -607,19 +638,39 @@ export default function CementLiftingDetailPage() {
       </div>
 
       {/* Actions */}
-      <div className="flex gap-3">
-        <Link href="/dashboard/cement?tab=liftings" className="flex-1">
+      <div className="flex gap-3 flex-wrap">
+        <Link href="/dashboard/cement?tab=liftings" className="flex-1 min-w-[140px]">
           <Button variant="outline" size="lg" className="w-full">Back to Liftings</Button>
         </Link>
-        <Link href={`/dashboard/cement/purchases/${lifting.purchaseId}`} className="flex-1">
+        <Link href={`/dashboard/cement/purchases/${lifting.purchaseId}`} className="flex-1 min-w-[140px]">
           <Button variant="secondary" size="lg" className="w-full">View Purchase</Button>
         </Link>
         {hasInvoice && invoices[0] && (
-          <Link href={`/dashboard/sales/invoices/${invoices[0].id}`} className="flex-1">
+          <Link href={`/dashboard/sales/invoices/${invoices[0].id}`} className="flex-1 min-w-[140px]">
             <Button variant="primary" size="lg" className="w-full">View Invoice</Button>
           </Link>
         )}
+        <Button
+          variant="danger"
+          size="lg"
+          className="flex-1 min-w-[140px]"
+          onClick={() => setShowDeleteModal(true)}
+        >
+          Delete Lifting
+        </Button>
       </div>
+
+      <ConfirmDialog
+        isOpen={showDeleteModal}
+        onClose={() => setShowDeleteModal(false)}
+        onConfirm={handleDelete}
+        title="Delete Cement Lifting"
+        message={`Are you sure you want to delete lifting "${lifting.liftingNo}"? This action will revert factory balance and coupon status if applicable.`}
+        confirmText="Delete"
+        cancelText="Cancel"
+        isDangerous={true}
+        isLoading={deleting}
+      />
     </div>
   );
 }

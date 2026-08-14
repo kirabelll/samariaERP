@@ -2,6 +2,7 @@ import { prisma } from '@/lib/prisma';
 import { NextRequest, NextResponse } from 'next/server';
 import { notify } from '@/lib/telegram';
 import { createJournalEntries, ACCOUNTS } from '@/lib/accounting';
+import { requestApproval } from '@/lib/approval-workflow';
 
 export const dynamic = 'force-dynamic';
 
@@ -178,6 +179,36 @@ export async function PUT(
 
     // Sync bank account balance and BankTransaction record
     await syncVoucherBankTransaction(updatedVoucher);
+
+    // Sync Approval workflow table if status is updated directly
+    if (updateData.status === 'Approved' || updateData.status === 'Rejected' || updateData.status === 'Cancelled') {
+      const approvalStatus = updateData.status === 'Approved' ? 'APPROVED' : updateData.status === 'Rejected' ? 'REJECTED' : 'CANCELLED';
+      await prisma.approval.updateMany({
+        where: {
+          module: 'PaymentVoucher',
+          recordId: params.id,
+          status: 'PENDING',
+        },
+        data: {
+          status: approvalStatus,
+          resolvedAt: new Date(),
+        },
+      });
+    } else if (updateData.status === 'Pending_Approval') {
+      const existingPending = await prisma.approval.findFirst({
+        where: { module: 'PaymentVoucher', recordId: params.id, status: 'PENDING' },
+      });
+      if (!existingPending) {
+        await requestApproval({
+          module: 'PaymentVoucher',
+          recordId: updatedVoucher.id,
+          recordRef: updatedVoucher.voucherNo,
+          amount: Number(updatedVoucher.amount) || 0,
+          description: `${updatedVoucher.voucherType} Voucher ${updatedVoucher.voucherNo} — ${Number(updatedVoucher.amount).toLocaleString('en-US')} ETB to ${updatedVoucher.payeeName}`,
+          requesterId: updatedVoucher.createdBy || '',
+        });
+      }
+    }
 
     // Auto-create journal entry when voucher is posted
     let journalResult = null;

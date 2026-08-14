@@ -91,22 +91,92 @@ export async function PATCH(
       );
     }
 
-    // Sum all deposits
+    let body: any = {};
+    try {
+      body = await request.json();
+    } catch (_) {
+      // Body may be empty if called without payload
+    }
+
+    // Check for an existing Initial Opening Balance transaction
+    const initialTxn = await prisma.bankTransaction.findFirst({
+      where: {
+        bankAccountId: params.id,
+        refModule: 'INITIAL_BALANCE',
+      },
+    });
+
+    // Sum non-initial deposits and withdrawals
     const deposits = await prisma.bankTransaction.aggregate({
       where: { bankAccountId: params.id, type: 'deposit' },
       _sum: { amount: true },
       _count: true,
     });
 
-    // Sum all withdrawals
     const withdrawals = await prisma.bankTransaction.aggregate({
       where: { bankAccountId: params.id, type: 'withdrawal' },
       _sum: { amount: true },
       _count: true,
     });
 
-    const totalDeposits = Number(deposits._sum.amount || 0);
+    let totalDeposits = Number(deposits._sum.amount || 0);
     const totalWithdrawals = Number(withdrawals._sum.amount || 0);
+
+    let initialBalance = 0;
+
+    if (body.initialBalance !== undefined && body.initialBalance !== null) {
+      initialBalance = parseFloat(body.initialBalance) || 0;
+      if (initialTxn) {
+        await prisma.bankTransaction.update({
+          where: { id: initialTxn.id },
+          data: { amount: initialBalance },
+        });
+      } else if (initialBalance > 0) {
+        await prisma.bankTransaction.create({
+          data: {
+            bankAccountId: params.id,
+            type: 'deposit',
+            amount: initialBalance,
+            refNo: 'INIT-' + account.accountNo,
+            description: 'Initial Opening Balance',
+            refModule: 'INITIAL_BALANCE',
+            reconStatus: 'Reconciled',
+            transDate: account.createdAt,
+          },
+        });
+      }
+    } else if (initialTxn) {
+      initialBalance = Number(initialTxn.amount);
+    } else {
+      // If no initial balance transaction exists, deduce baseline initial amount from stored balance & activity
+      const netActivity = totalDeposits - totalWithdrawals;
+      const implicitInitial = Math.max(0, Math.round((Number(account.balance) - netActivity) * 100) / 100);
+
+      if (implicitInitial > 0) {
+        initialBalance = implicitInitial;
+        await prisma.bankTransaction.create({
+          data: {
+            bankAccountId: params.id,
+            type: 'deposit',
+            amount: implicitInitial,
+            refNo: 'INIT-' + account.accountNo,
+            description: 'Initial Opening Balance',
+            refModule: 'INITIAL_BALANCE',
+            reconStatus: 'Reconciled',
+            transDate: account.createdAt,
+          },
+        });
+      }
+    }
+
+    // Re-aggregate deposits after handling initial balance
+    const updatedDeposits = await prisma.bankTransaction.aggregate({
+      where: { bankAccountId: params.id, type: 'deposit' },
+      _sum: { amount: true },
+      _count: true,
+    });
+
+    totalDeposits = Number(updatedDeposits._sum.amount || 0);
     const calculatedBalance = Math.round((totalDeposits - totalWithdrawals) * 100) / 100;
     const previousBalance = Number(account.balance);
     const difference = Math.round((calculatedBalance - previousBalance) * 100) / 100;
@@ -121,9 +191,10 @@ export async function PATCH(
       success: true,
       data: updatedAccount,
       reconciliation: {
+        initialBalance,
         totalDeposits,
         totalWithdrawals,
-        depositCount: deposits._count,
+        depositCount: updatedDeposits._count,
         withdrawalCount: withdrawals._count,
         calculatedBalance,
         previousBalance,

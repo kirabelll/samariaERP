@@ -70,6 +70,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const initialAmount = parseFloat(balance) || 0;
     const bankAccount = await prisma.bankAccount.create({
       data: {
         bankName,
@@ -77,10 +78,24 @@ export async function POST(request: NextRequest) {
         accountName,
         branch: branch || null,
         currency: currency || 'ETB',
-        balance: balance || 0,
+        balance: initialAmount,
         status: status || 'Active',
       },
     });
+
+    if (initialAmount > 0) {
+      await prisma.bankTransaction.create({
+        data: {
+          bankAccountId: bankAccount.id,
+          type: 'deposit',
+          amount: initialAmount,
+          refNo: 'INIT-' + bankAccount.accountNo,
+          description: 'Initial Opening Balance',
+          refModule: 'INITIAL_BALANCE',
+          reconStatus: 'Reconciled',
+        },
+      });
+    }
 
     return NextResponse.json(
       { success: true, data: bankAccount },

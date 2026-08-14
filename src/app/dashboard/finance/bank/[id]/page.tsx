@@ -360,7 +360,11 @@ export default function BankAccountDetailPage() {
               <h4 className={`font-semibold text-sm ${recalcResult.corrected ? 'text-amber-900' : 'text-green-900'}`}>
                 {recalcResult.corrected ? 'Balance Corrected' : 'Balance is Accurate'}
               </h4>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-2 text-sm">
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mt-2 text-sm">
+                <div>
+                  <span className="text-slate-500">Initial Balance:</span>
+                  <p className="font-semibold text-slate-900">ETB {Number(recalcResult.initialBalance || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</p>
+                </div>
                 <div>
                   <span className="text-slate-500">Total Deposits:</span>
                   <p className="font-semibold text-green-700">ETB {Number(recalcResult.totalDeposits).toLocaleString('en-US', { minimumFractionDigits: 2 })}</p>

@@ -410,6 +410,24 @@ async function updateSourceRecordStatus(module: string, recordId: string, status
       where: { id: recordId },
       data: updatePayload,
     });
+
+    // If a PaymentVoucher is rejected or cancelled, reverse any linked bank transaction
+    if (module === 'PaymentVoucher' && (finalStatus === 'Rejected' || finalStatus === 'Cancelled')) {
+      const existingTxn = await prisma.bankTransaction.findFirst({
+        where: { refModule: 'PAYMENT_VOUCHER', refId: recordId },
+      });
+      if (existingTxn) {
+        await prisma.bankAccount.update({
+          where: { id: existingTxn.bankAccountId },
+          data: {
+            balance: existingTxn.type === 'withdrawal'
+              ? { increment: Number(existingTxn.amount) }
+              : { decrement: Number(existingTxn.amount) },
+          },
+        });
+        await prisma.bankTransaction.delete({ where: { id: existingTxn.id } });
+      }
+    }
   } catch (err: any) {
     console.error(`[Approval] Failed to update ${module} ${recordId} status to ${finalStatus}:`, err.message);
   }

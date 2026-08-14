@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
         take: limit,
         include: includeTransactions
           ? { transactions: { orderBy: { transDate: 'desc' }, take: 20 } }
-          : false,
+          : undefined,
         orderBy: { createdAt: 'desc' },
       }),
       prisma.bankAccount.count({ where: whereClause }),

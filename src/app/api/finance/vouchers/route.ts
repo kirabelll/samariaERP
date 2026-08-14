@@ -137,6 +137,40 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    // Update selected bank account balance (increase for RECEIPT, deduction for PAYMENT/REFUND)
+    if (bankAccountId && Number(amount) > 0) {
+      try {
+        const isDeduction = voucherType === 'PAYMENT' || voucherType === 'REFUND';
+        const txnType = isDeduction ? 'withdrawal' : 'deposit';
+
+        // Update BankAccount balance
+        await prisma.bankAccount.update({
+          where: { id: bankAccountId },
+          data: {
+            balance: isDeduction
+              ? { decrement: Number(amount) }
+              : { increment: Number(amount) },
+          },
+        });
+
+        // Log BankTransaction for tracking & reconciliation
+        await prisma.bankTransaction.create({
+          data: {
+            bankAccountId,
+            type: txnType,
+            amount: Number(amount),
+            refNo: refNo || checkNo || voucherNo,
+            description: description || `${voucherType} Voucher ${voucherNo} — ${payeeName}`,
+            refModule: 'PAYMENT_VOUCHER',
+            refId: voucher.id,
+            createdBy: body.createdBy || null,
+          },
+        });
+      } catch (bankErr: any) {
+        console.error('Failed to update bank balance for voucher:', bankErr.message);
+      }
+    }
+
     // Auto-submit for approval
     try {
       await requestApproval({

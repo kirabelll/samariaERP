@@ -176,6 +176,9 @@ export async function PUT(
       },
     });
 
+    // Sync bank account balance and BankTransaction record
+    await syncVoucherBankTransaction(updatedVoucher);
+
     // Auto-create journal entry when voucher is posted
     let journalResult = null;
     let dailyCashResult = null;
@@ -285,6 +288,115 @@ export async function PUT(
   }
 }
 
+/**
+ * Synchronizes BankAccount balance and logs/updates BankTransaction for a PaymentVoucher.
+ */
+async function syncVoucherBankTransaction(voucher: any, isCancellation: boolean = false) {
+  if (!voucher || !voucher.id) return;
+
+  try {
+    const existingTxn = await prisma.bankTransaction.findFirst({
+      where: { refModule: 'PAYMENT_VOUCHER', refId: voucher.id },
+    });
+
+    // Handle cancellation or rejection
+    if (isCancellation || voucher.status === 'Cancelled' || voucher.status === 'Rejected') {
+      if (existingTxn) {
+        const reverseType = existingTxn.type;
+        const reverseAmount = Number(existingTxn.amount);
+        await prisma.bankAccount.update({
+          where: { id: existingTxn.bankAccountId },
+          data: {
+            balance: reverseType === 'withdrawal'
+              ? { increment: reverseAmount }
+              : { decrement: reverseAmount },
+          },
+        });
+        await prisma.bankTransaction.delete({
+          where: { id: existingTxn.id },
+        });
+      }
+      return;
+    }
+
+    const newBankAccountId = voucher.bankAccountId;
+    const newAmount = Number(voucher.amount) || 0;
+    if (!newBankAccountId || newAmount <= 0) return;
+
+    const isDeduction = voucher.voucherType === 'PAYMENT' || voucher.voucherType === 'REFUND';
+    const newTxnType = isDeduction ? 'withdrawal' : 'deposit';
+
+    if (!existingTxn) {
+      // Create new bank transaction & update balance
+      await prisma.bankAccount.update({
+        where: { id: newBankAccountId },
+        data: {
+          balance: isDeduction
+            ? { decrement: newAmount }
+            : { increment: newAmount },
+        },
+      });
+
+      await prisma.bankTransaction.create({
+        data: {
+          bankAccountId: newBankAccountId,
+          type: newTxnType,
+          amount: newAmount,
+          refNo: voucher.refNo || voucher.checkNo || voucher.voucherNo,
+          description: voucher.description || `${voucher.voucherType} Voucher ${voucher.voucherNo} — ${voucher.payeeName}`,
+          refModule: 'PAYMENT_VOUCHER',
+          refId: voucher.id,
+          createdBy: voucher.preparedBy || voucher.createdBy || null,
+        },
+      });
+    } else {
+      const oldBankAccountId = existingTxn.bankAccountId;
+      const oldAmount = Number(existingTxn.amount);
+      const oldTxnType = existingTxn.type;
+
+      if (
+        oldBankAccountId !== newBankAccountId ||
+        oldAmount !== newAmount ||
+        oldTxnType !== newTxnType
+      ) {
+        // Reverse old leg on old bank account
+        await prisma.bankAccount.update({
+          where: { id: oldBankAccountId },
+          data: {
+            balance: oldTxnType === 'withdrawal'
+              ? { increment: oldAmount }
+              : { decrement: oldAmount },
+          },
+        });
+
+        // Apply new leg on new bank account
+        await prisma.bankAccount.update({
+          where: { id: newBankAccountId },
+          data: {
+            balance: isDeduction
+              ? { decrement: newAmount }
+              : { increment: newAmount },
+          },
+        });
+
+        // Update transaction record
+        await prisma.bankTransaction.update({
+          where: { id: existingTxn.id },
+          data: {
+            bankAccountId: newBankAccountId,
+            type: newTxnType,
+            amount: newAmount,
+            refNo: voucher.refNo || voucher.checkNo || voucher.voucherNo,
+            description: voucher.description || `${voucher.voucherType} Voucher ${voucher.voucherNo} — ${voucher.payeeName}`,
+          },
+        });
+      }
+    }
+  } catch (err: any) {
+    console.error(`Failed to sync bank balance for voucher ${voucher.voucherNo || voucher.id}:`, err.message);
+  }
+}
+
 export async function DELETE(
   request: NextRequest,
   { params }: { params: { id: string } }
@@ -306,6 +418,9 @@ export async function DELETE(
       where: { id: params.id },
       data: { status: 'Cancelled' },
     });
+
+    // Reverse bank balance & transaction
+    await syncVoucherBankTransaction(deletedVoucher, true);
 
     return NextResponse.json({
       success: true,

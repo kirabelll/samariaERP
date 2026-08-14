@@ -57,6 +57,12 @@ export default function WeighbridgeRegister() {
   const [liftings, setLiftings] = useState<LiftingOption[]>([]);
   const [loadingLiftings, setLoadingLiftings] = useState(false);
 
+  // Pagination state
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalEntries, setTotalEntries] = useState(0);
+
   const [formData, setFormData] = useState({
     weighbridgeType: 'FACTORY' as 'FACTORY' | 'BUYER',
     liftingId: '',
@@ -68,7 +74,7 @@ export default function WeighbridgeRegister() {
 
   useEffect(() => {
     fetchEntries();
-  }, [activeTab]);
+  }, [activeTab, page, pageSize]);
 
   useEffect(() => {
     fetchLiftings();
@@ -105,7 +111,7 @@ export default function WeighbridgeRegister() {
       setLoading(true);
       setError(null);
       const typeParam = activeTab === 'factory' ? 'FACTORY' : 'BUYER';
-      const response = await fetch(`/api/cement/weighbridge?weighbridgeType=${typeParam}`);
+      const response = await fetch(`/api/cement/weighbridge?weighbridgeType=${typeParam}&page=${page}&limit=${pageSize}`);
 
       if (!response.ok) {
         throw new Error(`API error: ${response.status}`);
@@ -113,9 +119,18 @@ export default function WeighbridgeRegister() {
 
       const result: ApiResponse = await response.json();
       setEntries(result.data || []);
+      if (result.pagination) {
+        setTotalPages(result.pagination.pages || 1);
+        setTotalEntries(result.pagination.total || 0);
+      } else {
+        setTotalPages(1);
+        setTotalEntries(result.data?.length || 0);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch weighbridge entries');
       setEntries([]);
+      setTotalPages(1);
+      setTotalEntries(0);
     } finally {
       setLoading(false);
     }
@@ -330,7 +345,15 @@ export default function WeighbridgeRegister() {
   ) : error ? (
     <div className="text-center py-8 text-red-600">Error: {error}</div>
   ) : (
-    <Table data={entries} columns={columns} emptyMessage="No entries found" />
+    <Table
+      data={entries}
+      columns={columns}
+      emptyMessage="No entries found"
+      pageSize={pageSize}
+      totalPages={totalPages}
+      currentPage={page}
+      onPageChange={(newPage) => setPage(newPage)}
+    />
   );
 
   const tabs = [
@@ -377,7 +400,7 @@ export default function WeighbridgeRegister() {
         <Card>
           <CardBody className="text-center">
             <p className="text-4xl font-bold" style={{ color: '#007AFF' }}>
-              {entries.length}
+              {totalEntries}
             </p>
             <p className="text-sm text-gray-600 mt-1">Total Entries ({activeTab === 'factory' ? 'Factory' : 'Buyer'})</p>
           </CardBody>
@@ -395,7 +418,14 @@ export default function WeighbridgeRegister() {
       {/* Tabs */}
       <Card>
         <CardBody>
-          <Tabs tabs={tabs} defaultTabId="factory" onChange={setActiveTab} />
+          <Tabs
+            tabs={tabs}
+            defaultTabId="factory"
+            onChange={(tabId) => {
+              setActiveTab(tabId);
+              setPage(1);
+            }}
+          />
         </CardBody>
       </Card>
 

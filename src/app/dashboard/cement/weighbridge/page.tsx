@@ -340,20 +340,52 @@ export default function WeighbridgeRegister() {
     },
   ];
 
-  const tableContent = loading ? (
-    <div className="text-center py-8 text-gray-600">Loading entries...</div>
-  ) : error ? (
-    <div className="text-center py-8 text-red-600">Error: {error}</div>
-  ) : (
-    <Table
-      data={entries}
-      columns={columns}
-      emptyMessage="No entries found"
-      pageSize={pageSize}
-      totalPages={totalPages}
-      currentPage={page}
-      onPageChange={(newPage) => setPage(newPage)}
-    />
+  const tableContent = (
+    <div className="space-y-4">
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-2 pb-1">
+        <div className="text-sm text-gray-600 font-medium">
+          {loading
+            ? 'Loading entries...'
+            : `Showing ${entries.length} of ${totalEntries} ${activeTab === 'factory' ? 'Factory' : 'Buyer'} records`}
+        </div>
+        <div className="flex items-center gap-2">
+          <label className="text-xs text-gray-500 font-medium whitespace-nowrap">
+            Per page:
+          </label>
+          <select
+            className="border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            value={String(pageSize)}
+            onChange={(e) => {
+              setPageSize(Number(e.target.value));
+              setPage(1);
+            }}
+          >
+            <option value="10">10 per page</option>
+            <option value="25">25 per page</option>
+            <option value="50">50 per page</option>
+            <option value="100">100 per page</option>
+            <option value="500">500 per page</option>
+            <option value="10000">Show All</option>
+          </select>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="text-center py-8 text-gray-600">Loading entries...</div>
+      ) : error ? (
+        <div className="text-center py-8 text-red-600">Error: {error}</div>
+      ) : (
+        <Table
+          data={entries}
+          columns={columns}
+          emptyMessage="No entries found"
+          pageSize={pageSize >= 10000 ? entries.length : pageSize}
+          totalPages={pageSize >= 10000 ? 1 : totalPages}
+          currentPage={pageSize >= 10000 ? 1 : page}
+          onPageChange={pageSize >= 10000 ? undefined : setPage}
+        />
+      )}
+    </div>
   );
 
   const tabs = [

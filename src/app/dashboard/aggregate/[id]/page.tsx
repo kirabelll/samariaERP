@@ -424,50 +424,6 @@ export default function AggregateDetailPage() {
         </CardBody>
       </Card>
 
-      {/* Pad Number */}
-      <Card className={!delivery.padNumber ? 'border-2 border-amber-300 bg-amber-50/50' : ''}>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-slate-900">
-              Delivery Pad / Receipt Number <span className="text-red-500">*</span>
-            </h2>
-            {!delivery.padNumber && (
-              <span className="text-xs font-semibold text-amber-800 bg-amber-100 border border-amber-200 px-2.5 py-1 rounded-full">
-                Required for Verification
-              </span>
-            )}
-          </div>
-        </CardHeader>
-        <CardBody>
-          <div className="flex items-end gap-3">
-            <div className="flex-1">
-              <label className="block text-sm font-medium text-slate-700 mb-1">
-                Delivery Pad / Receipt Number <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="text"
-                value={padNumberInput !== '' ? padNumberInput : (delivery.padNumber || '')}
-                onChange={(e) => setPadNumberInput(e.target.value)}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                placeholder="e.g. PAD-9842"
-              />
-            </div>
-            <Button
-              variant="primary"
-              onClick={handleSavePadNumber}
-              disabled={savingPadNumber || !padNumberInput.trim()}
-            >
-              {savingPadNumber ? 'Saving...' : 'Save'}
-            </Button>
-          </div>
-          {!delivery.padNumber && (
-            <p className="text-xs text-amber-700 font-medium mt-2">
-              ⚠️ Mandatory: Aggregate dispatches cannot be verified without a Delivery Pad / Receipt Number.
-            </p>
-          )}
-        </CardBody>
-      </Card>
-
       {/* Main Content */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Dispatch Details */}
@@ -493,6 +449,10 @@ export default function AggregateDetailPage() {
             <div>
               <label className="block text-xs font-medium text-slate-600 mb-1">Dispatch No</label>
               <p className="text-slate-900 font-medium">{delivery.dispatchNo}</p>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Delivery Pad / POD / Receipt Number</label>
+              <p className="text-slate-900 font-medium">{delivery.padNumber || '-'}</p>
             </div>
             <div>
               <label className="block text-xs font-medium text-slate-600 mb-1">Customer</label>

@@ -21,6 +21,7 @@ interface FormData {
   transportRate: string;
   aggregateValue: string;
   dispatchDate: string;
+  padNumber: string;
 }
 
 interface Customer {
@@ -124,6 +125,7 @@ export default function NewAggregateDispatch() {
     transportRate: '',
     aggregateValue: '',
     dispatchDate: new Date().toISOString().split('T')[0],
+    padNumber: '',
   });
 
   const [showDeliveryModal, setShowDeliveryModal] = useState(false);
@@ -630,9 +632,11 @@ Check console for detailed breakdown.`);
       !formData.itemId ||
       !formData.loadedVolume ||
       !formData.transportRate ||
-      !formData.aggregateValue
+      !formData.aggregateValue ||
+      !formData.driverName?.trim() ||
+      !formData.padNumber?.trim()
     ) {
-      alert('Please fill in all required fields');
+      alert('Please fill in all required fields (including Driver Name and Delivery Pad / POD / Receipt Number)');
       return;
     }
 
@@ -664,6 +668,7 @@ Check console for detailed breakdown.`);
           transportRate: parseFloat(formData.transportRate),
           aggregateValue: parseFloat(formData.aggregateValue),
           dispatchDate: formData.dispatchDate || undefined,
+          padNumber: formData.padNumber?.trim() || null,
         }),
       });
       const data = await res.json();
@@ -886,11 +891,22 @@ Check console for detailed breakdown.`);
               </div>
 
               <Input
-                label="Driver Name"
+                label="Driver Name *"
                 name="driverName"
                 value={formData.driverName}
                 onChange={handleInputChange}
                 placeholder="Driver name"
+                required
+              />
+
+              <Input
+                label="Delivery Pad / POD / Receipt Number *"
+                name="padNumber"
+                value={formData.padNumber}
+                onChange={handleInputChange}
+                placeholder="e.g. PAD-9842 or POD-9842"
+                helperText="Mandatory field"
+                required
               />
             </div>
           </CardBody>

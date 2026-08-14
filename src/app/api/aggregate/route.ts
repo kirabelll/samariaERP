@@ -115,11 +115,12 @@ export async function POST(request: NextRequest) {
       dispatchDate,
       deliveryDate,
       registeredBy,
+      padNumber,
     } = body;
 
-    if (!customerId || !supplierId || !transporterId || !truckId || !itemId || !loadedVolume || !transportRate || !aggregateValue) {
+    if (!customerId || !supplierId || !transporterId || !truckId || !itemId || !loadedVolume || !transportRate || !aggregateValue || !driverName || !padNumber) {
       return NextResponse.json(
-        { success: false, error: 'Missing required fields: customerId, supplierId, transporterId, truckId, itemId, loadedVolume, transportRate, aggregateValue' },
+        { success: false, error: 'Missing required fields: customerId, supplierId, transporterId, truckId, itemId, loadedVolume, transportRate, aggregateValue, driverName, padNumber' },
         { status: 400 }
       );
     }
@@ -179,6 +180,7 @@ export async function POST(request: NextRequest) {
         itemId,
         agreementId: agreementId || null,
         driverName: driverName || null,
+        padNumber: padNumber ? String(padNumber).trim() : null,
         loadedVolume: loaded,
         deliveredVolume: delivered || null,
         shortageVolume: shortageVolume || null,

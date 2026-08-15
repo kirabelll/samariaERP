@@ -20,12 +20,17 @@ export async function GET(
     }
 
     // Resolve lifting info if linked
-    let liftingInfo = null;
+    let lifting: any = null;
     if (entry.liftingId) {
       try {
-        liftingInfo = await prisma.cementLifting.findUnique({
+        lifting = await prisma.cementLifting.findUnique({
           where: { id: entry.liftingId },
-          select: { liftingNo: true, factoryWeight: true, status: true },
+          include: {
+            factory: true,
+            truck: true,
+            customer: true,
+            coupon: true,
+          },
         });
       } catch {}
     }
@@ -37,7 +42,13 @@ export async function GET(
         grossWeight: Number(entry.grossWeight),
         tareWeight: Number(entry.tareWeight),
         netWeight: Number(entry.netWeight),
-        liftingNo: liftingInfo?.liftingNo || null,
+        liftingNo: lifting?.liftingNo || null,
+        lifting: lifting ? {
+          ...lifting,
+          factoryWeight: Number(lifting.factoryWeight),
+          buyerWeighbridgeQty: lifting.buyerWeighbridgeQty ? Number(lifting.buyerWeighbridgeQty) : null,
+          shortageQty: lifting.shortageQty ? Number(lifting.shortageQty) : null,
+        } : null,
       },
     });
   } catch (error: any) {
@@ -45,7 +56,92 @@ export async function GET(
   }
 }
 
-// PATCH — verify or update a weighbridge entry
+// PUT — update a weighbridge entry
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const body = await request.json();
+    const { weighbridgeType, liftingId, truckPlateNo, grossWeight, tareWeight, operatorName, weighbridgeDate } = body;
+
+    const existing = await prisma.cementWeighbridge.findUnique({
+      where: { id: params.id },
+    });
+
+    if (!existing) {
+      return NextResponse.json({ success: false, error: 'Entry not found' }, { status: 404 });
+    }
+
+    const gross = grossWeight !== undefined ? parseFloat(grossWeight) : Number(existing.grossWeight);
+    const tare = tareWeight !== undefined ? parseFloat(tareWeight) : Number(existing.tareWeight);
+    const net = gross - tare;
+
+    const updated = await prisma.cementWeighbridge.update({
+      where: { id: params.id },
+      data: {
+        ...(weighbridgeType && { weighbridgeType }),
+        ...(liftingId !== undefined && { liftingId: liftingId || null }),
+        ...(truckPlateNo && { truckPlateNo }),
+        ...(grossWeight !== undefined && { grossWeight: gross }),
+        ...(tareWeight !== undefined && { tareWeight: tare }),
+        netWeight: net,
+        ...(operatorName !== undefined && { operatorName }),
+        ...(weighbridgeDate && { weighbridgeDate: new Date(weighbridgeDate) }),
+      },
+    });
+
+    // Recalculate lifting buyer weight if applicable
+    const targetLiftingId = updated.liftingId || existing.liftingId;
+    if (targetLiftingId) {
+      try {
+        const buyerEntries = await prisma.cementWeighbridge.findMany({
+          where: {
+            liftingId: targetLiftingId,
+            weighbridgeType: 'BUYER',
+            verified: true,
+          },
+          select: { netWeight: true },
+        });
+
+        const totalBuyerWeight = buyerEntries.reduce((sum, e) => sum + Number(e.netWeight), 0);
+        const lifting = await prisma.cementLifting.findUnique({
+          where: { id: targetLiftingId },
+          select: { factoryWeight: true },
+        });
+
+        if (lifting) {
+          const shortage = Number(lifting.factoryWeight) - totalBuyerWeight;
+          await prisma.cementLifting.update({
+            where: { id: targetLiftingId },
+            data: {
+              buyerWeighbridgeQty: totalBuyerWeight,
+              shortageQty: shortage > 0 ? shortage : 0,
+            },
+          });
+        }
+      } catch (err) {
+        console.error('[Weighbridge PUT] Failed to recalculate lifting buyer weight:', err);
+      }
+    }
+
+    return NextResponse.json({
+      success: true,
+      data: {
+        ...updated,
+        grossWeight: Number(updated.grossWeight),
+        tareWeight: Number(updated.tareWeight),
+        netWeight: Number(updated.netWeight),
+      },
+      message: 'Weighbridge entry updated successfully',
+    });
+  } catch (error: any) {
+    console.error('[Weighbridge PUT] Error:', error);
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  }
+}
+
+// PATCH — verify, unverify, or update a weighbridge entry
 export async function PATCH(
   request: NextRequest,
   { params }: { params: { id: string } }
@@ -60,7 +156,6 @@ export async function PATCH(
     const userRole = (session.user as any)?.role || '';
     let userName = `${(session.user as any)?.firstName || ''} ${(session.user as any)?.lastName || ''}`.trim();
 
-    // Fallback: if name not in session, use session.user.name or look up from DB
     if (!userName && session.user?.name) {
       userName = session.user.name;
     }
@@ -82,6 +177,38 @@ export async function PATCH(
 
     if (!entry) {
       return NextResponse.json({ success: false, error: 'Not found' }, { status: 404 });
+    }
+
+    if (action === 'update' || !action) {
+      const { weighbridgeType, liftingId, truckPlateNo, grossWeight, tareWeight, operatorName, weighbridgeDate } = body;
+      const gross = grossWeight !== undefined ? parseFloat(grossWeight) : Number(entry.grossWeight);
+      const tare = tareWeight !== undefined ? parseFloat(tareWeight) : Number(entry.tareWeight);
+      const net = gross - tare;
+
+      const updated = await prisma.cementWeighbridge.update({
+        where: { id: params.id },
+        data: {
+          ...(weighbridgeType && { weighbridgeType }),
+          ...(liftingId !== undefined && { liftingId: liftingId || null }),
+          ...(truckPlateNo && { truckPlateNo }),
+          ...(grossWeight !== undefined && { grossWeight: gross }),
+          ...(tareWeight !== undefined && { tareWeight: tare }),
+          netWeight: net,
+          ...(operatorName !== undefined && { operatorName }),
+          ...(weighbridgeDate && { weighbridgeDate: new Date(weighbridgeDate) }),
+        },
+      });
+
+      return NextResponse.json({
+        success: true,
+        data: {
+          ...updated,
+          grossWeight: Number(updated.grossWeight),
+          tareWeight: Number(updated.tareWeight),
+          netWeight: Number(updated.netWeight),
+        },
+        message: 'Updated successfully',
+      });
     }
 
     if (action === 'verify') {
@@ -112,7 +239,6 @@ export async function PATCH(
       // If this is a BUYER weighbridge linked to a lifting, update the lifting's buyerWeighbridgeQty
       if (entry.liftingId && entry.weighbridgeType === 'BUYER') {
         try {
-          // Sum all verified BUYER weighbridge net weights for this lifting
           const buyerEntries = await prisma.cementWeighbridge.findMany({
             where: {
               liftingId: entry.liftingId,
@@ -124,7 +250,6 @@ export async function PATCH(
 
           const totalBuyerWeight = buyerEntries.reduce((sum, e) => sum + Number(e.netWeight), 0);
 
-          // Update the lifting with buyer weight
           const lifting = await prisma.cementLifting.findUnique({
             where: { id: entry.liftingId },
             select: { factoryWeight: true },

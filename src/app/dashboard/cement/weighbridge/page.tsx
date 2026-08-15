@@ -267,11 +267,27 @@ export default function WeighbridgeRegister() {
     : '0';
 
   const columns = [
-    { header: 'WB No', accessor: 'weighbridgeNo' as const },
+    {
+      header: 'WB No',
+      accessor: 'weighbridgeNo' as const,
+      render: (val: string, row: WeighbridgeEntry) => (
+        <Link href={`/dashboard/cement/weighbridge/${row.id}`} className="font-semibold text-[#007AFF] hover:underline">
+          {val}
+        </Link>
+      ),
+    },
     {
       header: 'Lifting',
       accessor: 'liftingNo' as const,
-      render: (val: string | null) => val ? <span className="text-blue-600 font-medium text-xs">{val}</span> : <span className="text-gray-400">—</span>,
+      render: (val: string | null, row: WeighbridgeEntry) => val ? (
+        row.liftingId ? (
+          <Link href={`/dashboard/cement/liftings/${row.liftingId}`} className="text-blue-600 hover:underline font-medium text-xs">
+            {val}
+          </Link>
+        ) : (
+          <span className="text-blue-600 font-medium text-xs">{val}</span>
+        )
+      ) : <span className="text-gray-400">—</span>,
     },
     {
       header: 'Coupon',
@@ -330,12 +346,31 @@ export default function WeighbridgeRegister() {
       header: 'Actions',
       accessor: 'id' as const,
       render: (_: string, row: WeighbridgeEntry) => (
-        <button
-          onClick={() => handleDelete(row.id, row.weighbridgeNo)}
-          className="px-3 py-1 text-xs font-medium rounded-md bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 transition-colors cursor-pointer"
-        >
-          Delete
-        </button>
+        <div className="flex items-center gap-1.5">
+          <Link href={`/dashboard/cement/weighbridge/${row.id}`}>
+            <button
+              className="px-2.5 py-1 text-xs font-medium rounded-md bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-100 transition-colors cursor-pointer"
+              title="View Details"
+            >
+              View
+            </button>
+          </Link>
+          <Link href={`/dashboard/cement/weighbridge/${row.id}/edit`}>
+            <button
+              className="px-2.5 py-1 text-xs font-medium rounded-md bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition-colors cursor-pointer"
+              title="Edit Entry"
+            >
+              Edit
+            </button>
+          </Link>
+          <button
+            onClick={() => handleDelete(row.id, row.weighbridgeNo)}
+            className="px-2.5 py-1 text-xs font-medium rounded-md bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 transition-colors cursor-pointer"
+            title="Delete Entry"
+          >
+            Delete
+          </button>
+        </div>
       ),
     },
   ];

@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Card, CardBody, Button } from '@/components/ui';
-import { Plus, Eye, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Plus, Eye, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react';
 
 interface CementPurchase {
   id: string;
@@ -31,6 +31,28 @@ export default function CementPurchasesPage() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [pagination, setPagination] = useState({ page: 1, limit: 10, total: 0, pages: 1 });
+  const [deleteModal, setDeleteModal] = useState<CementPurchase | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const handleDelete = async () => {
+    if (!deleteModal) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/cement/purchases/${deleteModal.id}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (data.success) {
+        setDeleteModal(null);
+        fetchPurchases(pagination.page);
+      } else {
+        alert(data.error || 'Failed to delete purchase');
+      }
+    } catch {
+      alert('Failed to delete purchase');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
 
   const fetchPurchases = async (page = 1) => {
     try {
@@ -241,6 +263,13 @@ export default function CementPurchasesPage() {
                           >
                             <Eye className="w-4 h-4 text-[#007AFF]" />
                           </button>
+                          <button
+                            onClick={() => setDeleteModal(purchase)}
+                            className="p-2 hover:bg-red-50 rounded-lg transition-colors text-red-600"
+                            title="Delete"
+                          >
+                            <Trash2 className="w-4 h-4 text-red-600" />
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -292,6 +321,32 @@ export default function CementPurchasesPage() {
           </div>
         </div>
       )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md mx-4 space-y-4">
+            <h3 className="text-lg font-semibold text-[#1D1D1F]">Delete Purchase</h3>
+            <p className="text-sm text-slate-600">
+              Are you sure you want to delete purchase <strong className="text-slate-900">{deleteModal.purchaseNo}</strong>? This action cannot be undone.
+            </p>
+            <div className="flex gap-3 justify-end">
+              <Button variant="outline" onClick={() => setDeleteModal(null)} disabled={deleting}>
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                onClick={handleDelete}
+                isLoading={deleting}
+                className="bg-red-600 hover:bg-red-700 text-white"
+              >
+                Delete
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+

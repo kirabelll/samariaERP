@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Card, CardBody, CardHeader, Button, Input, Badge } from '@/components/ui';
-import { FileCheck, CheckCircle, XCircle, Clock, ShieldCheck, AlertTriangle, Banknote } from 'lucide-react';
+import { FileCheck, CheckCircle, XCircle, Clock, ShieldCheck, AlertTriangle, Banknote, Trash2 } from 'lucide-react';
 
 interface CementPurchase {
   id: string;
@@ -28,6 +28,28 @@ export default function FinanceCementPurchasesPage() {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [rejectModal, setRejectModal] = useState<{ id: string; purchaseNo: string } | null>(null);
   const [rejectReason, setRejectReason] = useState('');
+  const [deleteModal, setDeleteModal] = useState<CementPurchase | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const handleDelete = async () => {
+    if (!deleteModal) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/cement/purchases/${deleteModal.id}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (data.success) {
+        setDeleteModal(null);
+        fetchPurchases();
+      } else {
+        alert(data.error || 'Failed to delete purchase');
+      }
+    } catch {
+      alert('Failed to delete purchase');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
 
   const fetchPurchases = async () => {
     setLoading(true);
@@ -264,6 +286,14 @@ export default function FinanceCementPurchasesPage() {
                     <Link href={`/dashboard/cement/purchases/${purchase.id}`}>
                       <Button variant="outline" size="sm">Details</Button>
                     </Link>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setDeleteModal(purchase)}
+                      className="text-red-600 border-red-300 hover:bg-red-50"
+                    >
+                      <Trash2 className="w-4 h-4 mr-1" /> Delete
+                    </Button>
                   </div>
                 </div>
               </CardBody>
@@ -296,6 +326,31 @@ export default function FinanceCementPurchasesPage() {
                 className="bg-red-600 hover:bg-red-700"
               >
                 {actionLoading === `${rejectModal.id}-reject` ? 'Rejecting...' : 'Confirm Reject'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Modal */}
+      {deleteModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md mx-4 space-y-4">
+            <h3 className="text-lg font-semibold text-[#1D1D1F]">Delete Purchase</h3>
+            <p className="text-sm text-slate-600">
+              Are you sure you want to delete purchase <strong className="text-slate-900">{deleteModal.purchaseNo}</strong>? This action cannot be undone.
+            </p>
+            <div className="flex gap-3 justify-end">
+              <Button variant="outline" onClick={() => setDeleteModal(null)} disabled={deleting}>
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                onClick={handleDelete}
+                isLoading={deleting}
+                className="bg-red-600 hover:bg-red-700 text-white"
+              >
+                Delete
               </Button>
             </div>
           </div>

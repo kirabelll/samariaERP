@@ -51,6 +51,8 @@ function CementOperationsContent() {
 
   const [deleteTarget, setDeleteTarget] = useState<CementLifting | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [deletePurchaseTarget, setDeletePurchaseTarget] = useState<CementPurchase | null>(null);
+  const [deletingPurchase, setDeletingPurchase] = useState(false);
 
   const purchases = useApiList<CementPurchase>('/api/cement/purchases', {
     page: activeTab === 'purchases' ? currentPage : 1,
@@ -85,6 +87,24 @@ function CementOperationsContent() {
     }
   };
 
+  const handleDeletePurchase = async () => {
+    if (!deletePurchaseTarget) return;
+    setDeletingPurchase(true);
+    try {
+      const res = await apiDelete(`/api/cement/purchases/${deletePurchaseTarget.id}`);
+      if (res.success) {
+        setDeletePurchaseTarget(null);
+        purchases.refetch();
+      } else {
+        alert(res.error || 'Failed to delete cement purchase');
+      }
+    } catch (err: any) {
+      alert(err.message || 'Error deleting cement purchase');
+    } finally {
+      setDeletingPurchase(false);
+    }
+  };
+
   const purchaseColumns: ColumnDef<CementPurchase>[] = [
     { header: 'Purchase No', accessor: 'purchaseNo', sortable: true },
     { header: 'Factory', accessor: 'factory', render: (_val, row) => row.factory?.name || '-' },
@@ -94,7 +114,20 @@ function CementOperationsContent() {
     { header: 'Status', accessor: 'status', render: (status) => <Badge status={status as any}>{status}</Badge> },
     {
       header: 'Actions', accessor: 'id',
-      render: (id) => <Link href={`/dashboard/cement/purchases/${id}`}><Button size="sm" variant="outline">View</Button></Link>,
+      render: (id, row) => (
+        <div className="flex items-center gap-2">
+          <Link href={`/dashboard/cement/purchases/${id}`}>
+            <Button size="sm" variant="outline">View</Button>
+          </Link>
+          <Button
+            size="sm"
+            variant="danger"
+            onClick={() => setDeletePurchaseTarget(row)}
+          >
+            Delete
+          </Button>
+        </div>
+      ),
     },
   ];
 
@@ -257,7 +290,20 @@ function CementOperationsContent() {
         isDangerous={true}
         isLoading={deleting}
       />
+
+      <ConfirmDialog
+        isOpen={!!deletePurchaseTarget}
+        onClose={() => setDeletePurchaseTarget(null)}
+        onConfirm={handleDeletePurchase}
+        title="Delete Cement Purchase"
+        message={`Are you sure you want to delete purchase "${deletePurchaseTarget?.purchaseNo}"? This action cannot be undone.`}
+        confirmText="Delete"
+        cancelText="Cancel"
+        isDangerous={true}
+        isLoading={deletingPurchase}
+      />
     </div>
   );
 }
+
 

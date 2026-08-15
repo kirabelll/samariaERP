@@ -153,3 +153,54 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
     );
   }
 }
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const purchase = await prisma.cementPurchase.findUnique({
+      where: { id: params.id },
+      include: {
+        liftings: { select: { id: true, liftingNo: true } },
+        coupons: { select: { id: true, couponNo: true } },
+        balances: { select: { id: true } },
+      },
+    });
+
+    if (!purchase) {
+      return NextResponse.json(
+        { success: false, error: 'Cement purchase not found' },
+        { status: 404 }
+      );
+    }
+
+    if (purchase.liftings && purchase.liftings.length > 0) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Cannot delete purchase "${purchase.purchaseNo}" because it has ${purchase.liftings.length} associated lifting(s). Please delete or cancel liftings first.`,
+        },
+        { status: 400 }
+      );
+    }
+
+    await prisma.$transaction([
+      prisma.coupon.deleteMany({ where: { purchaseId: params.id } }),
+      prisma.cementBalance.deleteMany({ where: { purchaseId: params.id } }),
+      prisma.cementPurchase.delete({ where: { id: params.id } }),
+    ]);
+
+    return NextResponse.json({
+      success: true,
+      message: `Cement purchase ${purchase.purchaseNo} deleted successfully`,
+    });
+  } catch (error: any) {
+    console.error('Error deleting cement purchase:', error);
+    return NextResponse.json(
+      { success: false, error: error.message || 'Failed to delete cement purchase' },
+      { status: 500 }
+    );
+  }
+}
+

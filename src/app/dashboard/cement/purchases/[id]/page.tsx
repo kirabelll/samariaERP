@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter, useParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { Card, CardBody, CardHeader, Button, Badge } from '@/components/ui';
-import { ChevronLeft, Loader, CheckCircle, XCircle, Clock, ShieldCheck, FileCheck } from 'lucide-react';
+import { ChevronLeft, Loader, CheckCircle, XCircle, Clock, ShieldCheck, FileCheck, Trash2 } from 'lucide-react';
 
 interface CementPurchase {
   id: string;
@@ -28,6 +28,7 @@ interface CementPurchase {
   createdAt: string;
   liftings?: any[];
 }
+
 
 interface BankAccount {
   id: string;
@@ -60,6 +61,26 @@ export default function CementPurchaseDetailPage() {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState('');
   const [showRejectModal, setShowRejectModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/cement/purchases/${id}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (data.success) {
+        router.push('/dashboard/cement/purchases');
+      } else {
+        alert(data.error || 'Failed to delete purchase');
+      }
+    } catch {
+      alert('Failed to delete purchase');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
 
   // Payment state
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
@@ -289,6 +310,14 @@ export default function CementPurchaseDetailPage() {
           <p className="text-[#86868B] mt-2">Cement purchase details and approval workflow</p>
         </div>
         <div className="flex gap-2">
+          <Button
+            variant="outline"
+            onClick={() => setShowDeleteModal(true)}
+            className="text-red-600 border-red-300 hover:bg-red-50"
+          >
+            <Trash2 className="w-4 h-4 mr-2" />
+            Delete
+          </Button>
           <Link href="/dashboard/cement">
             <Button variant="outline">Back to List</Button>
           </Link>
@@ -757,6 +786,30 @@ export default function CementPurchaseDetailPage() {
             </div>
           </CardBody>
         </Card>
+      )}
+      {/* Delete Modal */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md mx-4 space-y-4">
+            <h3 className="text-lg font-semibold text-[#1D1D1F]">Delete Purchase</h3>
+            <p className="text-sm text-slate-600">
+              Are you sure you want to delete purchase <strong className="text-slate-900">{purchase.purchaseNo}</strong>? This action cannot be undone.
+            </p>
+            <div className="flex gap-3 justify-end">
+              <Button variant="outline" onClick={() => setShowDeleteModal(false)} disabled={deleting}>
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                onClick={handleDelete}
+                isLoading={deleting}
+                className="bg-red-600 hover:bg-red-700 text-white"
+              >
+                Delete
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

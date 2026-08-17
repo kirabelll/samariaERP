@@ -48,7 +48,6 @@ export default function BankAccountDetailPage() {
   // Recalculate state
   const [recalculating, setRecalculating] = useState(false);
   const [recalcResult, setRecalcResult] = useState<any>(null);
-  const [deletingTxnId, setDeletingTxnId] = useState<string | null>(null);
 
   // Fetch account details
   const fetchAccount = async () => {
@@ -134,30 +133,7 @@ export default function BankAccountDetailPage() {
     }
   };
 
-  const handleDeleteTransaction = async (txn: BankTransaction) => {
-    const amountStr = Number(txn.amount).toLocaleString('en-US', { minimumFractionDigits: 2 });
-    const confirmMsg = `Are you sure you want to DELETE this transaction?\n\nDate: ${new Date(txn.transDate).toLocaleDateString()}\nType: ${txn.type.toUpperCase()}\nAmount: ETB ${amountStr}\nRef: ${txn.refNo || 'N/A'}\nDescription: ${txn.description || 'N/A'}\n\nThis will permanently delete the transaction record and adjust the bank account balance accordingly.`;
 
-    if (!confirm(confirmMsg)) return;
-
-    setDeletingTxnId(txn.id);
-    try {
-      const response = await fetch(`/api/finance/bank/transactions/${txn.id}`, {
-        method: 'DELETE',
-      });
-      const result = await response.json();
-      if (!response.ok || !result.success) {
-        throw new Error(result.error || 'Failed to delete transaction');
-      }
-      alert('Transaction deleted successfully.');
-      fetchAccount();
-      fetchTransactions();
-    } catch (err) {
-      alert('Error: ' + (err instanceof Error ? err.message : 'Failed to delete transaction'));
-    } finally {
-      setDeletingTxnId(null);
-    }
-  };
 
   // Running balance calculation
   const calculateRunningBalance = () => {
@@ -284,22 +260,7 @@ export default function BankAccountDetailPage() {
       accessor: 'reconStatus',
       render: (val) => <Badge status={val as any}>{val as string}</Badge>,
     },
-    {
-      header: 'Action',
-      accessor: 'id',
-      render: (_val, row) => {
-        const txn = row as BankTransaction;
-        return (
-          <button
-            onClick={() => handleDeleteTransaction(txn)}
-            disabled={deletingTxnId === txn.id}
-            className="text-xs font-semibold text-red-700 hover:text-red-900 bg-red-50 hover:bg-red-100 border border-red-200 px-2.5 py-1 rounded-lg transition-colors disabled:opacity-50"
-          >
-            {deletingTxnId === txn.id ? 'Deleting...' : 'Delete'}
-          </button>
-        );
-      },
-    },
+
   ];
 
   // Totals

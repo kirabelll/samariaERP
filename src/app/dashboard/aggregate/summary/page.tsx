@@ -126,13 +126,16 @@ export default function AggregateSummaryPage() {
       header: 'Aggregate Value (ETB/m³)',
       accessor: 'aggregateValue',
       sortable: true,
-      render: (val) => Number(val).toLocaleString('en-US', { maximumFractionDigits: 2 }),
+      render: (val, row) => {
+        const rate = row.totalDeliveredVolume > 0 ? row.totalReceivable / row.totalDeliveredVolume : Number(val || 0);
+        return rate.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      },
     },
     {
       header: 'Total Receivable (ETB)',
       accessor: 'totalReceivable',
       sortable: true,
-      render: (val) => Number(val).toLocaleString('en-US', { maximumFractionDigits: 2 }),
+      render: (val) => Number(val).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
     },
   ];
 
@@ -152,19 +155,22 @@ export default function AggregateSummaryPage() {
       header: 'Volume (m³)',
       accessor: 'totalVolume',
       sortable: true,
-      render: (val) => Number(val).toLocaleString('en-US', { maximumFractionDigits: 2 }),
+      render: (val) => Number(val).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
     },
     {
       header: 'Aggregate Value (ETB/m³)',
       accessor: 'aggregateValue',
       sortable: true,
-      render: (val) => Number(val).toLocaleString('en-US', { maximumFractionDigits: 2 }),
+      render: (val, row) => {
+        const rate = row.totalVolume > 0 ? row.totalPayable / row.totalVolume : Number(val || 0);
+        return rate.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      },
     },
     {
       header: 'Total Payable (ETB)',
       accessor: 'totalPayable',
       sortable: true,
-      render: (val) => Number(val).toLocaleString('en-US', { maximumFractionDigits: 2 }),
+      render: (val) => Number(val).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
     },
   ];
 

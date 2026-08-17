@@ -193,9 +193,12 @@ export async function GET(request: NextRequest) {
       rec.totalReceivable += deliveredVol * agreementPrice;
     });
 
-    const customerReceivables = Array.from(customerReceivablesMap.values()).sort(
-      (a, b) => b.totalReceivable - a.totalReceivable
-    );
+    const customerReceivables = Array.from(customerReceivablesMap.values())
+      .map((rec) => ({
+        ...rec,
+        aggregateValue: rec.totalDeliveredVolume > 0 ? rec.totalReceivable / rec.totalDeliveredVolume : rec.aggregateValue,
+      }))
+      .sort((a, b) => b.totalReceivable - a.totalReceivable);
     const totalCustomerReceivables = customerReceivables.reduce((sum, r) => sum + r.totalReceivable, 0);
 
     // Fetch the LATEST supplier agreement per supplier to get the current unit price
@@ -258,9 +261,12 @@ export async function GET(request: NextRequest) {
       payable.totalPayable += loadedVol * agreementPrice;
     });
 
-    const supplierPayables = Array.from(supplierPayablesMap.values()).sort(
-      (a, b) => b.totalPayable - a.totalPayable
-    );
+    const supplierPayables = Array.from(supplierPayablesMap.values())
+      .map((p) => ({
+        ...p,
+        aggregateValue: p.totalVolume > 0 ? p.totalPayable / p.totalVolume : p.aggregateValue,
+      }))
+      .sort((a, b) => b.totalPayable - a.totalPayable);
     const totalSupplierPayables = supplierPayables.reduce((sum, p) => sum + p.totalPayable, 0);
 
     // Calculate Transporter/Truck Payments

@@ -65,9 +65,13 @@ export default function NewInvoicePage() {
   const [partyType, setPartyType] = useState<'Customer' | 'Supplier'>('Customer');
   const [partyId, setPartyId] = useState('');
   const [dueDate, setDueDate] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
   const [agreementId, setAgreementId] = useState('');
   const [liftingId, setLiftingId] = useState('');
   const [aggregateDispatchId, setAggregateDispatchId] = useState('');
+  const [selectedDispatchIds, setSelectedDispatchIds] = useState<string[]>([]);
+  const [selectedLiftingIds, setSelectedLiftingIds] = useState<string[]>([]);
   const [items, setItems] = useState<InvoiceItem[]>([]);
   const [saving, setSaving] = useState(false);
   const [applyWithholding, setApplyWithholding] = useState(false);
@@ -134,7 +138,7 @@ export default function NewInvoicePage() {
       .catch(console.error);
   }, []);
 
-  // Fetch agreements, cement liftings, or aggregate dispatches when party or division changes
+  // Fetch agreements, cement liftings, or aggregate dispatches when party, division, or date range changes
   useEffect(() => {
     if (!partyId) {
       setAgreements([]);
@@ -143,6 +147,8 @@ export default function NewInvoicePage() {
       setAgreementId('');
       setLiftingId('');
       setAggregateDispatchId('');
+      setSelectedDispatchIds([]);
+      setSelectedLiftingIds([]);
       setItems([]);
       setApplyWithholding(false);
       return;
@@ -183,17 +189,19 @@ export default function NewInvoicePage() {
       const fetchLiftings = async () => {
         setLoadingLiftings(true);
         try {
-          const url = partyType === 'Customer'
-            ? `/api/cement/liftings?customer=${partyId}&limit=100`
-            : `/api/cement/liftings?limit=100`;
-          const res = await fetch(url);
+          const params = new URLSearchParams();
+          if (partyType === 'Customer') params.append('customer', partyId);
+          if (startDate) params.append('startDate', startDate);
+          if (endDate) params.append('endDate', endDate);
+          params.append('limit', '100');
+
+          const res = await fetch(`/api/cement/liftings?${params.toString()}`);
           const data = await res.json();
           if (data.success) {
             const list = data.data || [];
             setCementLiftings(list);
-            if (list.length === 1) {
-              handleLiftingSelect(list[0].id, list);
-            }
+            setSelectedLiftingIds([]);
+            setItems([]);
           }
         } catch (err) {
           console.error('Failed to fetch cement liftings:', err);
@@ -206,14 +214,18 @@ export default function NewInvoicePage() {
       const fetchDispatches = async () => {
         setLoadingDispatches(true);
         try {
-          const res = await fetch(`/api/aggregate?limit=100`);
+          const params = new URLSearchParams();
+          if (startDate) params.append('startDate', startDate);
+          if (endDate) params.append('endDate', endDate);
+          params.append('limit', '100');
+
+          const res = await fetch(`/api/aggregate?${params.toString()}`);
           const data = await res.json();
           if (data.success) {
             const list = data.records || data.data || [];
             setAggregateDispatches(list);
-            if (list.length === 1) {
-              handleDispatchSelect(list[0].id, list);
-            }
+            setSelectedDispatchIds([]);
+            setItems([]);
           }
         } catch (err) {
           console.error('Failed to fetch aggregate dispatches:', err);
@@ -223,7 +235,99 @@ export default function NewInvoicePage() {
       };
       fetchDispatches();
     }
-  }, [partyId, partyType, division]);
+  }, [partyId, partyType, division, startDate, endDate]);
+
+  // Checkbox Selection Logic for Aggregate Dispatches
+  const toggleDispatchSelect = (id: string) => {
+    let updated: string[];
+    if (selectedDispatchIds.includes(id)) {
+      updated = selectedDispatchIds.filter((dId) => dId !== id);
+    } else {
+      updated = [...selectedDispatchIds, id];
+    }
+    setSelectedDispatchIds(updated);
+    updateItemsFromDispatches(updated);
+  };
+
+  const toggleAllDispatches = () => {
+    if (selectedDispatchIds.length === aggregateDispatches.length) {
+      setSelectedDispatchIds([]);
+      updateItemsFromDispatches([]);
+    } else {
+      const allIds = aggregateDispatches.map((d) => d.id);
+      setSelectedDispatchIds(allIds);
+      updateItemsFromDispatches(allIds);
+    }
+  };
+
+  const updateItemsFromDispatches = (dispatchIds: string[]) => {
+    const selected = aggregateDispatches.filter((d) => dispatchIds.includes(d.id));
+    const invoiceItems: InvoiceItem[] = selected.map((dispatch, index) => {
+      const qty = Number(dispatch.deliveredVolume || dispatch.loadedVolume || 1);
+      const unitPrice = Number(dispatch.aggregateValue || dispatch.transportRate || 0);
+      const vat = 15;
+      const subtotal = qty * unitPrice;
+      const total = subtotal + subtotal * (vat / 100);
+      const pad = dispatch.padNumber ? ` (Pad #${dispatch.padNumber})` : '';
+      const itemName = `Aggregate Delivery - ${dispatch.dispatchNo}${pad}`;
+
+      return {
+        id: index + 1,
+        item: itemName,
+        qty,
+        unitPrice,
+        vat,
+        total,
+      };
+    });
+    setItems(invoiceItems);
+  };
+
+  // Checkbox Selection Logic for Cement Liftings
+  const toggleLiftingSelect = (id: string) => {
+    let updated: string[];
+    if (selectedLiftingIds.includes(id)) {
+      updated = selectedLiftingIds.filter((lId) => lId !== id);
+    } else {
+      updated = [...selectedLiftingIds, id];
+    }
+    setSelectedLiftingIds(updated);
+    updateItemsFromLiftings(updated);
+  };
+
+  const toggleAllLiftings = () => {
+    if (selectedLiftingIds.length === cementLiftings.length) {
+      setSelectedLiftingIds([]);
+      updateItemsFromLiftings([]);
+    } else {
+      const allIds = cementLiftings.map((l) => l.id);
+      setSelectedLiftingIds(allIds);
+      updateItemsFromLiftings(allIds);
+    }
+  };
+
+  const updateItemsFromLiftings = (liftingIds: string[]) => {
+    const selected = cementLiftings.filter((l) => liftingIds.includes(l.id));
+    const invoiceItems: InvoiceItem[] = selected.map((lifting, index) => {
+      const qty = Number(lifting.factoryWeight || lifting.quantityTons || 1);
+      const unitPrice = Number(lifting.purchase?.unitPrice || 0);
+      const vat = 15;
+      const subtotal = qty * unitPrice;
+      const total = subtotal + subtotal * (vat / 100);
+      const factory = lifting.purchase?.factory?.name || lifting.factory?.name || 'Factory';
+      const itemName = `${lifting.cementType || 'Cement'} Cement - ${factory} (${lifting.liftingNo})`;
+
+      return {
+        id: index + 1,
+        item: itemName,
+        qty,
+        unitPrice,
+        vat,
+        total,
+      };
+    });
+    setItems(invoiceItems);
+  };
 
   // Auto-populate items from selected agreement
   const handleAgreementSelect = (agId: string, agList?: SalesAgreement[]) => {
@@ -316,10 +420,10 @@ export default function NewInvoicePage() {
     if (!dispatch) return;
 
     const qty = Number(dispatch.deliveredVolume || dispatch.loadedVolume || 1);
-    const unitPrice = 0;
+    const unitPrice = Number(dispatch.aggregateValue || dispatch.transportRate || 0);
     const vat = 15;
     const subtotal = qty * unitPrice;
-    const total = subtotal;
+    const total = subtotal + subtotal * (vat / 100);
     const pad = dispatch.padNumber ? ` (Pad #${dispatch.padNumber})` : '';
     const itemName = `Aggregate Delivery - ${dispatch.dispatchNo}${pad}`;
 
@@ -513,7 +617,7 @@ export default function NewInvoicePage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Due Date</label>
               <input
@@ -523,14 +627,46 @@ export default function NewInvoicePage() {
                 className="block w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
               />
             </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Filter Dispatch (From Date)</label>
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="block w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Filter Dispatch (To Date)</label>
+              <input
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="block w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+              />
+            </div>
           </div>
 
-          {/* Cement Lifting Selection */}
+          {/* Cement Lifting Checkbox Table */}
           {partyId && division === 'CEMENT' && (
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">
-                Select Cement Lifting / Dispatch
-              </label>
+            <div className="space-y-3">
+              <div className="flex justify-between items-center">
+                <label className="block text-sm font-semibold text-slate-900">
+                  Select Cement Liftings ({selectedLiftingIds.length} selected)
+                </label>
+                {cementLiftings.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={toggleAllLiftings}
+                    className="text-xs font-semibold text-blue-600 hover:text-blue-800"
+                  >
+                    {selectedLiftingIds.length === cementLiftings.length
+                      ? 'Deselect All'
+                      : 'Select All Liftings'}
+                  </button>
+                )}
+              </div>
+
               {loadingLiftings ? (
                 <p className="text-blue-600 text-sm">Loading cement liftings...</p>
               ) : cementLiftings.length === 0 ? (
@@ -543,33 +679,88 @@ export default function NewInvoicePage() {
                   </p>
                 </div>
               ) : (
-                <>
-                  <select
-                    value={liftingId}
-                    onChange={(e) => handleLiftingSelect(e.target.value)}
-                    className="block w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
-                  >
-                    <option value="">-- Select Cement Lifting --</option>
-                    {cementLiftings.map((l) => (
-                      <option key={l.id} value={l.id}>
-                        {l.liftingNo} — {l.cementType} ({Number(l.factoryWeight || l.quantityTons || 0).toLocaleString('en-US')} QT) — {l.purchase?.factory?.name || 'Factory'} — {new Date(l.liftingDate || l.createdAt).toLocaleDateString()}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="mt-1 text-xs text-slate-500">
-                    Selecting a cement lifting will auto-populate the item details and quantity
-                  </p>
-                </>
+                <div className="border border-slate-200 rounded-xl overflow-hidden max-h-72 overflow-y-auto">
+                  <table className="w-full text-left text-sm">
+                    <thead className="bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-600 uppercase sticky top-0">
+                      <tr>
+                        <th className="py-2.5 px-3 w-10 text-center">
+                          <input
+                            type="checkbox"
+                            checked={
+                              cementLiftings.length > 0 &&
+                              selectedLiftingIds.length === cementLiftings.length
+                            }
+                            onChange={toggleAllLiftings}
+                            className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                          />
+                        </th>
+                        <th className="py-2.5 px-3">Lifting No</th>
+                        <th className="py-2.5 px-3">Type</th>
+                        <th className="py-2.5 px-3">Factory Weight (QT)</th>
+                        <th className="py-2.5 px-3">Factory</th>
+                        <th className="py-2.5 px-3">Date</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 bg-white">
+                      {cementLiftings.map((l) => {
+                        const isChecked = selectedLiftingIds.includes(l.id);
+                        return (
+                          <tr
+                            key={l.id}
+                            onClick={() => toggleLiftingSelect(l.id)}
+                            className={`cursor-pointer hover:bg-blue-50/50 transition-colors ${
+                              isChecked ? 'bg-blue-50/80 font-medium' : ''
+                            }`}
+                          >
+                            <td className="py-2.5 px-3 text-center" onClick={(e) => e.stopPropagation()}>
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                onChange={() => toggleLiftingSelect(l.id)}
+                                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                              />
+                            </td>
+                            <td className="py-2.5 px-3 font-semibold text-slate-900">{l.liftingNo}</td>
+                            <td className="py-2.5 px-3 text-slate-600">{l.cementType}</td>
+                            <td className="py-2.5 px-3 text-slate-900 font-semibold">
+                              {Number(l.factoryWeight || l.quantityTons || 0).toLocaleString('en-US')} QT
+                            </td>
+                            <td className="py-2.5 px-3 text-slate-600">
+                              {l.purchase?.factory?.name || l.factory?.name || 'Factory'}
+                            </td>
+                            <td className="py-2.5 px-3 text-slate-500">
+                              {new Date(l.liftingDate || l.createdAt).toLocaleDateString()}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               )}
             </div>
           )}
 
-          {/* Aggregate Dispatch Selection */}
+          {/* Aggregate Dispatch Checkbox Table */}
           {partyId && division === 'AGGREGATE' && (
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">
-                Select Aggregate Dispatch
-              </label>
+            <div className="space-y-3">
+              <div className="flex justify-between items-center">
+                <label className="block text-sm font-semibold text-slate-900">
+                  Select Aggregate Dispatches ({selectedDispatchIds.length} selected)
+                </label>
+                {aggregateDispatches.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={toggleAllDispatches}
+                    className="text-xs font-semibold text-blue-600 hover:text-blue-800"
+                  >
+                    {selectedDispatchIds.length === aggregateDispatches.length
+                      ? 'Deselect All'
+                      : 'Select All Dispatches'}
+                  </button>
+                )}
+              </div>
+
               {loadingDispatches ? (
                 <p className="text-blue-600 text-sm">Loading aggregate dispatches...</p>
               ) : aggregateDispatches.length === 0 ? (
@@ -582,23 +773,60 @@ export default function NewInvoicePage() {
                   </p>
                 </div>
               ) : (
-                <>
-                  <select
-                    value={aggregateDispatchId}
-                    onChange={(e) => handleDispatchSelect(e.target.value)}
-                    className="block w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
-                  >
-                    <option value="">-- Select Aggregate Dispatch --</option>
-                    {aggregateDispatches.map((d) => (
-                      <option key={d.id} value={d.id}>
-                        {d.dispatchNo} — Pad #{d.padNumber || 'N/A'} ({Number(d.deliveredVolume || d.loadedVolume || 0).toLocaleString('en-US')} m³) — {new Date(d.dispatchDate || d.createdAt).toLocaleDateString()}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="mt-1 text-xs text-slate-500">
-                    Selecting an aggregate dispatch will auto-populate the item details and volume
-                  </p>
-                </>
+                <div className="border border-slate-200 rounded-xl overflow-hidden max-h-72 overflow-y-auto">
+                  <table className="w-full text-left text-sm">
+                    <thead className="bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-600 uppercase sticky top-0">
+                      <tr>
+                        <th className="py-2.5 px-3 w-10 text-center">
+                          <input
+                            type="checkbox"
+                            checked={
+                              aggregateDispatches.length > 0 &&
+                              selectedDispatchIds.length === aggregateDispatches.length
+                            }
+                            onChange={toggleAllDispatches}
+                            className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                          />
+                        </th>
+                        <th className="py-2.5 px-3">Dispatch No</th>
+                        <th className="py-2.5 px-3">Pad #</th>
+                        <th className="py-2.5 px-3">Volume (m³)</th>
+                        <th className="py-2.5 px-3">Date</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 bg-white">
+                      {aggregateDispatches.map((d) => {
+                        const isChecked = selectedDispatchIds.includes(d.id);
+                        return (
+                          <tr
+                            key={d.id}
+                            onClick={() => toggleDispatchSelect(d.id)}
+                            className={`cursor-pointer hover:bg-blue-50/50 transition-colors ${
+                              isChecked ? 'bg-blue-50/80 font-medium' : ''
+                            }`}
+                          >
+                            <td className="py-2.5 px-3 text-center" onClick={(e) => e.stopPropagation()}>
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                onChange={() => toggleDispatchSelect(d.id)}
+                                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                              />
+                            </td>
+                            <td className="py-2.5 px-3 font-semibold text-slate-900">{d.dispatchNo}</td>
+                            <td className="py-2.5 px-3 text-slate-600">Pad #{d.padNumber || 'N/A'}</td>
+                            <td className="py-2.5 px-3 text-slate-900 font-semibold">
+                              {Number(d.deliveredVolume || d.loadedVolume || 0).toLocaleString('en-US')} m³
+                            </td>
+                            <td className="py-2.5 px-3 text-slate-500">
+                              {new Date(d.dispatchDate || d.createdAt).toLocaleDateString()}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               )}
             </div>
           )}

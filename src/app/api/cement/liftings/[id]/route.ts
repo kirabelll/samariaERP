@@ -36,7 +36,62 @@ export async function GET(
       });
     }
 
-    return NextResponse.json({ success: true, data: { ...lifting, coupon } });
+    // Resolve Customer Sales Agreement Unit Price for this customer & cement type
+    let customerUnitPrice = 0;
+    let customerAgreementNo = '';
+    if (lifting.customerId) {
+      const activeAgreement = await prisma.salesAgreement.findFirst({
+        where: {
+          customerId: lifting.customerId,
+          status: { notIn: ['Void', 'Cancelled'] },
+        },
+        select: { agreementNo: true, items: true },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      if (activeAgreement) {
+        customerAgreementNo = activeAgreement.agreementNo || '';
+        if (activeAgreement.items) {
+          try {
+            const parsed = typeof activeAgreement.items === 'string'
+              ? JSON.parse(activeAgreement.items)
+              : (activeAgreement.items as any[] || []);
+
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              const cementType = (lifting.purchase?.cementType || '').toUpperCase();
+              const matched = parsed.find((item: any) => {
+                const name = (item.itemName || item.name || item.description || '').toUpperCase();
+                const type = (item.cementType || '').toUpperCase();
+                return (
+                  (cementType && type === cementType) ||
+                  (cementType && name.includes(cementType))
+                );
+              }) || parsed[0];
+
+              if (matched) {
+                customerUnitPrice = Number(matched.unitPrice || matched.pricePerUnit || matched.price || matched.amount || 0);
+              }
+            }
+          } catch {}
+        }
+      }
+    }
+
+    // Fallback to purchase unitPrice if no customer agreement price found
+    if (!customerUnitPrice && lifting.purchase?.unitPrice) {
+      customerUnitPrice = Number(lifting.purchase.unitPrice);
+    }
+
+    return NextResponse.json({
+      success: true,
+      data: {
+        ...lifting,
+        coupon,
+        customerUnitPrice,
+        customerAgreementPrice: customerUnitPrice,
+        customerAgreementNo,
+      },
+    });
   } catch (error: any) {
     console.error('Error fetching cement lifting:', error);
     return NextResponse.json(

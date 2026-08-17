@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter, useParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { Card, CardBody, CardHeader, Button, Badge } from '@/components/ui';
-import { ChevronLeft, Loader, CheckCircle, XCircle, Clock, ShieldCheck, FileCheck, Trash2 } from 'lucide-react';
+import { ChevronLeft, Loader, CheckCircle, XCircle, Clock, ShieldCheck, FileCheck, Trash2, CreditCard } from 'lucide-react';
 
 interface CementPurchase {
   id: string;
@@ -379,7 +379,9 @@ export default function CementPurchaseDetailPage() {
               <div className="text-center">
                 <p className="text-green-600 font-semibold flex items-center justify-center gap-2">
                   <CheckCircle className="w-5 h-5" />
-                  Purchase is approved and paid — ready for coupons and liftings
+                  {(paymentSummary?.paymentStatus || purchase.paymentStatus) === 'Partial'
+                    ? 'Purchase is Active (Partially Paid) — ready for coupons and liftings'
+                    : 'Purchase is approved and paid — ready for coupons and liftings'}
                 </p>
               </div>
             )}
@@ -486,9 +488,16 @@ export default function CementPurchaseDetailPage() {
               <h3 className="text-lg font-semibold text-[#1D1D1F]">Status</h3>
             </CardHeader>
             <CardBody>
-              <Badge status={purchase.status as any} className={`inline-block text-base px-3 py-1 ${statusColor(purchase.status)}`}>
-                {purchase.status}
-              </Badge>
+              <div className="flex items-center gap-2 flex-wrap">
+                <Badge status={purchase.status as any} className={`inline-block text-base px-3 py-1 ${statusColor(purchase.status)}`}>
+                  {purchase.status}
+                </Badge>
+                {(paymentSummary?.paymentStatus || purchase.paymentStatus) === 'Partial' && (
+                  <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-amber-100 text-amber-800 border border-amber-300">
+                    Partial Paid
+                  </span>
+                )}
+              </div>
             </CardBody>
           </Card>
 
@@ -531,32 +540,59 @@ export default function CementPurchaseDetailPage() {
         </CardHeader>
         <CardBody className="space-y-6">
           {/* Payment Summary */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="bg-blue-50 rounded-xl p-4 text-center">
-              <p className="text-xs text-blue-600 font-medium uppercase">Total Amount</p>
-              <p className="text-xl font-bold text-blue-900 mt-1">ETB {(paymentSummary?.totalAmount || Number(purchase.totalAmount) || 0).toLocaleString('en-US')}</p>
-            </div>
-            <div className="bg-green-50 rounded-xl p-4 text-center">
-              <p className="text-xs text-green-600 font-medium uppercase">Total Paid</p>
-              <p className="text-xl font-bold text-green-900 mt-1">ETB {(paymentSummary?.totalPaid || Number(purchase.paidAmount) || 0).toLocaleString('en-US')}</p>
-            </div>
-            <div className="bg-orange-50 rounded-xl p-4 text-center">
-              <p className="text-xs text-orange-600 font-medium uppercase">Remaining</p>
-              <p className="text-xl font-bold text-orange-900 mt-1">ETB {(paymentSummary?.remainingPayable ?? Math.max(0, Number(purchase.totalAmount) - Number(purchase.paidAmount || 0))).toLocaleString('en-US')}</p>
-            </div>
-            <div className={`rounded-xl p-4 text-center ${
-              (paymentSummary?.paymentStatus || purchase.paymentStatus) === 'Paid' ? 'bg-green-50' :
-              (paymentSummary?.paymentStatus || purchase.paymentStatus) === 'Partial' ? 'bg-amber-50' : 'bg-red-50'
-            }`}>
-              <p className="text-xs font-medium uppercase text-slate-600">Payment Status</p>
-              <p className={`text-xl font-bold mt-1 ${
-                (paymentSummary?.paymentStatus || purchase.paymentStatus) === 'Paid' ? 'text-green-700' :
-                (paymentSummary?.paymentStatus || purchase.paymentStatus) === 'Partial' ? 'text-amber-700' : 'text-red-700'
-              }`}>
-                {paymentSummary?.paymentStatus || purchase.paymentStatus || 'Unpaid'}
-              </p>
-            </div>
-          </div>
+          {(() => {
+            const paymentsTotal = payments.reduce((sum, p) => sum + Number(p.amount), 0);
+            const totalPurchaseAmount = Number(purchase.totalAmount) || 0;
+            const totalPurchasePaid = Math.max(paymentSummary?.totalPaid || 0, Number(purchase.paidAmount) || 0, paymentsTotal);
+            const remainingPayableAmount = Math.max(0, totalPurchaseAmount - totalPurchasePaid);
+            const computedPaymentStatus = totalPurchasePaid >= totalPurchaseAmount && totalPurchaseAmount > 0
+              ? 'Paid'
+              : totalPurchasePaid > 0
+              ? 'Partial'
+              : (paymentSummary?.paymentStatus || purchase.paymentStatus || 'Unpaid');
+
+            return (
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="bg-blue-50 rounded-xl p-4 text-center">
+                    <p className="text-xs text-blue-600 font-medium uppercase">Total Amount</p>
+                    <p className="text-xl font-bold text-blue-900 mt-1">ETB {totalPurchaseAmount.toLocaleString('en-US')}</p>
+                  </div>
+                  <div className="bg-green-50 rounded-xl p-4 text-center">
+                    <p className="text-xs text-green-600 font-medium uppercase">Total Paid</p>
+                    <p className="text-xl font-bold text-green-900 mt-1">ETB {totalPurchasePaid.toLocaleString('en-US')}</p>
+                  </div>
+                  <div className="bg-orange-50 rounded-xl p-4 text-center">
+                    <p className="text-xs text-orange-600 font-medium uppercase">Remaining</p>
+                    <p className="text-xl font-bold text-orange-900 mt-1">ETB {remainingPayableAmount.toLocaleString('en-US')}</p>
+                  </div>
+                  <div className={`rounded-xl p-4 text-center ${
+                    computedPaymentStatus === 'Paid' ? 'bg-green-50' :
+                    computedPaymentStatus === 'Partial' ? 'bg-amber-50' : 'bg-red-50'
+                  }`}>
+                    <p className="text-xs font-medium uppercase text-slate-600">Payment Status</p>
+                    <p className={`text-xl font-bold mt-1 ${
+                      computedPaymentStatus === 'Paid' ? 'text-green-700' :
+                      computedPaymentStatus === 'Partial' ? 'text-amber-700' : 'text-red-700'
+                    }`}>
+                      {computedPaymentStatus}
+                    </p>
+                  </div>
+                </div>
+
+                {remainingPayableAmount > 0 && (
+                  <div className="flex justify-end pt-2">
+                    <Link href={`/dashboard/finance/vouchers/new?module=CEMENT&sourceId=${purchase.id}&amount=${remainingPayableAmount}`}>
+                      <Button variant="primary" className="bg-green-600 hover:bg-green-700 flex items-center gap-2">
+                        <CreditCard className="w-4 h-4" />
+                        Pay Remaining Balance (ETB {remainingPayableAmount.toLocaleString('en-US')})
+                      </Button>
+                    </Link>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           {/* Payment History */}
           {payments.length > 0 && (

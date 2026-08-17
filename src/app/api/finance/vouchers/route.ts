@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/prisma';
 import { NextRequest, NextResponse } from 'next/server';
 import { requestApproval } from '@/lib/approval-workflow';
+import { updateVoucherLinkedDocument } from '@/lib/voucher-sync';
 
 export const dynamic = 'force-dynamic';
 
@@ -183,6 +184,10 @@ export async function POST(request: NextRequest) {
       });
     } catch (e) {
       console.error('Approval request failed for voucher:', e);
+    }
+
+    if (voucher.status === 'Approved' || voucher.status === 'Posted') {
+      await updateVoucherLinkedDocument(voucher);
     }
 
     return NextResponse.json({

@@ -111,7 +111,20 @@ function CementOperationsContent() {
     { header: 'Date', accessor: 'createdAt', render: (val) => val ? new Date(val).toLocaleDateString() : '-' },
     { header: 'Quantity (tons)', accessor: 'quantityTons', render: (val) => Number(val).toLocaleString('en-US') },
     { header: 'Total (ETB)', accessor: 'totalAmount', render: (val) => Number(val).toLocaleString('en-US') },
-    { header: 'Status', accessor: 'status', render: (status) => <Badge status={status as any}>{status}</Badge> },
+    {
+      header: 'Status',
+      accessor: 'status',
+      render: (status, row: any) => (
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <Badge status={status as any}>{status}</Badge>
+          {row.paymentStatus === 'Partial' && (
+            <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-100 text-amber-800 border border-amber-300">
+              Partial Paid
+            </span>
+          )}
+        </div>
+      ),
+    },
     {
       header: 'Actions', accessor: 'id',
       render: (id, row) => (

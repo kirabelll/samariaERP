@@ -68,14 +68,41 @@ export async function GET(request: NextRequest) {
       couponMap = Object.fromEntries(coupons.map((c: any) => [c.id, c]));
     }
 
+    // Fetch active customer agreements for liftings
+    const customerIds = Array.from(new Set(data.map((l: any) => l.customerId).filter(Boolean))) as string[];
+    const customerAgreements = customerIds.length > 0 ? await prisma.salesAgreement.findMany({
+      where: { customerId: { in: customerIds }, status: { notIn: ['Void', 'Cancelled'] } },
+      select: { customerId: true, items: true },
+      orderBy: { createdAt: 'desc' },
+    }) : [];
+
+    const custPriceMap = new Map<string, number>();
+    for (const agr of customerAgreements) {
+      try {
+        const parsed = typeof agr.items === 'string' ? JSON.parse(agr.items) : (agr.items as any[] || []);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const matched = parsed[0];
+          const price = Number(matched.unitPrice || matched.pricePerUnit || matched.price || matched.amount || 0);
+          if (price > 0 && !custPriceMap.has(agr.customerId)) {
+            custPriceMap.set(agr.customerId, price);
+          }
+        }
+      } catch {}
+    }
+
     // Ensure numeric fields are properly converted
-    const formattedData = data.map((lifting: any) => ({
-      ...lifting,
-      factoryWeight: Number(lifting.factoryWeight),
-      buyerWeighbridgeQty: lifting.buyerWeighbridgeQty ? Number(lifting.buyerWeighbridgeQty) : null,
-      shortageQty: lifting.shortageQty ? Number(lifting.shortageQty) : null,
-      coupon: lifting.couponId ? couponMap[lifting.couponId] || null : null,
-    }));
+    const formattedData = data.map((lifting: any) => {
+      const custPrice = custPriceMap.get(lifting.customerId) || Number(lifting.purchase?.unitPrice || 0);
+      return {
+        ...lifting,
+        factoryWeight: Number(lifting.factoryWeight),
+        buyerWeighbridgeQty: lifting.buyerWeighbridgeQty ? Number(lifting.buyerWeighbridgeQty) : null,
+        shortageQty: lifting.shortageQty ? Number(lifting.shortageQty) : null,
+        customerUnitPrice: custPrice,
+        customerAgreementPrice: custPrice,
+        coupon: lifting.couponId ? couponMap[lifting.couponId] || null : null,
+      };
+    });
 
     return NextResponse.json({
       success: true,

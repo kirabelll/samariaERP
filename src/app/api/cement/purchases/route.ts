@@ -140,8 +140,10 @@ export async function POST(request: NextRequest) {
         totalAmount: purchaseTotal,
         vatRate: vatRate || 0,
         vatAmount: vatAmount || 0,
-        paymentRef: paymentRef || (isCredit ? 'CREDIT' : null),
-        paymentDate: paymentDate ? new Date(paymentDate) : null,
+        paidAmount: 0,
+        paymentStatus: 'Unpaid',
+        paymentRef: null,
+        paymentDate: null,
         balanceRemaining: quantityTons,  // Balance is in QT (tons), not money
         status: 'Pending',  // Always start as Pending — must go through approval + payment to become Active
         createdBy: createdBy || null,

@@ -35,7 +35,10 @@ interface CementLifting {
   liftingDate: string;
   status: string;
   registeredBy?: string;
-  createdAt: string;
+  createdAt?: string;
+  customerUnitPrice?: number;
+  customerAgreementPrice?: number;
+  customerAgreementNo?: string;
   invoices?: Array<{
     id: string;
     invoiceNo: string;
@@ -251,7 +254,8 @@ export default function CementLiftingDetailPage() {
     );
   }
 
-  const totalValue = lifting.factoryWeight * (lifting.purchase?.unitPrice || 0);
+  const effectiveUnitPrice = lifting.customerUnitPrice || lifting.customerAgreementPrice || lifting.purchase?.unitPrice || 0;
+  const totalValue = lifting.factoryWeight * effectiveUnitPrice;
   const invoices = lifting.invoices || [];
   const hasInvoice = invoices.length > 0;
   const invoiceTotal = invoices.reduce((sum, inv) => sum + Number(inv.totalAmount), 0);
@@ -554,11 +558,32 @@ export default function CementLiftingDetailPage() {
             <CardHeader>
               <h3 className="text-lg font-semibold text-[#1D1D1F]">Value</h3>
             </CardHeader>
-            <CardBody>
-              <p className="text-xs font-medium text-[#86868B] uppercase tracking-wider mb-1">Unit Price</p>
-              <p className="text-lg font-semibold text-[#1D1D1F]">ETB {Number(lifting.purchase?.unitPrice || 0).toLocaleString('en-US')}</p>
-              <div className="border-t mt-3 pt-3">
-                <p className="text-xs font-medium text-[#86868B] uppercase tracking-wider mb-1">Total Value</p>
+            <CardBody className="space-y-3">
+              <div>
+                <p className="text-xs font-medium text-[#86868B] uppercase tracking-wider mb-1">
+                  Customer Agreement Unit Price
+                </p>
+                <p className="text-lg font-bold text-[#007AFF]">
+                  ETB {effectiveUnitPrice.toLocaleString('en-US')} / QT
+                </p>
+                {lifting.customerAgreementNo && (
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    Agreement: {lifting.customerAgreementNo}
+                  </p>
+                )}
+              </div>
+              {lifting.purchase?.unitPrice && (
+                <div>
+                  <p className="text-xs font-medium text-[#86868B] uppercase tracking-wider mb-1">
+                    Factory Purchase Cost
+                  </p>
+                  <p className="text-sm text-slate-600 font-medium">
+                    ETB {Number(lifting.purchase.unitPrice).toLocaleString('en-US')} / QT
+                  </p>
+                </div>
+              )}
+              <div className="border-t pt-3">
+                <p className="text-xs font-medium text-[#86868B] uppercase tracking-wider mb-1">Total Customer Value</p>
                 <p className="text-2xl font-bold text-[#34C759]">ETB {totalValue.toLocaleString('en-US')}</p>
               </div>
             </CardBody>

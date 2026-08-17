@@ -26,16 +26,70 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
       );
     }
 
+    // Compute total paid dynamically across BankTransactions and PaymentVouchers
+    const bankTxns = await prisma.bankTransaction.findMany({
+      where: {
+        OR: [
+          { refModule: 'CEMENT_PURCHASE', refId: params.id },
+          { description: { contains: purchase.purchaseNo, mode: 'insensitive' } },
+        ],
+      },
+      select: { amount: true },
+    });
+    const bankPaid = bankTxns.reduce((sum, t) => sum + Number(t.amount), 0);
+
+    const paymentVouchers = await prisma.paymentVoucher.findMany({
+      where: {
+        sourceModule: { in: ['CEMENT', 'CEMENT_PURCHASE', 'cement'] },
+        OR: [
+          { sourceId: purchase.id },
+          { sourceRef: { contains: purchase.purchaseNo, mode: 'insensitive' } },
+        ],
+        status: { notIn: ['Cancelled', 'Rejected'] },
+      },
+      select: { amount: true },
+    });
+    const voucherPaid = paymentVouchers.reduce((sum, v) => sum + Number(v.amount), 0);
+
+    const totalPaid = Math.max(Number((purchase as any).paidAmount || 0), bankPaid + voucherPaid);
+    const totalAmount = Number(purchase.totalAmount);
+
+    let paymentStatus = (purchase as any).paymentStatus || 'Unpaid';
+    if (totalPaid >= totalAmount || Math.abs(totalAmount - totalPaid) < 1) {
+      paymentStatus = 'Paid';
+    } else if (totalPaid > 0) {
+      paymentStatus = 'Partial';
+    }
+
+    let newStatus = purchase.status;
+    if ((paymentStatus === 'Paid' || paymentStatus === 'Partial') && (purchase.status === 'Approved' || purchase.status === 'Checked' || purchase.status === 'Pending')) {
+      newStatus = 'Active';
+    }
+
+    // If DB record was out of sync, sync DB
+    if ((purchase as any).paidAmount !== totalPaid || (purchase as any).paymentStatus !== paymentStatus || purchase.status !== newStatus) {
+      try {
+        await prisma.cementPurchase.update({
+          where: { id: params.id },
+          data: {
+            paidAmount: totalPaid,
+            paymentStatus,
+            status: newStatus,
+          },
+        });
+      } catch {}
+    }
+
     return NextResponse.json({
       success: true,
       data: {
         ...purchase,
         quantityTons: Number(purchase.quantityTons),
         unitPrice: Number(purchase.unitPrice),
-        totalAmount: Number(purchase.totalAmount),
+        totalAmount,
         balanceRemaining: Number(purchase.balanceRemaining),
-        paidAmount: Number((purchase as any).paidAmount || 0),
-        paymentStatus: (purchase as any).paymentStatus || 'Unpaid',
+        paidAmount: totalPaid,
+        paymentStatus,
       },
     });
   } catch (error: any) {

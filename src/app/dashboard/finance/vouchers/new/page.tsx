@@ -128,8 +128,7 @@ export default function NewVoucherPage() {
     };
     fetchAll();
   }, []);
-
-  // Get entity list based on payee type
+  
   const getPayeeOptions = (): EntityOption[] => {
     switch (formData.payeeType) {
       case 'CUSTOMER': return customers;
@@ -140,7 +139,6 @@ export default function NewVoucherPage() {
     }
   };
 
-  // Fetch source references when source module or payee changes
   useEffect(() => {
     if (!formData.sourceModule) {
       setSourceRefs([]);
@@ -227,12 +225,18 @@ export default function NewVoucherPage() {
               const approvedOnly = (data.data || []).filter((p: any) =>
                 p.status === 'Active' || p.status === 'Approved' || p.status === 'Checked'
               );
-              refs = approvedOnly.map((p: any) => ({
-                id: p.id,
-                label: `${p.purchaseNo} — ${p.factory?.name || 'Unknown'} (${p.status}) — ${p.paymentStatus || 'Unpaid'}`,
-                ref: p.purchaseNo,
-                amount: p.totalAmount,
-              }));
+              refs = approvedOnly.map((p: any) => {
+                const total = Number(p.totalAmount) || 0;
+                const paid = Number(p.paidAmount) || 0;
+                const remaining = Math.max(0, total - paid);
+                const effectiveAmount = p.paymentStatus === 'Partial' && remaining > 0 ? remaining : (remaining > 0 ? remaining : total);
+                return {
+                  id: p.id,
+                  label: `${p.purchaseNo} — ${p.factory?.name || 'Unknown'} (${p.status}) — ETB ${effectiveAmount.toLocaleString('en-US')} remaining (${p.paymentStatus || 'Unpaid'})`,
+                  ref: p.purchaseNo,
+                  amount: effectiveAmount,
+                };
+              });
             }
             break;
           }
@@ -392,8 +396,7 @@ export default function NewVoucherPage() {
       ...prev,
       sourceId: selectedId,
       sourceReference: selected?.ref || '',
-      // Auto-fill amount from source if available and no amount yet
-      amount: selected?.amount && !prev.amount ? String(selected.amount) : prev.amount,
+      amount: selected?.amount ? String(selected.amount) : prev.amount,
     }));
   };
 

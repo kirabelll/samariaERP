@@ -1,5 +1,6 @@
 import { prisma } from './prisma';
 import { notify } from './telegram';
+import { updateVoucherLinkedDocument } from './voucher-sync';
 
 // ============================================================
 // APPROVAL LEVEL → ROLE MAPPING
@@ -410,6 +411,14 @@ async function updateSourceRecordStatus(module: string, recordId: string, status
       where: { id: recordId },
       data: updatePayload,
     });
+
+    // If a PaymentVoucher is Approved or Posted, sync linked document (Cement Purchase, Purchase Order, Sales Invoice, Aggregate Deliveries)
+    if (module === 'PaymentVoucher' && (finalStatus === 'Approved' || finalStatus === 'Posted')) {
+      const voucher = await prisma.paymentVoucher.findUnique({ where: { id: recordId } });
+      if (voucher) {
+        await updateVoucherLinkedDocument(voucher);
+      }
+    }
 
     // If a PaymentVoucher is rejected or cancelled, reverse any linked bank transaction
     if (module === 'PaymentVoucher' && (finalStatus === 'Rejected' || finalStatus === 'Cancelled')) {

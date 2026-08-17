@@ -132,9 +132,10 @@ export default function CreateCementInvoicePage() {
             }
           }
 
-          if (agreementPrice && agreementPrice > 0) {
-            setSellingPrice(agreementPrice);
-            setSellingPriceSource('agreement');
+          const resolvedPrice = data.data.customerUnitPrice || agreementPrice || purchaseUnitPrice;
+          if (resolvedPrice > 0) {
+            setSellingPrice(resolvedPrice);
+            setSellingPriceSource(data.data.customerUnitPrice || agreementPrice ? 'agreement' : 'purchase');
           } else {
             setSellingPrice(purchaseUnitPrice);
             setSellingPriceSource('purchase');

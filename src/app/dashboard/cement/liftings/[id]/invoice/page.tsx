@@ -35,6 +35,9 @@ interface LiftingData {
     creditLimit?: number;
     creditTermDays?: number;
   };
+  customerUnitPrice?: number;
+  customerAgreementPrice?: number;
+  customerAgreementNo?: string;
   invoices?: Array<{
     id: string;
     invoiceNo: string;
@@ -70,8 +73,8 @@ export default function CementLiftingInvoicePage() {
         const data = await res.json();
         if (data.success && data.data) {
           setLifting(data.data);
-          // Pre-fill selling price from purchase unit price
-          const unitPrice = data.data.purchase?.unitPrice || 0;
+          // Pre-fill selling price from Customer Agreement unit price
+          const unitPrice = data.data.customerUnitPrice || data.data.customerAgreementPrice || data.data.purchase?.unitPrice || 0;
           setSellingPrice(unitPrice);
           // Pre-fill withholding from customer settings
           if (data.data.customer?.withholding) {

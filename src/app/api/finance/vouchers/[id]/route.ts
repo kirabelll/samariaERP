@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { notify } from '@/lib/telegram';
 import { createJournalEntries, ACCOUNTS } from '@/lib/accounting';
 import { requestApproval } from '@/lib/approval-workflow';
+import { updateVoucherLinkedDocument } from '@/lib/voucher-sync';
 
 export const dynamic = 'force-dynamic';
 
@@ -208,6 +209,11 @@ export async function PUT(
           requesterId: updatedVoucher.createdBy || '',
         });
       }
+    }
+
+    // Sync linked source document status (Cement Purchase, Aggregate Delivery, PO, Invoice)
+    if (isPostingVoucher || updatedVoucher.status === 'Approved' || updatedVoucher.status === 'Posted') {
+      await updateVoucherLinkedDocument(updatedVoucher);
     }
 
     // Auto-create journal entry when voucher is posted

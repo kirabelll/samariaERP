@@ -19,6 +19,7 @@ interface CementPurchase {
   totalAmount: number;
   balanceRemaining: number;
   status: string;
+  paymentStatus?: string;
   paymentRef?: string;
   paymentDate?: string;
   createdAt: string;
@@ -247,9 +248,16 @@ export default function CementPurchasesPage() {
                         {((purchase.balanceRemaining ?? 0) || 0).toLocaleString('en-US')} T
                       </td>
                       <td className="py-3 px-4">
-                        <span className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${statusColor(purchase.status)}`}>
-                          {purchase.status}
-                        </span>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${statusColor(purchase.status)}`}>
+                            {purchase.status}
+                          </span>
+                          {purchase.paymentStatus === 'Partial' && (
+                            <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-100 text-amber-800 border border-amber-300">
+                              Partial Paid
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="py-3 px-4 text-sm text-[#86868B]">
                         {new Date(purchase.createdAt).toLocaleDateString()}

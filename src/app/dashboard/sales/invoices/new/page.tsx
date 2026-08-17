@@ -160,7 +160,8 @@ export default function NewInvoicePage() {
       setApplyWithholding(false);
     }
 
-    if (division === 'CONSTRUCTION' && partyType === 'Customer') {
+    // Always fetch customer sales agreements when partyType is 'Customer' to get customer unit prices
+    if (partyType === 'Customer') {
       const fetchAgreements = async () => {
         setLoadingAgreements(true);
         try {
@@ -173,9 +174,16 @@ export default function NewInvoicePage() {
             );
             setAgreements(activeAgreements);
 
-            // Auto-select if only one agreement
-            if (activeAgreements.length === 1) {
+            // Auto-select if division is CONSTRUCTION and only one agreement
+            if (division === 'CONSTRUCTION' && activeAgreements.length === 1) {
               handleAgreementSelect(activeAgreements[0].id, activeAgreements);
+            }
+
+            // Re-update items if liftings or dispatches are already selected
+            if (selectedLiftingIds.length > 0) {
+              updateItemsFromLiftings(selectedLiftingIds, activeAgreements);
+            } else if (selectedDispatchIds.length > 0) {
+              updateItemsFromDispatches(selectedDispatchIds, activeAgreements);
             }
           }
         } catch (err) {
@@ -185,7 +193,11 @@ export default function NewInvoicePage() {
         }
       };
       fetchAgreements();
-    } else if (division === 'CEMENT') {
+    } else {
+      setAgreements([]);
+    }
+
+    if (division === 'CEMENT') {
       const fetchLiftings = async () => {
         setLoadingLiftings(true);
         try {
@@ -260,11 +272,68 @@ export default function NewInvoicePage() {
     }
   };
 
-  const updateItemsFromDispatches = (dispatchIds: string[]) => {
+  // Helper to resolve unit price from customer's sales agreement
+  const getCustomerAgreementUnitPrice = (
+    agList: SalesAgreement[],
+    itemSearchKey?: string,
+    fallbackPrice: number = 0
+  ): number => {
+    if (!agList || agList.length === 0) return fallbackPrice;
+    const key = String(itemSearchKey || '').trim().toLowerCase();
+
+    for (const agreement of agList) {
+      try {
+        const parsedItems: AgreementItem[] =
+          typeof agreement.items === 'string'
+            ? JSON.parse(agreement.items)
+            : (agreement.items as any[]) || [];
+
+        if (Array.isArray(parsedItems) && parsedItems.length > 0) {
+          if (key) {
+            // 1. Exact match on itemId
+            const exactItem = parsedItems.find(
+              (i) => i.itemId && String(i.itemId).toLowerCase() === key
+            );
+            if (exactItem && Number(exactItem.unitPrice) > 0) {
+              return Number(exactItem.unitPrice);
+            }
+
+            // 2. Substring match on itemName / name
+            const nameItem = parsedItems.find((i) => {
+              const itemName = String(i.itemName || i.name || '').toLowerCase();
+              return itemName && (itemName.includes(key) || key.includes(itemName));
+            });
+            if (nameItem && Number(nameItem.unitPrice) > 0) {
+              return Number(nameItem.unitPrice);
+            }
+          }
+
+          // 3. Fallback to single item unitPrice in customer agreement if present
+          if (parsedItems.length === 1 && Number(parsedItems[0].unitPrice) > 0) {
+            return Number(parsedItems[0].unitPrice);
+          }
+        }
+      } catch {}
+    }
+
+    return fallbackPrice;
+  };
+
+  const updateItemsFromDispatches = (dispatchIds: string[], agList?: SalesAgreement[]) => {
+    const activeAgreements = agList || agreements;
     const selected = aggregateDispatches.filter((d) => dispatchIds.includes(d.id));
     const invoiceItems: InvoiceItem[] = selected.map((dispatch, index) => {
       const qty = Number(dispatch.deliveredVolume || dispatch.loadedVolume || 1);
-      const unitPrice = Number(dispatch.aggregateValue || dispatch.transportRate || 0);
+      let unitPrice = getCustomerAgreementUnitPrice(
+        activeAgreements,
+        dispatch.itemId || dispatch.itemName,
+        0
+      );
+
+      if (!unitPrice) {
+        unitPrice = Number(dispatch.aggregateValue || dispatch.transportRate || 0);
+      }
+
       const vat = 15;
       const subtotal = qty * unitPrice;
       const total = subtotal + subtotal * (vat / 100);
@@ -306,11 +375,23 @@ export default function NewInvoicePage() {
     }
   };
 
-  const updateItemsFromLiftings = (liftingIds: string[]) => {
+  const updateItemsFromLiftings = (liftingIds: string[], agList?: SalesAgreement[]) => {
+    const activeAgreements = agList || agreements;
     const selected = cementLiftings.filter((l) => liftingIds.includes(l.id));
     const invoiceItems: InvoiceItem[] = selected.map((lifting, index) => {
       const qty = Number(lifting.factoryWeight || lifting.quantityTons || 1);
-      const unitPrice = Number(lifting.purchase?.unitPrice || 0);
+      
+      // Fetch unit price from customer sales agreement, NOT supplier purchase order
+      let unitPrice = getCustomerAgreementUnitPrice(
+        activeAgreements,
+        lifting.itemId || lifting.cementType,
+        0
+      );
+
+      if (!unitPrice) {
+        unitPrice = Number(lifting.unitPrice || lifting.customerUnitPrice || lifting.aggregateValue || 0);
+      }
+
       const vat = 15;
       const subtotal = qty * unitPrice;
       const total = subtotal + subtotal * (vat / 100);
@@ -389,7 +470,16 @@ export default function NewInvoicePage() {
     if (!lifting) return;
 
     const qty = Number(lifting.factoryWeight || lifting.quantityTons || 1);
-    const unitPrice = Number(lifting.purchase?.unitPrice || 0);
+    let unitPrice = getCustomerAgreementUnitPrice(
+      agreements,
+      lifting.itemId || lifting.cementType,
+      0
+    );
+
+    if (!unitPrice) {
+      unitPrice = Number(lifting.unitPrice || lifting.customerUnitPrice || lifting.aggregateValue || 0);
+    }
+
     const vat = 15;
     const subtotal = qty * unitPrice;
     const total = subtotal + subtotal * (vat / 100);
@@ -420,7 +510,16 @@ export default function NewInvoicePage() {
     if (!dispatch) return;
 
     const qty = Number(dispatch.deliveredVolume || dispatch.loadedVolume || 1);
-    const unitPrice = Number(dispatch.aggregateValue || dispatch.transportRate || 0);
+    let unitPrice = getCustomerAgreementUnitPrice(
+      agreements,
+      dispatch.itemId || dispatch.itemName,
+      0
+    );
+
+    if (!unitPrice) {
+      unitPrice = Number(dispatch.aggregateValue || dispatch.transportRate || 0);
+    }
+
     const vat = 15;
     const subtotal = qty * unitPrice;
     const total = subtotal + subtotal * (vat / 100);

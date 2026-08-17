@@ -147,18 +147,39 @@ export async function GET(request: NextRequest) {
       orderBy: { createdAt: 'desc' },
     });
 
-    // customerPriceMap: "customerId_itemId" → unitPrice (latest agreement per customer+item)
+    // customerPriceMap: "customerId_itemId" → unitPrice including VAT (latest agreement per customer+item)
     const customerPriceMap = new Map<string, number>();
     for (const agr of customerAgreements) {
       try {
         const parsed = typeof agr.items === 'string' ? JSON.parse(agr.items) : (agr.items as any[] || []);
         if (Array.isArray(parsed)) {
           parsed.forEach((item: any) => {
-            if (item.itemId && item.unitPrice) {
-              const priceKey = `${agr.customerId}_${item.itemId}`;
-              // Only set if not already set (first = latest agreement wins)
+            const targetId = item.itemId || item.id;
+            if (targetId) {
+              const priceKey = `${agr.customerId}_${targetId}`;
               if (!customerPriceMap.has(priceKey)) {
-                customerPriceMap.set(priceKey, item.unitPrice);
+                let finalUnitPrice = 0;
+                const qty = Number(item.qty || item.quantity || 1);
+
+                if (item.totalAmount || item.amount || item.total) {
+                  const total = Number(item.totalAmount || item.amount || item.total);
+                  finalUnitPrice = qty > 0 ? total / qty : total;
+                } else if (item.unitPrice || item.pricePerUnit) {
+                  const basePrice = Number(item.unitPrice || item.pricePerUnit || 0);
+                  if (
+                    item.priceType === 'excl' ||
+                    item.priceType === 'exclusive' ||
+                    item.vatIncluded === false
+                  ) {
+                    finalUnitPrice = basePrice * 1.15;
+                  } else {
+                    finalUnitPrice = basePrice;
+                  }
+                }
+
+                if (finalUnitPrice > 0) {
+                  customerPriceMap.set(priceKey, finalUnitPrice);
+                }
               }
             }
           });
@@ -221,12 +242,32 @@ export async function GET(request: NextRequest) {
         const parsed = typeof agr.items === 'string' ? JSON.parse(agr.items) : (agr.items as any[] || []);
         if (Array.isArray(parsed)) {
           parsed.forEach((item: any) => {
-            const itemTotal = item.amount ?? item.totalAmount ?? item.unitPrice;
-            if (item.itemId && itemTotal) {
-              const priceKey = `${agr.supplierId}_${item.itemId}`;
-              // Only set if not already set (first = latest agreement wins)
+            const targetId = item.itemId || item.id;
+            if (targetId) {
+              const priceKey = `${agr.supplierId}_${targetId}`;
               if (!supplierPriceMap.has(priceKey)) {
-                supplierPriceMap.set(priceKey, itemTotal);
+                let finalUnitPrice = 0;
+                const qty = Number(item.qty || item.quantity || 1);
+
+                if (item.totalAmount || item.amount || item.total) {
+                  const total = Number(item.totalAmount || item.amount || item.total);
+                  finalUnitPrice = qty > 0 ? total / qty : total;
+                } else if (item.unitPrice || item.pricePerUnit) {
+                  const basePrice = Number(item.unitPrice || item.pricePerUnit || 0);
+                  if (
+                    item.priceType === 'excl' ||
+                    item.priceType === 'exclusive' ||
+                    item.vatIncluded === false
+                  ) {
+                    finalUnitPrice = basePrice * 1.15;
+                  } else {
+                    finalUnitPrice = basePrice;
+                  }
+                }
+
+                if (finalUnitPrice > 0) {
+                  supplierPriceMap.set(priceKey, finalUnitPrice);
+                }
               }
             }
           });

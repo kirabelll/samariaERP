@@ -147,7 +147,7 @@ export async function GET(request: NextRequest) {
       orderBy: { createdAt: 'desc' },
     });
 
-    // customerPriceMap: "customerId_itemId" → unitPrice including VAT (latest agreement per customer+item)
+    // customerPriceMap: "customerId_itemId" → unitPrice INCLUDING 15% VAT (latest agreement per customer+item)
     const customerPriceMap = new Map<string, number>();
     for (const agr of customerAgreements) {
       try {
@@ -158,27 +158,29 @@ export async function GET(request: NextRequest) {
             if (targetId) {
               const priceKey = `${agr.customerId}_${targetId}`;
               if (!customerPriceMap.has(priceKey)) {
-                let finalUnitPrice = 0;
+                let finalUnitPriceIncVat = 0;
                 const qty = Number(item.qty || item.quantity || 1);
+                const unitPrice = Number(item.unitPrice || item.pricePerUnit || 0);
 
-                if (item.totalAmount || item.amount || item.total) {
-                  const total = Number(item.totalAmount || item.amount || item.total);
-                  finalUnitPrice = qty > 0 ? total / qty : total;
-                } else if (item.unitPrice || item.pricePerUnit) {
-                  const basePrice = Number(item.unitPrice || item.pricePerUnit || 0);
-                  if (
-                    item.priceType === 'excl' ||
-                    item.priceType === 'exclusive' ||
-                    item.vatIncluded === false
-                  ) {
-                    finalUnitPrice = basePrice * 1.15;
+                if (unitPrice > 0) {
+                  if (item.vatIncluded === true || item.priceType === 'inclusive') {
+                    finalUnitPriceIncVat = unitPrice;
                   } else {
-                    finalUnitPrice = basePrice;
+                    // Adds 15% VAT for 'incl', 'excl', or default sales agreement items
+                    finalUnitPriceIncVat = unitPrice * 1.15;
+                  }
+                } else if (item.totalAmount || item.amount || item.total) {
+                  const total = Number(item.totalAmount || item.amount || item.total);
+                  const basePrice = qty > 0 ? total / qty : total;
+                  if (item.vatIncluded === true || item.priceType === 'inclusive') {
+                    finalUnitPriceIncVat = basePrice;
+                  } else {
+                    finalUnitPriceIncVat = basePrice * 1.15;
                   }
                 }
 
-                if (finalUnitPrice > 0) {
-                  customerPriceMap.set(priceKey, finalUnitPrice);
+                if (finalUnitPriceIncVat > 0) {
+                  customerPriceMap.set(priceKey, finalUnitPriceIncVat);
                 }
               }
             }
@@ -187,15 +189,15 @@ export async function GET(request: NextRequest) {
       } catch { /* ignore */ }
     }
 
-    // Calculate Customer Receivables — grouped by customer + item, using agreement price per item
+    // Calculate Customer Receivables — grouped by customer + item, using agreement price per item (Inc. VAT)
     const customerReceivablesMap = new Map<string, CustomerReceivables>();
     aggregateDeliveries.forEach((delivery) => {
       const custId = delivery.customerId;
       const itemId = delivery.itemId;
       const groupKey = `${custId}_${itemId}`;
 
-      // Get the agreement price for this specific customer + item combo
-      const agreementPrice = customerPriceMap.get(groupKey) || delivery.aggregateValue || 0;
+      // Get the agreement price (Inc. VAT) for this specific customer + item combo
+      const agreementPrice = customerPriceMap.get(groupKey) || (delivery.aggregateValue ? delivery.aggregateValue * 1.15 : 0);
 
       if (!customerReceivablesMap.has(groupKey)) {
         customerReceivablesMap.set(groupKey, {
@@ -204,7 +206,7 @@ export async function GET(request: NextRequest) {
           itemId: itemId,
           itemName: itemMap[itemId]?.name || 'Unknown',
           totalDeliveredVolume: 0,
-          aggregateValue: agreementPrice, // Direct from agreement for this item
+          aggregateValue: agreementPrice, // Direct from sales agreement (Inc. VAT)
           totalReceivable: 0,
         });
       }
@@ -235,7 +237,7 @@ export async function GET(request: NextRequest) {
         })
       : [];
 
-    // supplierPriceMap: "supplierId_itemId" → unitPrice (latest agreement per supplier+item)
+    // supplierPriceMap: "supplierId_itemId" → unitPrice INCLUDING 15% VAT (latest agreement per supplier+item)
     const supplierPriceMap = new Map<string, number>();
     for (const agr of supplierAgreements) {
       try {
@@ -246,27 +248,28 @@ export async function GET(request: NextRequest) {
             if (targetId) {
               const priceKey = `${agr.supplierId}_${targetId}`;
               if (!supplierPriceMap.has(priceKey)) {
-                let finalUnitPrice = 0;
+                let finalUnitPriceIncVat = 0;
                 const qty = Number(item.qty || item.quantity || 1);
+                const unitPrice = Number(item.unitPrice || item.pricePerUnit || 0);
 
-                if (item.totalAmount || item.amount || item.total) {
-                  const total = Number(item.totalAmount || item.amount || item.total);
-                  finalUnitPrice = qty > 0 ? total / qty : total;
-                } else if (item.unitPrice || item.pricePerUnit) {
-                  const basePrice = Number(item.unitPrice || item.pricePerUnit || 0);
-                  if (
-                    item.priceType === 'excl' ||
-                    item.priceType === 'exclusive' ||
-                    item.vatIncluded === false
-                  ) {
-                    finalUnitPrice = basePrice * 1.15;
+                if (unitPrice > 0) {
+                  if (item.vatIncluded === true || item.priceType === 'inclusive') {
+                    finalUnitPriceIncVat = unitPrice;
                   } else {
-                    finalUnitPrice = basePrice;
+                    finalUnitPriceIncVat = unitPrice * 1.15;
+                  }
+                } else if (item.totalAmount || item.amount || item.total) {
+                  const total = Number(item.totalAmount || item.amount || item.total);
+                  const basePrice = qty > 0 ? total / qty : total;
+                  if (item.vatIncluded === true || item.priceType === 'inclusive') {
+                    finalUnitPriceIncVat = basePrice;
+                  } else {
+                    finalUnitPriceIncVat = basePrice * 1.15;
                   }
                 }
 
-                if (finalUnitPrice > 0) {
-                  supplierPriceMap.set(priceKey, finalUnitPrice);
+                if (finalUnitPriceIncVat > 0) {
+                  supplierPriceMap.set(priceKey, finalUnitPriceIncVat);
                 }
               }
             }
@@ -275,15 +278,15 @@ export async function GET(request: NextRequest) {
       } catch { /* ignore */ }
     }
 
-    // Calculate Supplier Payables — grouped by supplier + item, using agreement price per item
+    // Calculate Supplier Payables — grouped by supplier + item, using agreement price per item (Inc. VAT)
     const supplierPayablesMap = new Map<string, SupplierPayables>();
     aggregateDeliveries.forEach((delivery) => {
       const suppId = delivery.supplierId;
       const itemId = delivery.itemId;
       const groupKey = `${suppId}_${itemId}`;
 
-      // Get the agreement price for this specific supplier + item combo
-      const agreementPrice = supplierPriceMap.get(groupKey) || delivery.aggregateValue || 0;
+      // Get the agreement price (Inc. VAT) for this specific supplier + item combo
+      const agreementPrice = supplierPriceMap.get(groupKey) || (delivery.aggregateValue ? delivery.aggregateValue * 1.15 : 0);
 
       if (!supplierPayablesMap.has(groupKey)) {
         supplierPayablesMap.set(groupKey, {
@@ -292,7 +295,7 @@ export async function GET(request: NextRequest) {
           itemId: itemId,
           itemName: itemMap[itemId]?.name || 'Unknown',
           totalVolume: 0,
-          aggregateValue: agreementPrice, // Direct from agreement for this item
+          aggregateValue: agreementPrice, // Direct from agreement for this item (Inc. VAT)
           totalPayable: 0,
         });
       }
@@ -332,7 +335,7 @@ export async function GET(request: NextRequest) {
     );
     const totalTransportPayable = transporterPayments.reduce((sum, t) => sum + t.totalNetPayment, 0);
 
-    // Calculate Daily Report Summary
+    // Calculate Daily Report Summary (Inc. VAT)
     const dailyMap = new Map<string, DailyReportRow>();
     aggregateDeliveries.forEach((delivery) => {
       if (!delivery.dispatchDate) return;
@@ -349,7 +352,9 @@ export async function GET(request: NextRequest) {
       const daily = dailyMap.get(dateStr)!;
       daily.totalDeliveries += 1;
       const deliveredVol = delivery.deliveredVolume || delivery.loadedVolume;
-      daily.totalSalesValue += deliveredVol * (delivery.aggregateValue || 0);
+      const custKey = `${delivery.customerId}_${delivery.itemId}`;
+      const unitPriceIncVat = customerPriceMap.get(custKey) || (delivery.aggregateValue ? delivery.aggregateValue * 1.15 : 0);
+      daily.totalSalesValue += deliveredVol * unitPriceIncVat;
       daily.totalTransportCosts += delivery.grossTruckFee || 0;
       daily.totalShortageDeductions += delivery.shortageDeduction || 0;
     });
@@ -362,7 +367,9 @@ export async function GET(request: NextRequest) {
     const totalDeliveries = aggregateDeliveries.length;
     const totalSalesValue = aggregateDeliveries.reduce((sum, d) => {
       const deliveredVol = d.deliveredVolume || d.loadedVolume;
-      return sum + deliveredVol * (d.aggregateValue || 0);
+      const custKey = `${d.customerId}_${d.itemId}`;
+      const unitPriceIncVat = customerPriceMap.get(custKey) || (d.aggregateValue ? d.aggregateValue * 1.15 : 0);
+      return sum + deliveredVol * unitPriceIncVat;
     }, 0);
     const totalTransportCosts = aggregateDeliveries.reduce((sum, d) => sum + (d.grossTruckFee || 0), 0);
     const totalShortageDeductions = aggregateDeliveries.reduce((sum, d) => sum + (d.shortageDeduction || 0), 0);

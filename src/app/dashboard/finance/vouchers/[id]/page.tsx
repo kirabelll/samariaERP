@@ -103,7 +103,7 @@ export default function VoucherDetailPage() {
   };
 
   const handleDelete = async () => {
-    if (!confirm('Are you sure you want to cancel this voucher?')) return;
+    if (!confirm(`Are you sure you want to delete voucher "${voucher?.voucherNo}"? This will cancel the voucher and reverse any bank transactions.`)) return;
 
     setActionLoading(true);
     try {
@@ -112,8 +112,9 @@ export default function VoucherDetailPage() {
       });
       const data = await res.json();
       if (!res.ok || !data.success) {
-        throw new Error(data.error || 'Failed to cancel voucher');
+        throw new Error(data.error || 'Failed to delete voucher');
       }
+      alert('Voucher deleted successfully.');
       router.push('/dashboard/finance/vouchers');
     } catch (err: any) {
       alert(err.message);
@@ -304,15 +305,27 @@ export default function VoucherDetailPage() {
             <Badge status={getBadgeStatus(voucher.status)}>{voucher.status.replace('_', ' ')}</Badge>
           </div>
         </div>
-        <div className="text-right">
-          <p className="text-sm text-slate-500">Amount</p>
-          <p className="text-3xl font-bold text-[#1D1D1F]">{formatCurrency(voucher.amount)}</p>
-          <button
-            onClick={handlePrint}
-            className="mt-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm font-medium transition-colors"
-          >
-            Print Voucher
-          </button>
+        <div className="text-right flex flex-col items-end gap-2">
+          <div>
+            <p className="text-sm text-slate-500">Amount</p>
+            <p className="text-3xl font-bold text-[#1D1D1F]">{formatCurrency(voucher.amount)}</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handlePrint}
+              className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm font-medium transition-colors"
+            >
+              Print Voucher
+            </button>
+            <Button
+              variant="danger"
+              size="md"
+              onClick={handleDelete}
+              isLoading={actionLoading}
+            >
+              Delete
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -543,11 +556,11 @@ export default function VoucherDetailPage() {
               )}
               {voucher.status !== 'Posted' && (
                 <Button
-                  variant="outline"
+                  variant="danger"
                   onClick={handleDelete}
                   isLoading={actionLoading}
                 >
-                  Cancel Voucher
+                  Delete Voucher
                 </Button>
               )}
             </div>

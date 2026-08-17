@@ -444,18 +444,29 @@ export async function DELETE(
       );
     }
 
-    // Soft delete - set status to Cancelled
-    const deletedVoucher = await prisma.paymentVoucher.update({
-      where: { id: params.id },
-      data: { status: 'Cancelled' },
-    });
+    // 1. Reverse bank balance & delete bank transaction record if it exists
+    await syncVoucherBankTransaction(voucher, true);
 
-    // Reverse bank balance & transaction
-    await syncVoucherBankTransaction(deletedVoucher, true);
+    // 2. Remove associated approval workflow entries
+    try {
+      await prisma.approval.deleteMany({
+        where: {
+          module: 'PaymentVoucher',
+          recordId: params.id,
+        },
+      });
+    } catch (apprErr) {
+      console.warn('Failed to delete associated approval records:', apprErr);
+    }
+
+    // 3. Hard delete - permanently remove voucher record from the database
+    await prisma.paymentVoucher.delete({
+      where: { id: params.id },
+    });
 
     return NextResponse.json({
       success: true,
-      data: deletedVoucher,
+      message: 'Voucher permanently deleted successfully',
     });
   } catch (error: any) {
     console.error('Error deleting payment voucher:', error);

@@ -63,6 +63,22 @@ export default function VouchersPage() {
     }
   };
 
+  const handleDelete = async (id: string, voucherNo: string) => {
+    if (!confirm(`Are you sure you want to delete voucher "${voucherNo}"?`)) return;
+    try {
+      const res = await fetch(`/api/finance/vouchers/${id}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        alert('Voucher deleted successfully');
+        fetchVouchers();
+      } else {
+        alert(data.error || 'Failed to delete voucher');
+      }
+    } catch {
+      alert('Error deleting voucher');
+    }
+  };
+
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
@@ -145,14 +161,23 @@ export default function VouchersPage() {
     {
       header: 'Actions',
       accessor: 'id',
-      render: (id) => (
-        <Button
-          size="sm"
-          variant="secondary"
-          onClick={() => router.push(`/dashboard/finance/vouchers/${id}`)}
-        >
-          View
-        </Button>
+      render: (id, row) => (
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => router.push(`/dashboard/finance/vouchers/${id}`)}
+          >
+            View
+          </Button>
+          <Button
+            size="sm"
+            variant="danger"
+            onClick={() => handleDelete(String(id), row.voucherNo)}
+          >
+            Delete
+          </Button>
+        </div>
       ),
     },
   ];
@@ -320,9 +345,22 @@ export default function VouchersPage() {
                         })()}
                       </td>
                       <td className="px-4 py-3 text-sm" onClick={(e) => e.stopPropagation()}>
-                        <Button size="sm" variant="secondary">
-                          View
-                        </Button>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => router.push(`/dashboard/finance/vouchers/${voucher.id}`)}
+                          >
+                            View
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="danger"
+                            onClick={() => handleDelete(voucher.id, voucher.voucherNo)}
+                          >
+                            Delete
+                          </Button>
+                        </div>
                       </td>
                     </tr>
                   ))}

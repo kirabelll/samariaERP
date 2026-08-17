@@ -123,7 +123,7 @@ export default function AggregateSummaryPage() {
       render: (val) => Number(val).toFixed(2),
     },
     {
-      header: 'Aggregate Value (ETB/m³)',
+      header: 'Aggregate Value (ETB/m³ Inc. VAT)',
       accessor: 'aggregateValue',
       sortable: true,
       render: (val, row) => {
@@ -158,7 +158,7 @@ export default function AggregateSummaryPage() {
       render: (val) => Number(val).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
     },
     {
-      header: 'Aggregate Value (ETB/m³)',
+      header: 'Aggregate Value (ETB/m³ Inc. VAT)',
       accessor: 'aggregateValue',
       sortable: true,
       render: (val, row) => {

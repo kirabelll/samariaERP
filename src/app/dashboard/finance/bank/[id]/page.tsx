@@ -48,62 +48,58 @@ export default function BankAccountDetailPage() {
   // Recalculate state
   const [recalculating, setRecalculating] = useState(false);
   const [recalcResult, setRecalcResult] = useState<any>(null);
+  const [reversing, setReversing] = useState(false);
 
   // Fetch account details
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        setLoading(true);
-        const response = await fetch(`/api/finance/bank/${recordId}`);
-        const result = await response.json();
-
-        if (!response.ok || !result.success) {
-          throw new Error(result.error || 'Failed to fetch record');
-        }
-
+  const fetchAccount = async () => {
+    try {
+      const response = await fetch(`/api/finance/bank/${recordId}`);
+      const result = await response.json();
+      if (response.ok && result.success) {
         setData(result.data);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'An error occurred');
-      } finally {
-        setLoading(false);
       }
-    };
+    } catch (err) {
+      console.error('Failed to refresh account data:', err);
+    }
+  };
 
+  // Fetch transactions
+  const fetchTransactions = async () => {
+    try {
+      setTxnLoading(true);
+      const params = new URLSearchParams({
+        bankAccountId: recordId,
+        page: String(txnPage),
+        limit: String(txnLimit),
+      });
+      if (txnSearch) params.set('search', txnSearch);
+      if (txnTypeFilter) params.set('type', txnTypeFilter);
+
+      const response = await fetch(`/api/finance/bank/transactions?${params}`);
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Failed to fetch transactions');
+      }
+
+      setTransactions(result.data || []);
+      setTxnTotal(result.pagination?.total || 0);
+      setTxnPages(result.pagination?.pages || 1);
+    } catch (err) {
+      setTxnError(err instanceof Error ? err.message : 'Failed to load transactions');
+    } finally {
+      setTxnLoading(false);
+    }
+  };
+
+  useEffect(() => {
     if (recordId) {
-      fetchData();
+      setLoading(true);
+      fetchAccount().finally(() => setLoading(false));
     }
   }, [recordId]);
 
-  // Fetch transactions for this bank account
   useEffect(() => {
-    const fetchTransactions = async () => {
-      try {
-        setTxnLoading(true);
-        const params = new URLSearchParams({
-          bankAccountId: recordId,
-          page: String(txnPage),
-          limit: String(txnLimit),
-        });
-        if (txnSearch) params.set('search', txnSearch);
-        if (txnTypeFilter) params.set('type', txnTypeFilter);
-
-        const response = await fetch(`/api/finance/bank/transactions?${params}`);
-        const result = await response.json();
-
-        if (!response.ok || !result.success) {
-          throw new Error(result.error || 'Failed to fetch transactions');
-        }
-
-        setTransactions(result.data || []);
-        setTxnTotal(result.pagination?.total || 0);
-        setTxnPages(result.pagination?.pages || 1);
-      } catch (err) {
-        setTxnError(err instanceof Error ? err.message : 'Failed to load transactions');
-      } finally {
-        setTxnLoading(false);
-      }
-    };
-
     if (recordId) {
       fetchTransactions();
     }
@@ -115,6 +111,52 @@ export default function BankAccountDetailPage() {
 
   const handleBack = () => {
     router.push(`/dashboard/finance/bank`);
+  };
+
+  const handleReverseTransaction = async (txn: BankTransaction) => {
+    if (txn.refModule === 'REVERSAL') {
+      alert('Cannot reverse a transaction that is already a reversal.');
+      return;
+    }
+
+    const amountStr = Number(txn.amount).toLocaleString('en-US', { minimumFractionDigits: 2 });
+    const confirmMsg = `Are you sure you want to REVERSE this transaction?\n\nDate: ${new Date(txn.transDate).toLocaleDateString()}\nType: ${txn.type.toUpperCase()}\nAmount: ETB ${amountStr}\nRef: ${txn.refNo || 'N/A'}\nDescription: ${txn.description || 'N/A'}\n\nThis will create an opposing ${txn.type === 'deposit' ? 'withdrawal' : 'deposit'} transaction and update the bank balance.`;
+
+    if (!confirm(confirmMsg)) return;
+
+    setReversing(true);
+    try {
+      const response = await fetch('/api/finance/bank/transactions/reverse', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          bankAccountId: recordId,
+          transactionId: txn.id,
+        }),
+      });
+
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Failed to reverse transaction');
+      }
+
+      alert(`Success: ${result.message}`);
+      fetchAccount();
+      fetchTransactions();
+    } catch (err) {
+      alert('Error: ' + (err instanceof Error ? err.message : 'Failed to reverse transaction'));
+    } finally {
+      setReversing(false);
+    }
+  };
+
+  const handleReverseLastTransaction = async () => {
+    if (transactions.length === 0) {
+      alert('No transactions found to reverse.');
+      return;
+    }
+    const lastTxn = transactions[0];
+    await handleReverseTransaction(lastTxn);
   };
 
   const handleRecalculate = async () => {
@@ -261,6 +303,25 @@ export default function BankAccountDetailPage() {
       accessor: 'reconStatus',
       render: (val) => <Badge status={val as any}>{val as string}</Badge>,
     },
+    {
+      header: 'Action',
+      accessor: 'id',
+      render: (_val, row) => {
+        const txn = row as BankTransaction;
+        if (txn.refModule === 'REVERSAL') {
+          return <span className="text-xs text-slate-400 italic">Reversal</span>;
+        }
+        return (
+          <button
+            onClick={() => handleReverseTransaction(txn)}
+            disabled={reversing}
+            className="text-xs font-semibold text-amber-700 hover:text-amber-900 bg-amber-50 hover:bg-amber-100 border border-amber-200 px-2.5 py-1 rounded-lg transition-colors disabled:opacity-50"
+          >
+            Reverse
+          </button>
+        );
+      },
+    },
   ];
 
   // Totals
@@ -316,7 +377,16 @@ export default function BankAccountDetailPage() {
       <Card>
         <CardHeader className="flex items-center justify-between">
           <h2 className="text-lg font-bold text-slate-900">Account Details</h2>
-          <div className="flex gap-3">
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleReverseLastTransaction}
+              disabled={reversing || transactions.length === 0}
+              className="text-amber-700 border-amber-300 hover:bg-amber-50 font-medium"
+            >
+              {reversing ? 'Reversing...' : '↺ Reverse Last Transaction'}
+            </Button>
             <Button
               variant="outline"
               size="sm"

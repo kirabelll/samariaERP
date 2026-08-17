@@ -70,37 +70,6 @@ export default function AggregateSummaryPage() {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [activeTab, setActiveTab] = useState<'receivables' | 'payables' | 'transport' | 'daily'>('receivables');
-  const [generatingInvoice, setGeneratingInvoice] = useState<string | null>(null);
-
-  const handleGenerateInvoice = async (customerId: string, customerName: string) => {
-    const confirmMsg = `Generate an AGGREGATE invoice for ${customerName}?` +
-      (startDate || endDate ? `\nDate range: ${startDate || 'all'} to ${endDate || 'now'}` : '\nThis will include ALL uninvoiced deliveries.') +
-      '\n\nThe invoice will appear under Sales > Invoices with division AGGREGATE.';
-    if (!confirm(confirmMsg)) return;
-
-    setGeneratingInvoice(customerId);
-    try {
-      const res = await fetch('/api/aggregate/invoice', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          customerId,
-          startDate: startDate || undefined,
-          endDate: endDate || undefined,
-          includeVat: false,
-        }),
-      });
-      const json = await res.json();
-      if (!res.ok || !json.success) {
-        throw new Error(json.error || 'Failed to generate invoice');
-      }
-      alert(`Invoice ${json.summary.invoiceNo} created!\n${json.summary.deliveryCount} deliveries, ${json.summary.totalVolume.toFixed(2)} m³\nTotal: ETB ${json.summary.totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}`);
-    } catch (err) {
-      alert('Error: ' + (err instanceof Error ? err.message : 'Unknown error'));
-    } finally {
-      setGeneratingInvoice(null);
-    }
-  };
 
   const fetchSummary = async (start?: string, end?: string) => {
     setLoading(true);
@@ -164,23 +133,6 @@ export default function AggregateSummaryPage() {
       accessor: 'totalReceivable',
       sortable: true,
       render: (val) => Number(val).toLocaleString('en-US', { maximumFractionDigits: 2 }),
-    },
-    {
-      header: 'Action',
-      accessor: 'customerId',
-      render: (val, row) => {
-        const rec = row as CustomerReceivables;
-        return (
-          <Button
-            size="sm"
-            variant="primary"
-            onClick={() => handleGenerateInvoice(rec.customerId, rec.customerName)}
-            disabled={generatingInvoice === rec.customerId}
-          >
-            {generatingInvoice === rec.customerId ? 'Generating...' : 'Generate Invoice'}
-          </Button>
-        );
-      },
     },
   ];
 

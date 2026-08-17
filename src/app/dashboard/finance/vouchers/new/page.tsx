@@ -15,6 +15,10 @@ interface SourceRefOption {
   label: string;
   ref: string;
   amount?: number;
+  dispatchNo?: string;
+  padNumber?: string;
+  supplierPayable?: number;
+  customerReceivable?: number;
 }
 
 interface BankAccountOption {
@@ -167,19 +171,51 @@ export default function NewVoucherPage() {
             break;
           }
           case 'AGGREGATE': {
-            const res = await fetch('/api/aggregate?limit=500');
+            const aggParams = new URLSearchParams({ limit: '500' });
+            if (formData.payeeType === 'CUSTOMER' && formData.payeeId) {
+              aggParams.set('customerId', formData.payeeId);
+            } else if (formData.payeeType === 'SUPPLIER' && formData.payeeId) {
+              aggParams.set('supplierId', formData.payeeId);
+            } else if (formData.payeeType === 'TRANSPORTER' && formData.payeeId) {
+              aggParams.set('transporterId', formData.payeeId);
+            }
+
+            const res = await fetch(`/api/aggregate?${aggParams.toString()}`);
             const data = await res.json();
             if (data.success) {
-              // Only show Verified deliveries (ready for payment, not yet settled)
-              const verifiedOnly = (data.data || []).filter((d: any) =>
-                d.status === 'Verified'
-              );
-              refs = verifiedOnly.map((d: any) => ({
-                id: d.id,
-                label: `${d.dispatchNo} — ${d.transporter?.companyName || 'Unknown'} — Truck: ${d.truck?.plateNo || 'N/A'}`,
-                ref: d.dispatchNo,
-                amount: d.netTruckPayment || 0,
-              }));
+              refs = (data.data || []).map((d: any) => {
+                let amount = 0;
+                let typeStr = 'Payable';
+
+                if (formData.payeeType === 'CUSTOMER') {
+                  amount = Number(d.customerReceivable || 0);
+                  typeStr = 'Customer Receivable';
+                } else if (formData.payeeType === 'TRANSPORTER') {
+                  amount = Number(d.transporterPayable || d.netTruckPayment || d.grossTruckFee || 0);
+                  typeStr = 'Transporter Freight';
+                } else if (formData.payeeType === 'SUPPLIER') {
+                  amount = Number(d.supplierPayable || 0);
+                  typeStr = 'Supplier Material';
+                } else {
+                  amount = Number(d.supplierPayable || d.netTruckPayment || 0);
+                  typeStr = 'Payable';
+                }
+
+                const podStr = d.padNumber ? `POD: ${d.padNumber}` : 'POD: N/A';
+                const partyStr = d.customer?.companyName || d.supplier?.companyName || d.transporter?.companyName || '';
+
+                return {
+                  id: d.id,
+                  dispatchNo: d.dispatchNo,
+                  padNumber: d.padNumber || 'N/A',
+                  label: `${d.dispatchNo} — ${podStr}${partyStr ? ` — ${partyStr}` : ''} — ETB ${amount.toLocaleString('en-US', { minimumFractionDigits: 2 })} (${typeStr})`,
+                  ref: d.dispatchNo,
+                  amount: Math.round(amount * 100) / 100,
+                  supplierPayable: Number(d.supplierPayable || 0),
+                  transporterPayable: Number(d.transporterPayable || d.netTruckPayment || 0),
+                  customerReceivable: Number(d.customerReceivable || 0),
+                };
+              });
             }
             break;
           }
@@ -649,7 +685,7 @@ export default function NewVoucherPage() {
                     </div>
                     <div className="max-h-60 overflow-y-auto">
                       {sourceRefs.map((ref) => (
-                        <label key={ref.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-blue-50 cursor-pointer border-b border-gray-100 last:border-0">
+                        <label key={ref.id} className="flex items-center gap-3 px-4 py-3 hover:bg-blue-50 cursor-pointer border-b border-gray-100 last:border-0">
                           <input
                             type="checkbox"
                             checked={selectedDeliveryIds.has(ref.id)}
@@ -657,9 +693,26 @@ export default function NewVoucherPage() {
                             className="w-4 h-4 rounded"
                           />
                           <div className="flex-1 text-sm">
-                            <span className="font-medium">{ref.label}</span>
+                            <div className="flex items-center gap-2">
+                              <span className="font-semibold text-slate-900">
+                                Dispatch: {ref.dispatchNo || ref.ref}
+                              </span>
+                              <span className="px-2 py-0.5 bg-blue-50 text-blue-700 text-xs font-semibold rounded-md border border-blue-200">
+                                POD: {ref.padNumber || 'N/A'}
+                              </span>
+                            </div>
+                            <p className="text-xs text-slate-500 mt-0.5">{ref.label}</p>
                           </div>
-                          <span className="text-sm text-gray-600">ETB {(ref.amount || 0).toLocaleString('en-US', { maximumFractionDigits: 2 })}</span>
+                          <div className="text-right">
+                            <span className="text-sm font-bold text-slate-900">
+                              ETB {(ref.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </span>
+                            <p className="text-[11px] font-medium text-slate-500">
+                              {formData.payeeType === 'CUSTOMER' ? 'Customer Receivable' :
+                               formData.payeeType === 'TRANSPORTER' ? 'Transporter Freight' :
+                               formData.payeeType === 'SUPPLIER' ? 'Supplier Material' : 'Payable'}
+                            </p>
+                          </div>
                         </label>
                       ))}
                     </div>

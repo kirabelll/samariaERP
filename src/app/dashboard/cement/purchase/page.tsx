@@ -204,23 +204,21 @@ export default function CementFactoryPurchase() {
         {/* Payment Details */}
         <Card>
           <CardHeader>
-            <h2 className="text-lg font-semibold text-gray-900">Payment Details</h2>
+            <h2 className="text-lg font-semibold text-gray-900">Payment Details (Optional)</h2>
           </CardHeader>
           <CardBody>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <Input
-                label="Payment Reference *"
+                label="Payment Reference (Optional)"
                 name="paymentReference"
-                required
                 placeholder="Bank transfer reference or payment ID"
                 value={formData.paymentReference}
                 onChange={handleInputChange}
               />
               <Input
-                label="Payment Date *"
+                label="Payment Date (Optional)"
                 name="paymentDate"
                 type="date"
-                required
                 value={formData.paymentDate}
                 onChange={handleInputChange}
               />

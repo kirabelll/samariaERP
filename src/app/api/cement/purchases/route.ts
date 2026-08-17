@@ -118,34 +118,6 @@ export async function POST(request: NextRequest) {
 
     const purchaseTotal = totalAmount || quantityTons * unitPrice;
 
-    // Check bank balance — use selected account or fall back to CBE default
-    const bankAccount = selectedBankAccountId
-      ? await prisma.bankAccount.findUnique({
-          where: { id: selectedBankAccountId },
-          select: { id: true, balance: true },
-        })
-      : await prisma.bankAccount.findFirst({
-          where: { accountNo: '1000639115554', status: 'Active' },
-          select: { id: true, balance: true },
-        });
-
-    if (bankAccount) {
-      const currentBalance = Number(bankAccount.balance);
-      if (purchaseTotal > currentBalance && !isCredit) {
-        return NextResponse.json(
-          {
-            success: false,
-            error: 'INSUFFICIENT_BALANCE',
-            message: `Insufficient bank balance. Available: ETB ${currentBalance.toLocaleString('en-US', { minimumFractionDigits: 2 })}, Required: ETB ${purchaseTotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}. You can proceed on credit if approved.`,
-            bankBalance: currentBalance,
-            requiredAmount: purchaseTotal,
-            shortfall: purchaseTotal - currentBalance,
-          },
-          { status: 400 }
-        );
-      }
-    }
-
     // Generate purchase number
     const lastPurchase = await prisma.cementPurchase.findFirst({
       orderBy: { purchaseNo: 'desc' },

@@ -78,9 +78,9 @@ export async function POST(
     const body = await request.json();
     const { bankAccountId, amount, refNo, description, transDate, createdBy } = body;
 
-    if (!bankAccountId || !amount || amount <= 0) {
+    if (!amount || amount <= 0) {
       return NextResponse.json(
-        { success: false, error: 'bankAccountId and a positive amount are required' },
+        { success: false, error: 'A positive amount is required' },
         { status: 400 }
       );
     }
@@ -98,17 +98,22 @@ export async function POST(
       );
     }
 
-    // Verify bank account exists
-    const bankAccount = await prisma.bankAccount.findUnique({
-      where: { id: bankAccountId },
-    });
+    // Verify bank account exists (or fallback to active bank account)
+    let bankAccount = bankAccountId
+      ? await prisma.bankAccount.findUnique({ where: { id: bankAccountId } })
+      : await prisma.bankAccount.findFirst({ where: { status: 'Active' } });
+
+    if (!bankAccount) {
+      bankAccount = await prisma.bankAccount.findFirst();
+    }
 
     if (!bankAccount) {
       return NextResponse.json(
-        { success: false, error: 'Bank account not found' },
+        { success: false, error: 'No active bank account found' },
         { status: 404 }
       );
     }
+    const resolvedBankAccountId = bankAccount.id;
 
     const paymentAmount = parseFloat(amount);
     const currentPaid = Number(purchase.paidAmount) || 0;
@@ -126,7 +131,7 @@ export async function POST(
     // Create the bank transaction linked to this purchase
     const transaction = await prisma.bankTransaction.create({
       data: {
-        bankAccountId,
+        bankAccountId: resolvedBankAccountId,
         type: 'withdrawal',
         amount: paymentAmount,
         refNo: refNo || `PAY-${purchase.purchaseNo}`,
@@ -162,7 +167,7 @@ export async function POST(
 
     // Update bank account balance
     await prisma.bankAccount.update({
-      where: { id: bankAccountId },
+      where: { id: resolvedBankAccountId },
       data: {
         balance: { decrement: paymentAmount },
       },

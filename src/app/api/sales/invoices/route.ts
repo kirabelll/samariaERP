@@ -225,6 +225,30 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Ensure customerId exists in Customer table (support selecting a Supplier)
+    let validCustomer = await prisma.customer.findUnique({ where: { id: customerId } });
+    if (!validCustomer) {
+      const supplier = await prisma.supplier.findUnique({ where: { id: customerId } });
+      if (supplier) {
+        validCustomer = await prisma.customer.upsert({
+          where: { id: supplier.id },
+          update: {
+            companyName: supplier.companyName,
+            tin: supplier.tin || undefined,
+            phone: supplier.phone || '0000000000',
+          },
+          create: {
+            id: supplier.id,
+            companyName: supplier.companyName,
+            tin: supplier.tin || undefined,
+            phone: supplier.phone || '0000000000',
+            withholding: supplier.withholding,
+            withholdRate: supplier.withholdRate || 2,
+          },
+        });
+      }
+    }
+
     // Generate invoice number
     const lastInvoice = await prisma.salesInvoice.findFirst({
       orderBy: { invoiceNo: 'desc' },

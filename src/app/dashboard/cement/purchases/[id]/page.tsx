@@ -30,14 +30,6 @@ interface CementPurchase {
 }
 
 
-interface BankAccount {
-  id: string;
-  bankName: string;
-  accountNo: string;
-  accountName: string;
-  balance: number;
-}
-
 interface PaymentTransaction {
   id: string;
   amount: number;
@@ -83,18 +75,8 @@ export default function CementPurchaseDetailPage() {
 
 
   // Payment state
-  const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
   const [payments, setPayments] = useState<PaymentTransaction[]>([]);
   const [paymentSummary, setPaymentSummary] = useState<{ totalAmount: number; totalPaid: number; remainingPayable: number; paymentStatus: string } | null>(null);
-  const [showPaymentForm, setShowPaymentForm] = useState(false);
-  const [paymentLoading, setPaymentLoading] = useState(false);
-  const [paymentForm, setPaymentForm] = useState({
-    bankAccountId: '',
-    amount: '',
-    refNo: '',
-    description: '',
-    transDate: new Date().toISOString().split('T')[0],
-  });
 
   const fetchPayments = async () => {
     try {
@@ -107,54 +89,6 @@ export default function CementPurchaseDetailPage() {
     } catch (err) {
       console.error('Failed to fetch payments:', err);
     }
-  };
-
-  const fetchBankAccounts = async () => {
-    try {
-      const res = await fetch('/api/finance/bank?limit=50');
-      const json = await res.json();
-      if (json.success) {
-        setBankAccounts((json.data || []).filter((b: BankAccount) => b.balance > 0 || true));
-      }
-    } catch (err) {
-      console.error('Failed to fetch bank accounts:', err);
-    }
-  };
-
-  const handleRecordPayment = async () => {
-    if (!paymentForm.bankAccountId || !paymentForm.amount || parseFloat(paymentForm.amount) <= 0) {
-      alert('Please select a bank account and enter a valid amount');
-      return;
-    }
-
-    setPaymentLoading(true);
-    try {
-      const res = await fetch(`/api/cement/purchases/${id}/payments`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...paymentForm,
-          amount: parseFloat(paymentForm.amount),
-        }),
-      });
-      const json = await res.json();
-      if (json.success) {
-        const activatedMsg = json.data?.purchaseActivated
-          ? '\n\nPurchase is now ACTIVE — coupons and liftings are enabled!'
-          : '';
-        alert('Payment recorded successfully!' + activatedMsg);
-        setShowPaymentForm(false);
-        setPaymentForm({ bankAccountId: '', amount: '', refNo: '', description: '', transDate: new Date().toISOString().split('T')[0] });
-        fetchPayments();
-        fetchPurchase();
-        fetchBankAccounts();
-      } else {
-        alert(json.error || 'Failed to record payment');
-      }
-    } catch {
-      alert('Failed to record payment');
-    }
-    setPaymentLoading(false);
   };
 
   const fetchPurchase = async () => {
@@ -181,7 +115,6 @@ export default function CementPurchaseDetailPage() {
     if (id) {
       fetchPurchase();
       fetchPayments();
-      fetchBankAccounts();
     }
   }, [id]);
 
@@ -594,14 +527,7 @@ export default function CementPurchaseDetailPage() {
       {/* Payment Settlement */}
       <Card className="rounded-2xl">
         <CardHeader>
-          <div className="flex justify-between items-center">
-            <h2 className="text-lg font-semibold text-[#1D1D1F]">Payment Settlement</h2>
-            {!showPaymentForm && (purchase.status === 'Active' || purchase.status === 'Approved' || purchase.status === 'Checked' || purchase.status === 'Pending') && (
-              <Button variant="primary" size="sm" onClick={() => setShowPaymentForm(true)}>
-                + Record Payment
-              </Button>
-            )}
-          </div>
+          <h2 className="text-lg font-semibold text-[#1D1D1F]">Payment Settlement</h2>
         </CardHeader>
         <CardBody className="space-y-6">
           {/* Payment Summary */}
@@ -631,84 +557,6 @@ export default function CementPurchaseDetailPage() {
               </p>
             </div>
           </div>
-
-          {/* Payment Form */}
-          {showPaymentForm && (
-            <div className="bg-slate-50 border border-slate-200 rounded-xl p-5 space-y-4">
-              <h3 className="text-base font-semibold text-[#1D1D1F]">Record Bank Payment</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Bank Account *</label>
-                  <select
-                    value={paymentForm.bankAccountId}
-                    onChange={(e) => setPaymentForm({ ...paymentForm, bankAccountId: e.target.value })}
-                    className="block w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
-                    required
-                  >
-                    <option value="">Select Bank Account</option>
-                    {bankAccounts.map((b) => (
-                      <option key={b.id} value={b.id}>
-                        {b.bankName} — {b.accountNo} ({b.accountName}) — Bal: ETB {Number(b.balance).toLocaleString('en-US')}
-                      </option>
-                    ))}
-                  </select>
-                  {bankAccounts.length === 0 && (
-                    <p className="text-amber-600 text-xs mt-1">No bank accounts found. Add bank accounts in Finance module first.</p>
-                  )}
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Amount (ETB) *</label>
-                  <input
-                    type="number"
-                    min="0.01"
-                    step="0.01"
-                    value={paymentForm.amount}
-                    onChange={(e) => setPaymentForm({ ...paymentForm, amount: e.target.value })}
-                    className="block w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
-                    placeholder={`Max: ${(paymentSummary?.remainingPayable ?? Number(purchase.totalAmount)).toLocaleString('en-US')}`}
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Reference No</label>
-                  <input
-                    type="text"
-                    value={paymentForm.refNo}
-                    onChange={(e) => setPaymentForm({ ...paymentForm, refNo: e.target.value })}
-                    className="block w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
-                    placeholder="e.g., TT-20260521-001"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Payment Date</label>
-                  <input
-                    type="date"
-                    value={paymentForm.transDate}
-                    onChange={(e) => setPaymentForm({ ...paymentForm, transDate: e.target.value })}
-                    className="block w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Description (Optional)</label>
-                <input
-                  type="text"
-                  value={paymentForm.description}
-                  onChange={(e) => setPaymentForm({ ...paymentForm, description: e.target.value })}
-                  className="block w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
-                  placeholder="e.g., Wire transfer for cement purchase"
-                />
-              </div>
-              <div className="flex gap-3 pt-2">
-                <Button variant="primary" onClick={handleRecordPayment} isLoading={paymentLoading}>
-                  Confirm Payment
-                </Button>
-                <Button variant="outline" onClick={() => setShowPaymentForm(false)}>
-                  Cancel
-                </Button>
-              </div>
-            </div>
-          )}
 
           {/* Payment History */}
           {payments.length > 0 && (
@@ -741,7 +589,7 @@ export default function CementPurchaseDetailPage() {
             </div>
           )}
 
-          {payments.length === 0 && !showPaymentForm && (
+          {payments.length === 0 && (
             <p className="text-center text-slate-400 py-4">No payments recorded yet for this purchase.</p>
           )}
         </CardBody>

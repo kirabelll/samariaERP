@@ -15,15 +15,27 @@ interface InvoiceItem {
 }
 
 interface Customer {
-  customerId: string;
+  customerId?: string;
+  id?: string;
   companyName: string;
-  agreementNo: string;
+  agreementNo?: string;
   code?: string;
   tin?: string;
   withholding?: boolean;
   withholdRate?: number;
   creditLimit?: number;
   division?: string;
+}
+
+interface Supplier {
+  id: string;
+  companyName: string;
+  code?: string;
+  tin?: string;
+  phone?: string;
+  category?: string;
+  withholding?: boolean;
+  withholdRate?: number;
 }
 
 interface AgreementItem {
@@ -49,24 +61,38 @@ interface SalesAgreement {
 
 export default function NewInvoicePage() {
   const router = useRouter();
-  const [customerId, setCustomerId] = useState('');
+  const [division, setDivision] = useState<'CEMENT' | 'AGGREGATE' | 'CONSTRUCTION'>('CEMENT');
+  const [partyType, setPartyType] = useState<'Customer' | 'Supplier'>('Customer');
+  const [partyId, setPartyId] = useState('');
   const [dueDate, setDueDate] = useState('');
   const [agreementId, setAgreementId] = useState('');
+  const [liftingId, setLiftingId] = useState('');
+  const [aggregateDispatchId, setAggregateDispatchId] = useState('');
   const [items, setItems] = useState<InvoiceItem[]>([]);
   const [saving, setSaving] = useState(false);
   const [applyWithholding, setApplyWithholding] = useState(false);
 
   // Data lists
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [agreements, setAgreements] = useState<SalesAgreement[]>([]);
+  const [cementLiftings, setCementLiftings] = useState<any[]>([]);
+  const [aggregateDispatches, setAggregateDispatches] = useState<any[]>([]);
   const [systemItems, setSystemItems] = useState<{ id: string; name: string; code: string }[]>([]);
+  
   const [loadingCustomers, setLoadingCustomers] = useState(true);
+  const [loadingSuppliers, setLoadingSuppliers] = useState(true);
   const [loadingAgreements, setLoadingAgreements] = useState(false);
+  const [loadingLiftings, setLoadingLiftings] = useState(false);
+  const [loadingDispatches, setLoadingDispatches] = useState(false);
 
-  const selectedCustomer = customers.find(c => c.customerId === customerId);
+  const selectedParty = partyType === 'Customer'
+    ? customers.find((c) => (c.customerId || c.id) === partyId)
+    : suppliers.find((s) => s.id === partyId);
+
   const selectedAgreement = agreements.find(a => a.id === agreementId);
 
-  // Fetch customers on mount
+  // Fetch customers and suppliers on mount
   useEffect(() => {
     const fetchCustomers = async () => {
       try {
@@ -81,7 +107,23 @@ export default function NewInvoicePage() {
         setLoadingCustomers(false);
       }
     };
+
+    const fetchSuppliers = async () => {
+      try {
+        const res = await fetch('/api/suppliers?limit=200');
+        const data = await res.json();
+        if (data.success) {
+          setSuppliers(data.data || []);
+        }
+      } catch (err) {
+        console.error('Failed to fetch suppliers:', err);
+      } finally {
+        setLoadingSuppliers(false);
+      }
+    };
+
     fetchCustomers();
+    fetchSuppliers();
 
     // Fetch system items for name resolution
     fetch('/api/items?limit=500')
@@ -92,48 +134,96 @@ export default function NewInvoicePage() {
       .catch(console.error);
   }, []);
 
-  // Fetch agreements when customer changes
+  // Fetch agreements, cement liftings, or aggregate dispatches when party or division changes
   useEffect(() => {
-    if (!customerId) {
+    if (!partyId) {
       setAgreements([]);
+      setCementLiftings([]);
+      setAggregateDispatches([]);
       setAgreementId('');
+      setLiftingId('');
+      setAggregateDispatchId('');
       setItems([]);
       setApplyWithholding(false);
       return;
     }
 
-    const customer = customers.find(c => c.customerId === customerId);
-    if (customer?.withholding) {
+    if (selectedParty?.withholding) {
       setApplyWithholding(true);
     } else {
       setApplyWithholding(false);
     }
 
-    const fetchAgreements = async () => {
-      setLoadingAgreements(true);
-      try {
-        const res = await fetch(`/api/sales/agreements?customerId=${customerId}&limit=100`);
-        const data = await res.json();
-        if (data.success) {
-          const activeAgreements = (data.data || []).filter(
-            (a: SalesAgreement) =>
-              a.status === 'Draft' || a.status === 'Active' || a.status === 'Approved'
-          );
-          setAgreements(activeAgreements);
+    if (division === 'CONSTRUCTION' && partyType === 'Customer') {
+      const fetchAgreements = async () => {
+        setLoadingAgreements(true);
+        try {
+          const res = await fetch(`/api/sales/agreements?customerId=${partyId}&limit=100`);
+          const data = await res.json();
+          if (data.success) {
+            const activeAgreements = (data.data || []).filter(
+              (a: SalesAgreement) =>
+                a.status === 'Draft' || a.status === 'Active' || a.status === 'Approved'
+            );
+            setAgreements(activeAgreements);
 
-          // Auto-select if only one agreement
-          if (activeAgreements.length === 1) {
-            handleAgreementSelect(activeAgreements[0].id, activeAgreements);
+            // Auto-select if only one agreement
+            if (activeAgreements.length === 1) {
+              handleAgreementSelect(activeAgreements[0].id, activeAgreements);
+            }
           }
+        } catch (err) {
+          console.error('Failed to fetch agreements:', err);
+        } finally {
+          setLoadingAgreements(false);
         }
-      } catch (err) {
-        console.error('Failed to fetch agreements:', err);
-      } finally {
-        setLoadingAgreements(false);
-      }
-    };
-    fetchAgreements();
-  }, [customerId]);
+      };
+      fetchAgreements();
+    } else if (division === 'CEMENT') {
+      const fetchLiftings = async () => {
+        setLoadingLiftings(true);
+        try {
+          const url = partyType === 'Customer'
+            ? `/api/cement/liftings?customer=${partyId}&limit=100`
+            : `/api/cement/liftings?limit=100`;
+          const res = await fetch(url);
+          const data = await res.json();
+          if (data.success) {
+            const list = data.data || [];
+            setCementLiftings(list);
+            if (list.length === 1) {
+              handleLiftingSelect(list[0].id, list);
+            }
+          }
+        } catch (err) {
+          console.error('Failed to fetch cement liftings:', err);
+        } finally {
+          setLoadingLiftings(false);
+        }
+      };
+      fetchLiftings();
+    } else if (division === 'AGGREGATE') {
+      const fetchDispatches = async () => {
+        setLoadingDispatches(true);
+        try {
+          const res = await fetch(`/api/aggregate?limit=100`);
+          const data = await res.json();
+          if (data.success) {
+            const list = data.records || data.data || [];
+            setAggregateDispatches(list);
+            if (list.length === 1) {
+              handleDispatchSelect(list[0].id, list);
+            }
+          }
+        } catch (err) {
+          console.error('Failed to fetch aggregate dispatches:', err);
+        } finally {
+          setLoadingDispatches(false);
+        }
+      };
+      fetchDispatches();
+    }
+  }, [partyId, partyType, division]);
 
   // Auto-populate items from selected agreement
   const handleAgreementSelect = (agId: string, agList?: SalesAgreement[]) => {
@@ -161,7 +251,6 @@ export default function NewInvoicePage() {
           const subtotal = qty * unitPrice;
           const total = subtotal + subtotal * (vat / 100);
 
-          // Resolve item name: use itemName/name first, then look up itemId in system items
           let itemName = ai.itemName || ai.name || '';
           if (!itemName && ai.itemId) {
             const found = systemItems.find(si => si.id === ai.itemId);
@@ -182,6 +271,68 @@ export default function NewInvoicePage() {
     } catch (err) {
       console.error('Failed to parse agreement items:', err);
     }
+  };
+
+  // Auto-populate items from selected cement lifting
+  const handleLiftingSelect = (lId: string, list?: any[]) => {
+    setLiftingId(lId);
+    if (!lId) {
+      setItems([]);
+      return;
+    }
+    const liftingList = list || cementLiftings;
+    const lifting = liftingList.find((l: any) => l.id === lId);
+    if (!lifting) return;
+
+    const qty = Number(lifting.factoryWeight || lifting.quantityTons || 1);
+    const unitPrice = Number(lifting.purchase?.unitPrice || 0);
+    const vat = 15;
+    const subtotal = qty * unitPrice;
+    const total = subtotal + subtotal * (vat / 100);
+    const factory = lifting.purchase?.factory?.name || lifting.factory?.name || 'Factory';
+    const itemName = `${lifting.cementType || 'Cement'} Cement - ${factory} (${lifting.liftingNo})`;
+
+    setItems([
+      {
+        id: 1,
+        item: itemName,
+        qty,
+        unitPrice,
+        vat,
+        total,
+      },
+    ]);
+  };
+
+  // Auto-populate items from selected aggregate dispatch
+  const handleDispatchSelect = (dId: string, list?: any[]) => {
+    setAggregateDispatchId(dId);
+    if (!dId) {
+      setItems([]);
+      return;
+    }
+    const dispatchList = list || aggregateDispatches;
+    const dispatch = dispatchList.find((d: any) => d.id === dId);
+    if (!dispatch) return;
+
+    const qty = Number(dispatch.deliveredVolume || dispatch.loadedVolume || 1);
+    const unitPrice = 0;
+    const vat = 15;
+    const subtotal = qty * unitPrice;
+    const total = subtotal;
+    const pad = dispatch.padNumber ? ` (Pad #${dispatch.padNumber})` : '';
+    const itemName = `Aggregate Delivery - ${dispatch.dispatchNo}${pad}`;
+
+    setItems([
+      {
+        id: 1,
+        item: itemName,
+        qty,
+        unitPrice,
+        vat,
+        total,
+      },
+    ]);
   };
 
   const handleAddItem = () => {
@@ -217,27 +368,25 @@ export default function NewInvoicePage() {
     return sum + (itemSubtotal * item.vat) / 100;
   }, 0);
   const grossTotal = subtotal + totalVAT;
-  const withholdRate = selectedCustomer?.withholdRate || 2;
+  const withholdRate = selectedParty?.withholdRate || 2;
   const withholdAmount = applyWithholding ? subtotal * (withholdRate / 100) : 0;
   const totalAmount = grossTotal - withholdAmount;
 
-  // Can save?
-  const hasAgreement = agreements.length > 0 && agreementId;
-  const noAgreementExists = !loadingAgreements && customerId && agreements.length === 0;
+  const noAgreementExists = division === 'CONSTRUCTION' && partyType === 'Customer' && !loadingAgreements && partyId && agreements.length === 0;
 
   const handleSave = async () => {
-    if (!customerId) {
-      alert('Please select a customer');
+    if (!partyId) {
+      alert(`Please select a ${partyType}`);
       return;
     }
 
-    if (!agreementId) {
-      alert('Please select a customer agreement. An active agreement is required to create an invoice.');
+    if (division === 'CONSTRUCTION' && partyType === 'Customer' && !agreementId) {
+      alert('Please select a customer agreement for Construction invoices.');
       return;
     }
 
     if (items.length === 0 || items.some((i) => !i.item)) {
-      alert('Please ensure all items have names');
+      alert('Please ensure all invoice items have valid names');
       return;
     }
 
@@ -247,8 +396,10 @@ export default function NewInvoicePage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          customerId,
-          salesOrderId: agreementId,
+          customerId: partyId,
+          salesOrderId: agreementId || undefined,
+          liftingId: liftingId || undefined,
+          division: division,
           items: JSON.stringify(items),
           subtotal,
           vatRate: 15,
@@ -256,7 +407,6 @@ export default function NewInvoicePage() {
           withholding: withholdAmount,
           totalAmount,
           dueDate: dueDate || undefined,
-          division: selectedCustomer?.division || 'CONSTRUCTION',
           status: 'Unpaid',
         }),
       });
@@ -283,36 +433,87 @@ export default function NewInvoicePage() {
           &larr; Back to Invoices
         </Link>
         <h1 className="text-2xl sm:text-3xl font-bold text-[#1D1D1F] mt-4">New Invoice</h1>
-        <p className="text-slate-500 text-sm mt-1">Create an invoice from a customer agreement</p>
+        <p className="text-slate-500 text-sm mt-1">Create an invoice from cement liftings, aggregate dispatches, or sales agreements</p>
       </div>
 
-      {/* Step 1: Customer & Agreement */}
+      {/* Step 1: Customer / Supplier & Division Selection */}
       <Card>
         <CardHeader>
-          <h2 className="text-lg font-semibold text-[#1D1D1F]">1. Customer & Agreement</h2>
+          <h2 className="text-lg font-semibold text-[#1D1D1F]">1. Customer / Supplier & Division Selection</h2>
         </CardHeader>
         <CardBody className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Customer *</label>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Party Type *</label>
               <select
-                value={customerId}
+                value={partyType}
                 onChange={(e) => {
-                  setCustomerId(e.target.value);
+                  setPartyType(e.target.value as any);
+                  setPartyId('');
                   setAgreementId('');
+                  setLiftingId('');
+                  setAggregateDispatchId('');
                   setItems([]);
                 }}
-                disabled={loadingCustomers}
-                className="block w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                className="block w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm font-semibold focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
               >
-                <option value="">Select Customer</option>
-                {customers.map((c) => (
-                  <option key={c.customerId} value={c.customerId}>
-                    {c.companyName} — {c.agreementNo}
-                  </option>
-                ))}
+                <option value="Customer">Customer</option>
+                <option value="Supplier">Supplier</option>
               </select>
             </div>
+
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-slate-700 mb-1">
+                {partyType === 'Customer' ? 'Customer *' : 'Supplier *'}
+              </label>
+              <select
+                value={partyId}
+                onChange={(e) => {
+                  setPartyId(e.target.value);
+                  setAgreementId('');
+                  setLiftingId('');
+                  setAggregateDispatchId('');
+                  setItems([]);
+                }}
+                disabled={partyType === 'Customer' ? loadingCustomers : loadingSuppliers}
+                className="block w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+              >
+                <option value="">Select {partyType}</option>
+                {partyType === 'Customer'
+                  ? customers.map((c) => (
+                      <option key={c.customerId || c.id} value={c.customerId || c.id}>
+                        {c.companyName} {c.agreementNo ? `— ${c.agreementNo}` : ''}
+                      </option>
+                    ))
+                  : suppliers.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.companyName} {s.code ? `(${s.code})` : ''} {s.category ? `— ${s.category}` : ''}
+                      </option>
+                    ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Division / Dispatch Type *</label>
+              <select
+                value={division}
+                onChange={(e) => {
+                  setDivision(e.target.value as any);
+                  setAgreementId('');
+                  setLiftingId('');
+                  setAggregateDispatchId('');
+                  setItems([]);
+                }}
+                className="block w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm font-semibold text-blue-900 bg-blue-50/50 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+              >
+                <option value="CEMENT">Cement (Liftings / Dispatches)</option>
+                <option value="AGGREGATE">Aggregate (Dispatches)</option>
+                <option value="CONSTRUCTION">Construction (Sales Agreements)</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Due Date</label>
               <input
@@ -324,8 +525,86 @@ export default function NewInvoicePage() {
             </div>
           </div>
 
-          {/* Agreement Selection - Required */}
-          {customerId && (
+          {/* Cement Lifting Selection */}
+          {partyId && division === 'CEMENT' && (
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">
+                Select Cement Lifting / Dispatch
+              </label>
+              {loadingLiftings ? (
+                <p className="text-blue-600 text-sm">Loading cement liftings...</p>
+              ) : cementLiftings.length === 0 ? (
+                <div className="bg-amber-50 border border-amber-300 rounded-xl p-4">
+                  <p className="text-amber-800 font-semibold text-sm">
+                    No cement liftings found for this {partyType.toLowerCase()}.
+                  </p>
+                  <p className="text-amber-700 text-xs mt-1">
+                    You can manually add invoice items below.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <select
+                    value={liftingId}
+                    onChange={(e) => handleLiftingSelect(e.target.value)}
+                    className="block w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                  >
+                    <option value="">-- Select Cement Lifting --</option>
+                    {cementLiftings.map((l) => (
+                      <option key={l.id} value={l.id}>
+                        {l.liftingNo} — {l.cementType} ({Number(l.factoryWeight || l.quantityTons || 0).toLocaleString('en-US')} QT) — {l.purchase?.factory?.name || 'Factory'} — {new Date(l.liftingDate || l.createdAt).toLocaleDateString()}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Selecting a cement lifting will auto-populate the item details and quantity
+                  </p>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* Aggregate Dispatch Selection */}
+          {partyId && division === 'AGGREGATE' && (
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">
+                Select Aggregate Dispatch
+              </label>
+              {loadingDispatches ? (
+                <p className="text-blue-600 text-sm">Loading aggregate dispatches...</p>
+              ) : aggregateDispatches.length === 0 ? (
+                <div className="bg-amber-50 border border-amber-300 rounded-xl p-4">
+                  <p className="text-amber-800 font-semibold text-sm">
+                    No aggregate dispatches found.
+                  </p>
+                  <p className="text-amber-700 text-xs mt-1">
+                    You can manually add invoice items below.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <select
+                    value={aggregateDispatchId}
+                    onChange={(e) => handleDispatchSelect(e.target.value)}
+                    className="block w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                  >
+                    <option value="">-- Select Aggregate Dispatch --</option>
+                    {aggregateDispatches.map((d) => (
+                      <option key={d.id} value={d.id}>
+                        {d.dispatchNo} — Pad #{d.padNumber || 'N/A'} ({Number(d.deliveredVolume || d.loadedVolume || 0).toLocaleString('en-US')} m³) — {new Date(d.dispatchDate || d.createdAt).toLocaleDateString()}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Selecting an aggregate dispatch will auto-populate the item details and volume
+                  </p>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* Agreement Selection (Construction) */}
+          {partyId && division === 'CONSTRUCTION' && partyType === 'Customer' && (
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">
                 Customer Agreement *
@@ -338,8 +617,7 @@ export default function NewInvoicePage() {
                     No active agreement found for this customer.
                   </p>
                   <p className="text-red-600 text-xs mt-1">
-                    You must create a Sales Agreement before generating an invoice.
-                    Invoices cannot be saved without a valid agreement.
+                    You must create a Sales Agreement before generating a Construction invoice.
                   </p>
                   <Link
                     href="/dashboard/sales/agreements/new"
@@ -371,27 +649,27 @@ export default function NewInvoicePage() {
             </div>
           )}
 
-          {/* Customer Info Panel */}
-          {selectedCustomer && agreementId && (
+          {/* Party Info Panel */}
+          {selectedParty && (
             <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
                 <div>
-                  <span className="text-blue-600 font-medium block">Customer</span>
-                  <span className="text-slate-900">{selectedCustomer.companyName}</span>
+                  <span className="text-blue-600 font-medium block">{partyType}</span>
+                  <span className="text-slate-900 font-semibold">{selectedParty.companyName}</span>
                 </div>
                 <div>
                   <span className="text-blue-600 font-medium block">TIN</span>
-                  <span className="text-slate-900">{selectedCustomer.tin || '—'}</span>
+                  <span className="text-slate-900">{selectedParty.tin || '—'}</span>
                 </div>
                 <div>
                   <span className="text-blue-600 font-medium block">Withholding</span>
                   <span className="text-slate-900">
-                    {selectedCustomer.withholding ? `Yes (${selectedCustomer.withholdRate || 2}%)` : 'No'}
+                    {selectedParty.withholding ? `Yes (${selectedParty.withholdRate || 2}%)` : 'No'}
                   </span>
                 </div>
                 <div>
-                  <span className="text-blue-600 font-medium block">Agreement</span>
-                  <span className="text-slate-900">{selectedAgreement?.agreementNo || '—'}</span>
+                  <span className="text-blue-600 font-medium block">Division</span>
+                  <span className="text-slate-900 font-semibold">{division}</span>
                 </div>
               </div>
             </div>
@@ -399,8 +677,8 @@ export default function NewInvoicePage() {
         </CardBody>
       </Card>
 
-      {/* Step 2: Items Table (only show when agreement selected) */}
-      {agreementId && items.length > 0 && (
+      {/* Step 2: Items Table */}
+      {partyId && (
         <Card>
           <CardHeader>
             <div className="flex justify-between items-center">
@@ -411,85 +689,94 @@ export default function NewInvoicePage() {
             </div>
           </CardHeader>
           <CardBody>
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-slate-200">
-                    <th className="text-left py-2 px-2 text-xs font-semibold text-slate-500 uppercase">Item</th>
-                    <th className="text-left py-2 px-2 text-xs font-semibold text-slate-500 uppercase">Qty</th>
-                    <th className="text-left py-2 px-2 text-xs font-semibold text-slate-500 uppercase">Unit Price</th>
-                    <th className="text-left py-2 px-2 text-xs font-semibold text-slate-500 uppercase">VAT %</th>
-                    <th className="text-left py-2 px-2 text-xs font-semibold text-slate-500 uppercase">Total (incl. VAT)</th>
-                    <th className="text-left py-2 px-2 text-xs font-semibold text-slate-500 uppercase">Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {items.map((item) => (
-                    <tr key={item.id} className="border-b border-slate-100">
-                      <td className="py-3 px-2">
-                        <Input
-                          placeholder="Item name"
-                          value={item.item}
-                          onChange={(e) => handleItemChange(item.id, 'item', e.target.value)}
-                        />
-                      </td>
-                      <td className="py-3 px-2">
-                        <input
-                          type="number"
-                          min="0.01"
-                          step="0.01"
-                          value={item.qty}
-                          onChange={(e) =>
-                            handleItemChange(item.id, 'qty', parseFloat(e.target.value) || 0)
-                          }
-                          className="w-20 rounded-xl border border-slate-300 px-2 py-1.5 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
-                        />
-                      </td>
-                      <td className="py-3 px-2">
-                        <input
-                          type="number"
-                          step="0.01"
-                          value={item.unitPrice}
-                          onChange={(e) =>
-                            handleItemChange(item.id, 'unitPrice', parseFloat(e.target.value) || 0)
-                          }
-                          className="w-28 rounded-xl border border-slate-300 px-2 py-1.5 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
-                        />
-                      </td>
-                      <td className="py-3 px-2">
-                        <input
-                          type="number"
-                          min="0"
-                          max="100"
-                          value={item.vat}
-                          onChange={(e) =>
-                            handleItemChange(item.id, 'vat', parseInt(e.target.value) || 0)
-                          }
-                          className="w-16 rounded-xl border border-slate-300 px-2 py-1.5 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
-                        />
-                      </td>
-                      <td className="py-3 px-2 text-sm font-medium text-slate-900">
-                        ETB {(item.total ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </td>
-                      <td className="py-3 px-2">
-                        <button
-                          onClick={() => handleRemoveItem(item.id)}
-                          className="text-red-500 hover:text-red-700 text-xs font-medium"
-                        >
-                          Remove
-                        </button>
-                      </td>
+            {items.length === 0 ? (
+              <div className="text-center py-8">
+                <p className="text-slate-500 text-sm">No items added yet.</p>
+                <Button variant="outline" size="sm" onClick={handleAddItem} className="mt-3">
+                  + Add Invoice Item
+                </Button>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-slate-200">
+                      <th className="text-left py-2 px-2 text-xs font-semibold text-slate-500 uppercase">Item</th>
+                      <th className="text-left py-2 px-2 text-xs font-semibold text-slate-500 uppercase">Qty</th>
+                      <th className="text-left py-2 px-2 text-xs font-semibold text-slate-500 uppercase">Unit Price</th>
+                      <th className="text-left py-2 px-2 text-xs font-semibold text-slate-500 uppercase">VAT %</th>
+                      <th className="text-left py-2 px-2 text-xs font-semibold text-slate-500 uppercase">Total (incl. VAT)</th>
+                      <th className="text-left py-2 px-2 text-xs font-semibold text-slate-500 uppercase">Action</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {items.map((item) => (
+                      <tr key={item.id} className="border-b border-slate-100">
+                        <td className="py-3 px-2">
+                          <Input
+                            placeholder="Item name"
+                            value={item.item}
+                            onChange={(e) => handleItemChange(item.id, 'item', e.target.value)}
+                          />
+                        </td>
+                        <td className="py-3 px-2">
+                          <input
+                            type="number"
+                            min="0.01"
+                            step="0.01"
+                            value={item.qty}
+                            onChange={(e) =>
+                              handleItemChange(item.id, 'qty', parseFloat(e.target.value) || 0)
+                            }
+                            className="w-20 rounded-xl border border-slate-300 px-2 py-1.5 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                          />
+                        </td>
+                        <td className="py-3 px-2">
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={item.unitPrice}
+                            onChange={(e) =>
+                              handleItemChange(item.id, 'unitPrice', parseFloat(e.target.value) || 0)
+                            }
+                            className="w-28 rounded-xl border border-slate-300 px-2 py-1.5 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                          />
+                        </td>
+                        <td className="py-3 px-2">
+                          <input
+                            type="number"
+                            min="0"
+                            max="100"
+                            value={item.vat}
+                            onChange={(e) =>
+                              handleItemChange(item.id, 'vat', parseInt(e.target.value) || 0)
+                            }
+                            className="w-16 rounded-xl border border-slate-300 px-2 py-1.5 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                          />
+                        </td>
+                        <td className="py-3 px-2 text-sm font-medium text-slate-900">
+                          ETB {(item.total ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </td>
+                        <td className="py-3 px-2">
+                          <button
+                            onClick={() => handleRemoveItem(item.id)}
+                            className="text-red-500 hover:text-red-700 text-xs font-medium"
+                          >
+                            Remove
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </CardBody>
         </Card>
       )}
 
       {/* Step 3: VAT & Totals (only show when items exist) */}
-      {agreementId && items.length > 0 && (
+      {partyId && items.length > 0 && (
         <Card>
           <CardHeader>
             <h2 className="text-lg font-semibold text-[#1D1D1F]">3. VAT & Totals</h2>
@@ -518,7 +805,7 @@ export default function NewInvoicePage() {
               </div>
 
               {/* Withholding Tax */}
-              {selectedCustomer?.withholding && (
+              {selectedParty?.withholding && (
                 <div className="border-t pt-3 space-y-2">
                   <label className="flex items-center gap-2 text-sm">
                     <input
@@ -571,7 +858,7 @@ export default function NewInvoicePage() {
           size="lg"
           onClick={handleSave}
           isLoading={saving}
-          disabled={!customerId || !agreementId || items.length === 0 || noAgreementExists}
+          disabled={!partyId || items.length === 0 || noAgreementExists}
           className="flex-1"
         >
           {noAgreementExists ? 'Cannot Save — No Agreement' : 'Save Invoice'}
@@ -588,3 +875,4 @@ export default function NewInvoicePage() {
     </div>
   );
 }
+

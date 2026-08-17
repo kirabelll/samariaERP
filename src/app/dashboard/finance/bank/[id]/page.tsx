@@ -48,7 +48,7 @@ export default function BankAccountDetailPage() {
   // Recalculate state
   const [recalculating, setRecalculating] = useState(false);
   const [recalcResult, setRecalcResult] = useState<any>(null);
-  const [reversing, setReversing] = useState(false);
+  const [deletingTxnId, setDeletingTxnId] = useState<string | null>(null);
 
   // Fetch account details
   const fetchAccount = async () => {
@@ -113,51 +113,7 @@ export default function BankAccountDetailPage() {
     router.push(`/dashboard/finance/bank`);
   };
 
-  const handleReverseTransaction = async (txn: BankTransaction) => {
-    if (txn.refModule === 'REVERSAL') {
-      alert('Cannot reverse a transaction that is already a reversal.');
-      return;
-    }
 
-    const amountStr = Number(txn.amount).toLocaleString('en-US', { minimumFractionDigits: 2 });
-    const confirmMsg = `Are you sure you want to REVERSE this transaction?\n\nDate: ${new Date(txn.transDate).toLocaleDateString()}\nType: ${txn.type.toUpperCase()}\nAmount: ETB ${amountStr}\nRef: ${txn.refNo || 'N/A'}\nDescription: ${txn.description || 'N/A'}\n\nThis will create an opposing ${txn.type === 'deposit' ? 'withdrawal' : 'deposit'} transaction and update the bank balance.`;
-
-    if (!confirm(confirmMsg)) return;
-
-    setReversing(true);
-    try {
-      const response = await fetch('/api/finance/bank/transactions/reverse', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          bankAccountId: recordId,
-          transactionId: txn.id,
-        }),
-      });
-
-      const result = await response.json();
-      if (!response.ok || !result.success) {
-        throw new Error(result.error || 'Failed to reverse transaction');
-      }
-
-      alert(`Success: ${result.message}`);
-      fetchAccount();
-      fetchTransactions();
-    } catch (err) {
-      alert('Error: ' + (err instanceof Error ? err.message : 'Failed to reverse transaction'));
-    } finally {
-      setReversing(false);
-    }
-  };
-
-  const handleReverseLastTransaction = async () => {
-    if (transactions.length === 0) {
-      alert('No transactions found to reverse.');
-      return;
-    }
-    const lastTxn = transactions[0];
-    await handleReverseTransaction(lastTxn);
-  };
 
   const handleRecalculate = async () => {
     if (!confirm('Recalculate this account\'s balance from all transactions? This will correct any drift between the stored balance and actual transaction history.')) return;
@@ -175,6 +131,31 @@ export default function BankAccountDetailPage() {
       alert('Error: ' + (err instanceof Error ? err.message : 'Unknown error'));
     } finally {
       setRecalculating(false);
+    }
+  };
+
+  const handleDeleteTransaction = async (txn: BankTransaction) => {
+    const amountStr = Number(txn.amount).toLocaleString('en-US', { minimumFractionDigits: 2 });
+    const confirmMsg = `Are you sure you want to DELETE this transaction?\n\nDate: ${new Date(txn.transDate).toLocaleDateString()}\nType: ${txn.type.toUpperCase()}\nAmount: ETB ${amountStr}\nRef: ${txn.refNo || 'N/A'}\nDescription: ${txn.description || 'N/A'}\n\nThis will permanently delete the transaction record and adjust the bank account balance accordingly.`;
+
+    if (!confirm(confirmMsg)) return;
+
+    setDeletingTxnId(txn.id);
+    try {
+      const response = await fetch(`/api/finance/bank/transactions/${txn.id}`, {
+        method: 'DELETE',
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Failed to delete transaction');
+      }
+      alert('Transaction deleted successfully.');
+      fetchAccount();
+      fetchTransactions();
+    } catch (err) {
+      alert('Error: ' + (err instanceof Error ? err.message : 'Failed to delete transaction'));
+    } finally {
+      setDeletingTxnId(null);
     }
   };
 
@@ -308,16 +289,13 @@ export default function BankAccountDetailPage() {
       accessor: 'id',
       render: (_val, row) => {
         const txn = row as BankTransaction;
-        if (txn.refModule === 'REVERSAL') {
-          return <span className="text-xs text-slate-400 italic">Reversal</span>;
-        }
         return (
           <button
-            onClick={() => handleReverseTransaction(txn)}
-            disabled={reversing}
-            className="text-xs font-semibold text-amber-700 hover:text-amber-900 bg-amber-50 hover:bg-amber-100 border border-amber-200 px-2.5 py-1 rounded-lg transition-colors disabled:opacity-50"
+            onClick={() => handleDeleteTransaction(txn)}
+            disabled={deletingTxnId === txn.id}
+            className="text-xs font-semibold text-red-700 hover:text-red-900 bg-red-50 hover:bg-red-100 border border-red-200 px-2.5 py-1 rounded-lg transition-colors disabled:opacity-50"
           >
-            Reverse
+            {deletingTxnId === txn.id ? 'Deleting...' : 'Delete'}
           </button>
         );
       },
@@ -378,15 +356,6 @@ export default function BankAccountDetailPage() {
         <CardHeader className="flex items-center justify-between">
           <h2 className="text-lg font-bold text-slate-900">Account Details</h2>
           <div className="flex flex-wrap gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleReverseLastTransaction}
-              disabled={reversing || transactions.length === 0}
-              className="text-amber-700 border-amber-300 hover:bg-amber-50 font-medium"
-            >
-              {reversing ? 'Reversing...' : '↺ Reverse Last Transaction'}
-            </Button>
             <Button
               variant="outline"
               size="sm"

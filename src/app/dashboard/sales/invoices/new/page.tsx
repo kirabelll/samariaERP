@@ -72,6 +72,7 @@ export default function NewInvoicePage() {
   const [aggregateDispatchId, setAggregateDispatchId] = useState('');
   const [selectedDispatchIds, setSelectedDispatchIds] = useState<string[]>([]);
   const [selectedLiftingIds, setSelectedLiftingIds] = useState<string[]>([]);
+  const [groupByCategory, setGroupByCategory] = useState(false);
   const [items, setItems] = useState<InvoiceItem[]>([]);
   const [saving, setSaving] = useState(false);
   const [applyWithholding, setApplyWithholding] = useState(false);
@@ -258,18 +259,54 @@ export default function NewInvoicePage() {
       updated = [...selectedDispatchIds, id];
     }
     setSelectedDispatchIds(updated);
-    updateItemsFromDispatches(updated);
+    updateItemsFromDispatches(updated, undefined, groupByCategory);
   };
 
   const toggleAllDispatches = () => {
     if (selectedDispatchIds.length === aggregateDispatches.length) {
       setSelectedDispatchIds([]);
-      updateItemsFromDispatches([]);
+      updateItemsFromDispatches([], undefined, groupByCategory);
     } else {
       const allIds = aggregateDispatches.map((d) => d.id);
       setSelectedDispatchIds(allIds);
-      updateItemsFromDispatches(allIds);
+      updateItemsFromDispatches(allIds, undefined, groupByCategory);
     }
+  };
+
+  // Helper to identify and resolve exact item name from ID, code, system items, or agreements
+  const resolveItemName = (itemIdOrName?: string, defaultCategory: string = 'Item'): string => {
+    if (!itemIdOrName) return defaultCategory;
+    const cleanKey = String(itemIdOrName).trim();
+    if (!cleanKey) return defaultCategory;
+
+    // 1. Match against systemItems registry by ID
+    const foundById = systemItems.find(
+      (si) => si.id && String(si.id).toLowerCase() === cleanKey.toLowerCase()
+    );
+    if (foundById) return foundById.name;
+
+    // 2. Match against systemItems registry by Code
+    const foundByCode = systemItems.find(
+      (si) => si.code && String(si.code).toLowerCase() === cleanKey.toLowerCase()
+    );
+    if (foundByCode) return foundByCode.name;
+
+    // 3. Match against loaded agreements
+    for (const ag of agreements) {
+      try {
+        const parsed: AgreementItem[] = typeof ag.items === 'string' ? JSON.parse(ag.items) : (ag.items as any[] || []);
+        const agMatch = parsed.find(
+          (ai) =>
+            (ai.itemId && String(ai.itemId).toLowerCase() === cleanKey.toLowerCase()) ||
+            (ai.itemName && String(ai.itemName).toLowerCase().includes(cleanKey.toLowerCase()))
+        );
+        if (agMatch && (agMatch.itemName || agMatch.name)) {
+          return agMatch.itemName || agMatch.name!;
+        }
+      } catch {}
+    }
+
+    return cleanKey;
   };
 
   // Helper to resolve unit price from customer's sales agreement
@@ -319,37 +356,86 @@ export default function NewInvoicePage() {
     return fallbackPrice;
   };
 
-  const updateItemsFromDispatches = (dispatchIds: string[], agList?: SalesAgreement[]) => {
+  const updateItemsFromDispatches = (dispatchIds: string[], agList?: SalesAgreement[], isGrouped?: boolean) => {
     const activeAgreements = agList || agreements;
+    const shouldGroup = isGrouped !== undefined ? isGrouped : groupByCategory;
     const selected = aggregateDispatches.filter((d) => dispatchIds.includes(d.id));
-    const invoiceItems: InvoiceItem[] = selected.map((dispatch, index) => {
-      const qty = Number(dispatch.deliveredVolume || dispatch.loadedVolume || 1);
-      let unitPrice = getCustomerAgreementUnitPrice(
-        activeAgreements,
-        dispatch.itemId || dispatch.itemName,
-        0
-      );
 
-      if (!unitPrice) {
-        unitPrice = Number(dispatch.aggregateValue || dispatch.transportRate || 0);
-      }
+    if (shouldGroup && selected.length > 0) {
+      // Group dispatches by resolved item category / name
+      const groupedMap = new Map<string, typeof selected>();
+      selected.forEach((d) => {
+        const resolvedName = resolveItemName(d.itemName || d.itemCategory || d.itemId || d.item?.name, 'Aggregate Delivery');
+        const catKey = resolvedName.trim().toLowerCase();
+        const existing = groupedMap.get(catKey) || [];
+        groupedMap.set(catKey, [...existing, d]);
+      });
 
-      const vat = 15;
-      const subtotal = qty * unitPrice;
-      const total = subtotal + subtotal * (vat / 100);
-      const pad = dispatch.padNumber ? ` (Pad #${dispatch.padNumber})` : '';
-      const itemName = `Aggregate Delivery - ${dispatch.dispatchNo}${pad}`;
+      const invoiceItems: InvoiceItem[] = Array.from(groupedMap.values()).map((group, index) => {
+        const first = group[0];
+        const categoryName = resolveItemName(first.itemName || first.itemCategory || first.itemId || first.item?.name, 'Aggregate Delivery');
+        const totalQty = group.reduce((sum, d) => sum + Number(d.deliveredVolume || d.loadedVolume || 1), 0);
 
-      return {
-        id: index + 1,
-        item: itemName,
-        qty,
-        unitPrice,
-        vat,
-        total,
-      };
-    });
-    setItems(invoiceItems);
+        let unitPrice = getCustomerAgreementUnitPrice(
+          activeAgreements,
+          first.itemId || first.itemName,
+          0
+        );
+        if (!unitPrice) {
+          unitPrice = Number(first.aggregateValue || first.transportRate || 0);
+        }
+
+        const vat = 15;
+        const subtotal = totalQty * unitPrice;
+        const total = subtotal + subtotal * (vat / 100);
+
+        const podList = Array.from(new Set(group.map((d) => d.padNumber || d.podNumber || d.dispatchNo).filter(Boolean)));
+        const podHeader = podList.length > 0 ? `PODs #${podList.join(', #')}` : 'POD #N/A';
+        const itemName = `${podHeader} — ${categoryName}`;
+
+        return {
+          id: index + 1,
+          item: itemName,
+          qty: Math.round(totalQty * 100) / 100,
+          unitPrice,
+          vat,
+          total: Math.round(total * 100) / 100,
+        };
+      });
+      setItems(invoiceItems);
+    } else {
+      // Individual dispatches with POD number FIRST: POD #1002 — Item Name
+      const invoiceItems: InvoiceItem[] = selected.map((dispatch, index) => {
+        const qty = Number(dispatch.deliveredVolume || dispatch.loadedVolume || 1);
+        let unitPrice = getCustomerAgreementUnitPrice(
+          activeAgreements,
+          dispatch.itemId || dispatch.itemName,
+          0
+        );
+
+        if (!unitPrice) {
+          unitPrice = Number(dispatch.aggregateValue || dispatch.transportRate || 0);
+        }
+
+        const vat = 15;
+        const subtotal = qty * unitPrice;
+        const total = subtotal + subtotal * (vat / 100);
+
+        const podHeader = dispatch.padNumber ? `POD #${dispatch.padNumber}` : (dispatch.podNumber ? `POD #${dispatch.podNumber}` : `POD #${dispatch.dispatchNo}`);
+        const catName = resolveItemName(dispatch.itemName || dispatch.itemCategory || dispatch.itemId || dispatch.item?.name, 'Aggregate Delivery');
+        const itemName = `${podHeader} — ${catName}`;
+
+        return {
+          id: index + 1,
+          item: itemName,
+          qty,
+          unitPrice,
+          vat,
+          total: Math.round(total * 100) / 100,
+        };
+      });
+      setItems(invoiceItems);
+    }
   };
 
   // Checkbox Selection Logic for Cement Liftings
@@ -361,53 +447,103 @@ export default function NewInvoicePage() {
       updated = [...selectedLiftingIds, id];
     }
     setSelectedLiftingIds(updated);
-    updateItemsFromLiftings(updated);
+    updateItemsFromLiftings(updated, undefined, groupByCategory);
   };
 
   const toggleAllLiftings = () => {
     if (selectedLiftingIds.length === cementLiftings.length) {
       setSelectedLiftingIds([]);
-      updateItemsFromLiftings([]);
+      updateItemsFromLiftings([], undefined, groupByCategory);
     } else {
       const allIds = cementLiftings.map((l) => l.id);
       setSelectedLiftingIds(allIds);
-      updateItemsFromLiftings(allIds);
+      updateItemsFromLiftings(allIds, undefined, groupByCategory);
     }
   };
 
-  const updateItemsFromLiftings = (liftingIds: string[], agList?: SalesAgreement[]) => {
+  const updateItemsFromLiftings = (liftingIds: string[], agList?: SalesAgreement[], isGrouped?: boolean) => {
     const activeAgreements = agList || agreements;
+    const shouldGroup = isGrouped !== undefined ? isGrouped : groupByCategory;
     const selected = cementLiftings.filter((l) => liftingIds.includes(l.id));
-    const invoiceItems: InvoiceItem[] = selected.map((lifting, index) => {
-      const qty = Number(lifting.factoryWeight || lifting.quantityTons || 1);
-      
-      // Fetch unit price from customer sales agreement, NOT supplier purchase order
-      let unitPrice = getCustomerAgreementUnitPrice(
-        activeAgreements,
-        lifting.itemId || lifting.cementType,
-        0
-      );
 
-      if (!unitPrice) {
-        unitPrice = Number(lifting.unitPrice || lifting.customerUnitPrice || lifting.aggregateValue || 0);
-      }
+    if (shouldGroup && selected.length > 0) {
+      // Group liftings by resolved item category / cementType
+      const groupedMap = new Map<string, typeof selected>();
+      selected.forEach((l) => {
+        const resolvedName = resolveItemName(l.cementType || l.itemName || l.itemId, 'Cement');
+        const catKey = resolvedName.trim().toLowerCase();
+        const existing = groupedMap.get(catKey) || [];
+        groupedMap.set(catKey, [...existing, l]);
+      });
 
-      const vat = 15;
-      const subtotal = qty * unitPrice;
-      const total = subtotal + subtotal * (vat / 100);
-      const factory = lifting.purchase?.factory?.name || lifting.factory?.name || 'Factory';
-      const itemName = `${lifting.cementType || 'Cement'} Cement - ${factory} (${lifting.liftingNo})`;
+      const invoiceItems: InvoiceItem[] = Array.from(groupedMap.values()).map((group, index) => {
+        const first = group[0];
+        const cementType = resolveItemName(first.cementType || first.itemName || first.itemId, 'Cement');
+        const factory = first.purchase?.factory?.name || first.factory?.name || 'Factory';
+        const totalQty = group.reduce((sum, l) => sum + Number(l.factoryWeight || l.quantityTons || 1), 0);
 
-      return {
-        id: index + 1,
-        item: itemName,
-        qty,
-        unitPrice,
-        vat,
-        total,
-      };
-    });
-    setItems(invoiceItems);
+        let unitPrice = getCustomerAgreementUnitPrice(
+          activeAgreements,
+          first.itemId || first.cementType,
+          0
+        );
+        if (!unitPrice) {
+          unitPrice = Number(first.unitPrice || first.customerUnitPrice || first.aggregateValue || 0);
+        }
+
+        const vat = 15;
+        const subtotal = totalQty * unitPrice;
+        const total = subtotal + subtotal * (vat / 100);
+
+        const podList = Array.from(new Set(group.map((l) => l.padNumber || l.podNumber || l.liftingNo).filter(Boolean)));
+        const podHeader = podList.length > 0 ? `PODs #${podList.join(', #')}` : 'POD #N/A';
+        const itemName = `${podHeader} — ${cementType} Cement — ${factory}`;
+
+        return {
+          id: index + 1,
+          item: itemName,
+          qty: Math.round(totalQty * 100) / 100,
+          unitPrice,
+          vat,
+          total: Math.round(total * 100) / 100,
+        };
+      });
+      setItems(invoiceItems);
+    } else {
+      // Individual liftings with POD number FIRST: POD #1002 — Cement Type — Factory
+      const invoiceItems: InvoiceItem[] = selected.map((lifting, index) => {
+        const qty = Number(lifting.factoryWeight || lifting.quantityTons || 1);
+
+        let unitPrice = getCustomerAgreementUnitPrice(
+          activeAgreements,
+          lifting.itemId || lifting.cementType,
+          0
+        );
+
+        if (!unitPrice) {
+          unitPrice = Number(lifting.unitPrice || lifting.customerUnitPrice || lifting.aggregateValue || 0);
+        }
+
+        const vat = 15;
+        const subtotal = qty * unitPrice;
+        const total = subtotal + subtotal * (vat / 100);
+
+        const factory = lifting.purchase?.factory?.name || lifting.factory?.name || 'Factory';
+        const podHeader = lifting.padNumber ? `POD #${lifting.padNumber}` : (lifting.podNumber ? `POD #${lifting.podNumber}` : `POD #${lifting.liftingNo}`);
+        const cementType = resolveItemName(lifting.cementType || lifting.itemName || lifting.itemId, 'Cement');
+        const itemName = `${podHeader} — ${cementType} Cement — ${factory}`;
+
+        return {
+          id: index + 1,
+          item: itemName,
+          qty,
+          unitPrice,
+          vat,
+          total: Math.round(total * 100) / 100,
+        };
+      });
+      setItems(invoiceItems);
+    }
   };
 
   // Auto-populate items from selected agreement
@@ -484,7 +620,9 @@ export default function NewInvoicePage() {
     const subtotal = qty * unitPrice;
     const total = subtotal + subtotal * (vat / 100);
     const factory = lifting.purchase?.factory?.name || lifting.factory?.name || 'Factory';
-    const itemName = `${lifting.cementType || 'Cement'} Cement - ${factory} (${lifting.liftingNo})`;
+    const podHeader = lifting.padNumber ? `POD #${lifting.padNumber}` : (lifting.podNumber ? `POD #${lifting.podNumber}` : `POD #${lifting.liftingNo}`);
+    const cementType = resolveItemName(lifting.cementType || lifting.itemName || lifting.itemId, 'Cement');
+    const itemName = `${podHeader} — ${cementType} Cement — ${factory} (${lifting.liftingNo})`;
 
     setItems([
       {
@@ -493,7 +631,7 @@ export default function NewInvoicePage() {
         qty,
         unitPrice,
         vat,
-        total,
+        total: Math.round(total * 100) / 100,
       },
     ]);
   };
@@ -523,8 +661,9 @@ export default function NewInvoicePage() {
     const vat = 15;
     const subtotal = qty * unitPrice;
     const total = subtotal + subtotal * (vat / 100);
-    const pad = dispatch.padNumber ? ` (Pad #${dispatch.padNumber})` : '';
-    const itemName = `Aggregate Delivery - ${dispatch.dispatchNo}${pad}`;
+    const podHeader = dispatch.padNumber ? `POD #${dispatch.padNumber}` : (dispatch.podNumber ? `POD #${dispatch.podNumber}` : `POD #${dispatch.dispatchNo}`);
+    const catName = resolveItemName(dispatch.itemName || dispatch.itemCategory || dispatch.itemId || dispatch.item?.name, 'Aggregate Delivery');
+    const itemName = `${podHeader} — ${dispatch.dispatchNo} — ${catName}`;
 
     setItems([
       {
@@ -533,7 +672,7 @@ export default function NewInvoicePage() {
         qty,
         unitPrice,
         vat,
-        total,
+        total: Math.round(total * 100) / 100,
       },
     ]);
   };
@@ -1008,11 +1147,35 @@ export default function NewInvoicePage() {
       {partyId && (
         <Card>
           <CardHeader>
-            <div className="flex justify-between items-center">
-              <h2 className="text-lg font-semibold text-[#1D1D1F]">2. Invoice Items</h2>
-              <Button variant="secondary" size="sm" onClick={handleAddItem}>
-                + Add Item
-              </Button>
+            <div className="flex flex-wrap justify-between items-center gap-3">
+              <div>
+                <h2 className="text-lg font-semibold text-[#1D1D1F]">2. Invoice Items</h2>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  POD numbers are displayed first on each item line. Toggle below to group and sum items by category.
+                </p>
+              </div>
+              <div className="flex items-center gap-3">
+                <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer bg-blue-50/80 hover:bg-blue-100 text-blue-900 px-3 py-1.5 rounded-xl border border-blue-200 transition-all">
+                  <input
+                    type="checkbox"
+                    checked={groupByCategory}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      setGroupByCategory(checked);
+                      if (selectedDispatchIds.length > 0) {
+                        updateItemsFromDispatches(selectedDispatchIds, undefined, checked);
+                      } else if (selectedLiftingIds.length > 0) {
+                        updateItemsFromLiftings(selectedLiftingIds, undefined, checked);
+                      }
+                    }}
+                    className="rounded text-blue-600 focus:ring-blue-500"
+                  />
+                  <span>Group & Sum Items by Category</span>
+                </label>
+                <Button variant="secondary" size="sm" onClick={handleAddItem}>
+                  + Add Item
+                </Button>
+              </div>
             </div>
           </CardHeader>
           <CardBody>

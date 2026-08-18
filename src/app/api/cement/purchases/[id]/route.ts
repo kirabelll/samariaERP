@@ -12,8 +12,8 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
       include: {
         factory: true,
         liftings: {
-          orderBy: { createdAt: 'desc' },
-          take: 20,
+          orderBy: { liftingNo: 'asc' },
+          take: 100,
           include: { truck: true },
         },
       },

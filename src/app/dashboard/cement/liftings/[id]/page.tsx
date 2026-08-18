@@ -43,7 +43,7 @@ interface CementLifting {
     id: string;
     invoiceNo: string;
     totalAmount: number;
-    status: string;
+    status: string; 
     invoiceDate: string;
   }>;
 }

@@ -650,7 +650,7 @@ export default function CementPurchaseDetailPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {purchase.liftings.map((l: any) => (
+                  {[...purchase.liftings].sort((a: any, b: any) => String(a.liftingNo || '').localeCompare(String(b.liftingNo || ''), undefined, { numeric: true, sensitivity: 'base' })).map((l: any) => (
                     <tr key={l.id} className="border-b border-slate-100">
                       <td className="px-4 py-2 text-slate-900 font-medium">{l.liftingNo}</td>
                       <td className="px-4 py-2 text-slate-900">{l.truck?.plateNo || '—'}</td>

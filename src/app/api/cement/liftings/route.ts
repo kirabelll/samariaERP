@@ -40,6 +40,9 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    const sortBy = searchParams.get('sortBy') || 'liftingNo';
+    const sortOrder = (searchParams.get('sortOrder') || 'asc') as 'asc' | 'desc';
+
     const [data, total] = await Promise.all([
       prisma.cementLifting.findMany({
         where: whereClause,
@@ -52,7 +55,7 @@ export async function GET(request: NextRequest) {
           customer: { select: { id: true, companyName: true, phone: true, tin: true, withholding: true, withholdRate: true } },
           invoices: { select: { id: true, invoiceNo: true, totalAmount: true, status: true } },
         },
-        orderBy: { liftingDate: 'desc' },
+        orderBy: { [sortBy]: sortOrder },
       }),
       prisma.cementLifting.count({ where: whereClause }),
     ]);

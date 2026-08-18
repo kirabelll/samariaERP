@@ -169,15 +169,14 @@ export async function updateVoucherLinkedDocument(voucher: any) {
           where: {
             sourceModule: 'SALES',
             OR: [{ sourceId: invoice.id }, { sourceRef: invoice.invoiceNo }],
-            voucherType: 'RECEIPT',
-            status: { in: ['Posted', 'Approved'] },
+            status: { notIn: ['Cancelled', 'Rejected'] },
           },
           select: { amount: true },
         });
         const totalPaidVouchers = allReceipts.reduce((sum, v) => sum + Number(v.amount), 0);
 
         const customerPaymentAgg = await prisma.customerPayment.aggregate({
-          where: { invoiceId: invoice.id, status: 'Verified' },
+          where: { invoiceId: invoice.id, status: { not: 'Rejected' } },
           _sum: { amount: true, withholdingAmount: true },
         });
         const totalPaidCustomer = Number(customerPaymentAgg._sum.amount || 0);

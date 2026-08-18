@@ -170,16 +170,70 @@ export async function GET(request: NextRequest) {
       whereClause.customerId = customerId;
     }
 
-    const [data, total] = await Promise.all([
+    const [rawInvoices, total] = await Promise.all([
       prisma.salesInvoice.findMany({
         where: whereClause,
         skip,
         take: limit,
-        include: { customer: true, salesOrder: true },
+        include: {
+          customer: true,
+          salesOrder: true,
+          payments: { where: { status: { not: 'Rejected' } } },
+        },
         orderBy: { invoiceDate: 'desc' },
       }),
       prisma.salesInvoice.count({ where: whereClause }),
     ]);
+
+    // Compute paid amounts, remaining amounts, and live payment status for each invoice
+    const data = await Promise.all(
+      rawInvoices.map(async (inv: any) => {
+        const totalPaidCustomer = (inv.payments || []).reduce(
+          (sum: number, p: any) => sum + Number(p.amount || 0) + Number(p.withholdingAmount || 0),
+          0
+        );
+
+        // Also check any payment vouchers linked to this sales invoice (RECEIPT or PAYMENT)
+        const voucherAgg = await prisma.paymentVoucher.aggregate({
+          where: {
+            sourceModule: 'SALES',
+            OR: [{ sourceId: inv.id }, { sourceRef: inv.invoiceNo }],
+            status: { notIn: ['Cancelled', 'Rejected'] },
+          },
+          _sum: { amount: true },
+        });
+        const totalPaidVouchers = Number(voucherAgg._sum.amount || 0);
+
+        const totalPaid = Math.max(totalPaidCustomer, totalPaidVouchers);
+        const totalAmount = Number(inv.totalAmount || 0);
+        const remainingAmount = Math.max(0, Math.round((totalAmount - totalPaid) * 100) / 100);
+
+        let computedStatus = inv.status;
+        if (totalPaid >= totalAmount || Math.abs(totalAmount - totalPaid) < 1) {
+          computedStatus = 'Paid';
+        } else if (totalPaid > 0) {
+          computedStatus = 'Partial';
+        } else {
+          computedStatus = inv.status || 'Unpaid';
+        }
+
+        // Persist computed status to database if out of sync
+        if (computedStatus !== inv.status && inv.id) {
+          await prisma.salesInvoice.update({
+            where: { id: inv.id },
+            data: { status: computedStatus },
+          }).catch(() => null);
+        }
+
+        return {
+          ...inv,
+          paidAmount: totalPaid,
+          remainingAmount,
+          status: computedStatus,
+          isPartial: computedStatus === 'Partial' || (totalPaid > 0 && totalPaid < totalAmount),
+        };
+      })
+    );
 
     return NextResponse.json({
       success: true,

@@ -15,6 +15,11 @@ interface SourceRefOption {
   label: string;
   ref: string;
   amount?: number;
+  totalAmount?: number;
+  paidAmount?: number;
+  remainingAmount?: number;
+  isPartial?: boolean;
+  status?: string;
   dispatchNo?: string;
   padNumber?: string;
   supplierPayable?: number;
@@ -83,21 +88,42 @@ export default function NewVoucherPage() {
   useEffect(() => {
     const fetchAll = async () => {
       try {
-        const [custRes, suppRes, empRes, transRes, bankRes] = await Promise.all([
-          fetch('/api/sales/agreements/customers').then(r => r.json()),
-          fetch('/api/suppliers?limit=1000').then(r => r.json()),
-          fetch('/api/employees?limit=1000').then(r => r.json()),
-          fetch('/api/transporters?limit=1000').then(r => r.json()),
-          fetch('/api/finance/bank?limit=100').then(r => r.json()),
+        const [custRes, suppRes, empRes, transRes, bankRes, allCustRes] = await Promise.all([
+          fetch('/api/sales/agreements/customers').then(r => r.json()).catch(() => ({ success: false })),
+          fetch('/api/suppliers?limit=1000').then(r => r.json()).catch(() => ({ success: false })),
+          fetch('/api/employees?limit=1000').then(r => r.json()).catch(() => ({ success: false })),
+          fetch('/api/transporters?limit=1000').then(r => r.json()).catch(() => ({ success: false })),
+          fetch('/api/finance/bank?limit=100').then(r => r.json()).catch(() => ({ success: false })),
+          fetch('/api/customers?limit=1000').then(r => r.json()).catch(() => ({ success: false })),
         ]);
 
-        if (custRes.success) {
-          setCustomers((custRes.data || []).map((c: any) => ({
-            id: c.customerId,
-            name: `${c.companyName} — ${c.agreementNo}`,
-            code: c.agreementNo,
-          })));
+        const customerMap = new Map<string, EntityOption>();
+
+        if (allCustRes.success && Array.isArray(allCustRes.data)) {
+          allCustRes.data.forEach((c: any) => {
+            if (c.id) {
+              customerMap.set(c.id, {
+                id: c.id,
+                name: c.companyName || c.name || 'Customer',
+                code: c.code || '',
+              });
+            }
+          });
         }
+
+        if (custRes.success && Array.isArray(custRes.data)) {
+          custRes.data.forEach((c: any) => {
+            if (c.customerId) {
+              customerMap.set(c.customerId, {
+                id: c.customerId,
+                name: `${c.companyName}${c.agreementNo ? ` — ${c.agreementNo}` : ''}`,
+                code: c.agreementNo || '',
+              });
+            }
+          });
+        }
+
+        setCustomers(Array.from(customerMap.values()));
         if (suppRes.success) {
           setSuppliers((suppRes.data || []).map((s: any) => ({
             id: s.id,
@@ -221,7 +247,6 @@ export default function NewVoucherPage() {
             const res = await fetch('/api/cement/purchases?limit=100&paymentStatus=Unpaid,Partial');
             const data = await res.json();
             if (data.success) {
-              // Only show Active or Approved cement purchases that are unpaid/partially paid
               const approvedOnly = (data.data || []).filter((p: any) =>
                 p.status === 'Active' || p.status === 'Approved' || p.status === 'Checked'
               );
@@ -229,12 +254,20 @@ export default function NewVoucherPage() {
                 const total = Number(p.totalAmount) || 0;
                 const paid = Number(p.paidAmount) || 0;
                 const remaining = Math.max(0, total - paid);
-                const effectiveAmount = p.paymentStatus === 'Partial' && remaining > 0 ? remaining : (remaining > 0 ? remaining : total);
+                const isPartial = p.paymentStatus === 'Partial' || (paid > 0 && remaining > 0);
+                const statusStr = isPartial ? 'Partial' : (remaining <= 0 ? 'Paid' : 'Unpaid');
+                const badge = isPartial ? '🟡 Partial Payment' : statusStr === 'Paid' ? '🟢 Paid' : '🔴 Unpaid';
+
                 return {
                   id: p.id,
-                  label: `${p.purchaseNo} — ${p.factory?.name || 'Unknown'} (${p.status}) — ETB ${effectiveAmount.toLocaleString('en-US')} remaining (${p.paymentStatus || 'Unpaid'})`,
+                  label: `${p.purchaseNo} — ${p.factory?.name || 'Unknown'} — Total: ETB ${total.toLocaleString('en-US')} | Paid: ETB ${paid.toLocaleString('en-US')} | Rem: ETB ${remaining.toLocaleString('en-US')} (${badge})`,
                   ref: p.purchaseNo,
-                  amount: effectiveAmount,
+                  amount: remaining > 0 ? remaining : total,
+                  totalAmount: total,
+                  paidAmount: paid,
+                  remainingAmount: remaining,
+                  isPartial,
+                  status: statusStr,
                 };
               });
             }
@@ -275,21 +308,52 @@ export default function NewVoucherPage() {
             break;
           }
           case 'SALES': {
-            // Fetch unpaid/partial customer invoices using server-side filters
-            const invoiceParams = new URLSearchParams({ limit: '200', status: 'Unpaid,Partial' });
+            // Fetch sales invoices using server-side filters
+            const invoiceParams = new URLSearchParams({ limit: '200' });
             if (formData.payeeId) {
               invoiceParams.set('customerId', formData.payeeId);
             }
-            const invRes = await fetch(`/api/sales/invoices?${invoiceParams.toString()}`);
-            const invData = await invRes.json();
-            if (invData.success) {
-              refs = (invData.data || []).map((inv: any) => ({
-                id: inv.id,
-                label: `${inv.invoiceNo} — ${inv.customer?.companyName || 'Unknown'} — ${inv.status} — Due: ${inv.dueDate ? new Date(inv.dueDate).toLocaleDateString() : 'N/A'}`,
-                ref: inv.invoiceNo,
-                amount: Number(inv.totalAmount),
-              }));
+
+            // Try fetching unpaid/partial invoices first
+            let invRes = await fetch(`/api/sales/invoices?${invoiceParams.toString()}&status=Unpaid,Partial`);
+            let invData = await invRes.json();
+            let invoiceList = (invData.success && Array.isArray(invData.data)) ? invData.data : [];
+
+            // Fallback: if no Unpaid/Partial invoices found, fetch all invoices for customer/system
+            if (invoiceList.length === 0) {
+              invRes = await fetch(`/api/sales/invoices?${invoiceParams.toString()}`);
+              invData = await invRes.json();
+              if (invData.success && Array.isArray(invData.data)) {
+                invoiceList = invData.data;
+              }
             }
+
+            refs = invoiceList.map((inv: any) => {
+              const totalAmount = Number(inv.totalAmount || 0);
+              const paidAmount = Number(inv.paidAmount || 0);
+              const remainingAmount = inv.remainingAmount !== undefined ? Number(inv.remainingAmount) : Math.max(0, totalAmount - paidAmount);
+              const isPartial = inv.isPartial || (paidAmount > 0 && remainingAmount > 0);
+              const statusStr = isPartial ? 'Partial' : (paidAmount >= totalAmount && totalAmount > 0 ? 'Paid' : (inv.status || 'Unpaid'));
+              const dateStr = inv.dueDate ? `Due: ${new Date(inv.dueDate).toLocaleDateString()}` : (inv.createdAt ? new Date(inv.createdAt).toLocaleDateString() : 'N/A');
+
+              const statusBadge = isPartial ? '🟡 Partial Payment' : statusStr === 'Paid' ? '🟢 Paid' : '🔴 Unpaid';
+              let amountText = `Total: ETB ${totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
+              if (paidAmount > 0) {
+                amountText = `Total: ETB ${totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })} | Paid: ETB ${paidAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })} | Rem: ETB ${remainingAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
+              }
+
+              return {
+                id: inv.id,
+                label: `${inv.invoiceNo} — ${inv.customer?.companyName || 'Unknown Customer'} — ${amountText} (${statusBadge} - ${dateStr})`,
+                ref: inv.invoiceNo,
+                amount: remainingAmount > 0 ? remainingAmount : totalAmount,
+                totalAmount,
+                paidAmount,
+                remainingAmount,
+                isPartial,
+                status: statusStr,
+              };
+            });
             break;
           }
           case 'TRANSPORTER': {
@@ -759,13 +823,50 @@ export default function NewVoucherPage() {
                 </div>
               )}
 
-              {formData.sourceReference && (
-                <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3">
-                  <span className="text-sm text-blue-800">
-                    Source Ref: <strong>{formData.sourceReference}</strong>
-                  </span>
-                </div>
-              )}
+              {formData.sourceReference && (() => {
+                const selected = sourceRefs.find((r) => r.id === formData.sourceId || r.ref === formData.sourceReference);
+                const isPartial = selected?.isPartial || selected?.status === 'Partial' || (selected?.paidAmount && selected.paidAmount > 0 && selected.remainingAmount && selected.remainingAmount > 0);
+
+                return (
+                  <div className={`p-4 rounded-xl border ${isPartial ? 'bg-amber-50 border-amber-300 text-amber-900' : 'bg-blue-50 border-blue-200 text-blue-900'} space-y-1.5`}>
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-sm">
+                        Selected Ref: {formData.sourceReference}
+                      </span>
+                      {isPartial ? (
+                        <span className="px-2.5 py-0.5 text-xs font-bold rounded-full bg-amber-200 text-amber-900 border border-amber-400">
+                          🟡 Partial Payment
+                        </span>
+                      ) : selected?.status === 'Paid' ? (
+                        <span className="px-2.5 py-0.5 text-xs font-bold rounded-full bg-green-200 text-green-900 border border-green-400">
+                          🟢 Paid
+                        </span>
+                      ) : (
+                        <span className="px-2.5 py-0.5 text-xs font-bold rounded-full bg-blue-200 text-blue-900 border border-blue-300">
+                          🔴 Unpaid / Full Payment
+                        </span>
+                      )}
+                    </div>
+
+                    {selected && (selected.totalAmount !== undefined || selected.paidAmount !== undefined || selected.remainingAmount !== undefined) && (
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs pt-1 border-t border-current/10">
+                        <div>
+                          <span className="text-slate-500 block">Total Amount:</span>
+                          <span className="font-bold">ETB {(selected.totalAmount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-500 block">Previously Paid:</span>
+                          <span className="font-bold text-emerald-700">ETB {(selected.paidAmount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-500 block">Remaining Balance:</span>
+                          <span className="font-bold text-amber-800">ETB {(selected.remainingAmount || selected.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
             </CardBody>
           </Card>
         )}

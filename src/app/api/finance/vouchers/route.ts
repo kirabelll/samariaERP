@@ -186,8 +186,11 @@ export async function POST(request: NextRequest) {
       console.error('Approval request failed for voucher:', e);
     }
 
-    if (voucher.status === 'Approved' || voucher.status === 'Posted') {
+    // Synchronize linked document payment status (Paid / Partial)
+    try {
       await updateVoucherLinkedDocument(voucher);
+    } catch (syncErr) {
+      console.error('Failed to sync linked document status:', syncErr);
     }
 
     return NextResponse.json({

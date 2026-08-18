@@ -37,6 +37,8 @@ export default function SalesInvoiceDetailPage() {
     }
   }, [recordId]);
 
+  const [deleting, setDeleting] = useState(false);
+
   const handleEdit = () => {
     router.push(`/dashboard/sales/invoices/${recordId}/edit`);
   };
@@ -44,6 +46,27 @@ export default function SalesInvoiceDetailPage() {
   const handleRecordPayment = () => {
     if (data?.customerId && recordId) {
       router.push(`/dashboard/sales/payments/new?invoiceId=${recordId}&customerId=${data.customerId}`);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!window.confirm(`Are you sure you want to delete invoice ${data?.invoiceNo}? This action cannot be undone.`)) {
+      return;
+    }
+    setDeleting(true);
+    try {
+      const response = await fetch(`/api/sales/invoices/${recordId}`, {
+        method: 'DELETE',
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Failed to delete invoice');
+      }
+      router.push('/dashboard/sales/invoices');
+    } catch (err: any) {
+      alert(err.message || 'Failed to delete invoice');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -128,6 +151,15 @@ export default function SalesInvoiceDetailPage() {
             )}
             <Button variant="outline" size="lg" onClick={handleEdit}>
               Edit
+            </Button>
+            <Button
+              variant="outline"
+              size="lg"
+              onClick={handleDelete}
+              isLoading={deleting}
+              className="border-red-300 text-red-600 hover:bg-red-50 hover:border-red-400 font-semibold"
+            >
+              Delete
             </Button>
             <Button variant="outline" size="lg" onClick={handleBack}>
               Back

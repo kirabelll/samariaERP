@@ -29,12 +29,28 @@ export default function InvoicesPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 10;
 
-  const { data, pagination, loading, error } = useApiList<SalesInvoice>('/api/sales/invoices', {
+  const { data, pagination, loading, error, refetch } = useApiList<SalesInvoice>('/api/sales/invoices', {
     page: currentPage,
     limit: pageSize,
     search: searchTerm,
     filters: { status: statusFilter, division: divisionFilter },
   });
+
+  const handleDeleteInvoice = async (invoice: SalesInvoice) => {
+    if (!window.confirm(`Are you sure you want to delete invoice ${invoice.invoiceNo}? This action cannot be undone.`)) {
+      return;
+    }
+    try {
+      const res = await fetch(`/api/sales/invoices/${invoice.id}`, { method: 'DELETE' });
+      const result = await res.json();
+      if (!res.ok || !result.success) {
+        throw new Error(result.error || 'Failed to delete invoice');
+      }
+      refetch();
+    } catch (err: any) {
+      alert(err.message || 'Failed to delete invoice');
+    }
+  };
 
   const columns: ColumnDef<SalesInvoice>[] = [
     { header: 'Invoice No', accessor: 'invoiceNo', sortable: true },
@@ -105,11 +121,19 @@ export default function InvoicesPage() {
     {
       header: 'Actions',
       accessor: 'id',
-      render: (id) => (
+      render: (id, row) => (
         <div className="flex gap-2">
           <Link href={`/dashboard/sales/invoices/${id}`}>
             <Button size="sm" variant="outline">View</Button>
           </Link>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => handleDeleteInvoice(row)}
+            className="border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300"
+          >
+            Delete
+          </Button>
         </div>
       ),
     },

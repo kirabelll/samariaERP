@@ -27,7 +27,7 @@ interface CustomerSummary {
   paymentCount: number;
   oldestUnpaidDate: string | null;
   daysSinceOldest: number;
-  recentInvoices: { id: string; invoiceNo: string; totalAmount: number; status: string; invoiceDate: string }[];
+  recentInvoices: { id: string; invoiceNo: string; totalAmount: number; paidAmount?: number; remainingAmount?: number; status: string; invoiceDate: string }[];
   recentPayments: { id: string; receiptNo: string; amount: number; status: string; paymentDate: string; paymentMethod: string }[];
 }
 
@@ -301,23 +301,37 @@ export default function CustomerHistoryPage() {
                           {customer.recentInvoices.length === 0 ? (
                             <p className="text-sm text-slate-400">No invoices</p>
                           ) : (
-                            <div className="space-y-1">
-                              {customer.recentInvoices.map((inv) => (
-                                <div key={inv.id} className="flex items-center justify-between text-sm bg-slate-50 rounded-lg px-3 py-2">
-                                  <div>
-                                    <Link href={`/dashboard/sales/invoices/${inv.id}`} className="text-[#007AFF] hover:text-[#0055D4] font-medium">
-                                      {inv.invoiceNo}
-                                    </Link>
-                                    <span className="text-xs text-slate-400 ml-2">{new Date(inv.invoiceDate).toLocaleDateString()}</span>
+                             <div className="space-y-1">
+                              {customer.recentInvoices.map((inv) => {
+                                const paid = inv.paidAmount ?? (inv.status === 'Paid' ? inv.totalAmount : 0);
+                                const isPaid = inv.status === 'Paid';
+                                const isPartial = inv.status === 'Partial';
+
+                                return (
+                                  <div key={inv.id} className="flex items-center justify-between text-sm bg-slate-50 rounded-lg px-3 py-2">
+                                    <div>
+                                      <Link href={`/dashboard/sales/invoices/${inv.id}`} className="text-[#007AFF] hover:text-[#0055D4] font-medium">
+                                        {inv.invoiceNo}
+                                      </Link>
+                                      <span className="text-xs text-slate-400 ml-2">{new Date(inv.invoiceDate).toLocaleDateString()}</span>
+                                    </div>
+                                    <div className="flex items-center gap-3">
+                                      <div className="text-right">
+                                        <div className="font-medium text-slate-900">{fmt(inv.totalAmount)}</div>
+                                        {(isPartial || isPaid) && (
+                                          <div className="text-xs">
+                                            <span className="text-slate-400 font-normal">Paid: </span>
+                                            <span className={isPaid ? 'text-green-600 font-semibold' : 'text-amber-600 font-semibold'}>{fmt(paid)}</span>
+                                          </div>
+                                        )}
+                                      </div>
+                                      <Badge status={inv.status === 'Paid' ? 'Active' : inv.status === 'Partial' ? 'Pending' : 'Lifted' as any}>
+                                        {inv.status}
+                                      </Badge>
+                                    </div>
                                   </div>
-                                  <div className="flex items-center gap-2">
-                                    <span className="font-medium">{fmt(inv.totalAmount)}</span>
-                                    <Badge status={inv.status === 'Paid' ? 'Active' : inv.status === 'Partial' ? 'Pending' : 'Lifted' as any}>
-                                      {inv.status}
-                                    </Badge>
-                                  </div>
-                                </div>
-                              ))}
+                                );
+                              })}
                             </div>
                           )}
                         </div>

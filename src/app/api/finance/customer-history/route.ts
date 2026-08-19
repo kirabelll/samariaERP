@@ -57,6 +57,10 @@ export async function GET(request: NextRequest) {
             invoiceDate: true,
             dueDate: true,
             liftingId: true,
+            payments: {
+              where: { status: { not: 'Rejected' } },
+              select: { amount: true, withholdingAmount: true },
+            },
           },
           orderBy: { invoiceDate: 'desc' },
         },
@@ -113,6 +117,31 @@ export async function GET(request: NextRequest) {
         })
       : [];
 
+    // Get payment vouchers for all sales invoices to calculate paid amounts accurately
+    const invoiceIds = customers.flatMap((c) => c.invoices.map((inv) => inv.id));
+    const invoiceNos = customers.flatMap((c) => c.invoices.map((inv) => inv.invoiceNo));
+    const voucherAggs = invoiceIds.length > 0
+      ? await prisma.paymentVoucher.groupBy({
+          by: ['sourceId', 'sourceRef'],
+          where: {
+            sourceModule: 'SALES',
+            OR: [
+              ...(invoiceIds.length > 0 ? [{ sourceId: { in: invoiceIds } }] : []),
+              ...(invoiceNos.length > 0 ? [{ sourceRef: { in: invoiceNos } }] : []),
+            ],
+            status: { notIn: ['Cancelled', 'Rejected'] },
+          },
+          _sum: { amount: true },
+        })
+      : [];
+
+    const voucherPaidMap = new Map<string, number>();
+    voucherAggs.forEach((v) => {
+      const amt = Number(v._sum.amount || 0);
+      if (v.sourceId) voucherPaidMap.set(v.sourceId, (voucherPaidMap.get(v.sourceId) || 0) + amt);
+      if (v.sourceRef) voucherPaidMap.set(v.sourceRef, (voucherPaidMap.get(v.sourceRef) || 0) + amt);
+    });
+
     // Get already-invoiced aggregate delivery IDs from existing invoices
     const aggInvoices = await prisma.salesInvoice.findMany({
       where: { division: 'AGGREGATE', status: { not: 'Cancelled' } },
@@ -139,16 +168,57 @@ export async function GET(request: NextRequest) {
 
     // Compute summary for each customer
     const summaries = customers.map((c) => {
+      const invoiceDetails = c.invoices.map((inv) => {
+        const directPaid = (inv.payments || []).reduce(
+          (sum: number, p: any) => sum + Number(p.amount || 0) + Number(p.withholdingAmount || 0),
+          0
+        );
+        const voucherPaid = Math.max(
+          voucherPaidMap.get(inv.id) || 0,
+          voucherPaidMap.get(inv.invoiceNo) || 0
+        );
+        let paidAmount = Math.max(directPaid, voucherPaid);
+        const totalAmount = Number(inv.totalAmount || 0);
+
+        if (inv.status === 'Paid' && paidAmount < totalAmount) {
+          paidAmount = totalAmount;
+        }
+        paidAmount = Math.min(paidAmount, totalAmount);
+
+        let computedStatus = inv.status;
+        if (paidAmount >= totalAmount && totalAmount > 0) {
+          computedStatus = 'Paid';
+          paidAmount = totalAmount;
+        } else if (paidAmount > 0) {
+          computedStatus = 'Partial';
+        }
+
+        return {
+          id: inv.id,
+          invoiceNo: inv.invoiceNo,
+          totalAmount,
+          paidAmount,
+          remainingAmount: Math.max(0, totalAmount - paidAmount),
+          status: computedStatus,
+          invoiceDate: inv.invoiceDate,
+          dueDate: inv.dueDate,
+          liftingId: inv.liftingId,
+        };
+      });
+
       const totalInvoiced = c.invoices.reduce((sum, inv) => sum + Number(inv.totalAmount), 0);
       const invoiceCount = c.invoices.length;
-      const unpaidInvoices = c.invoices.filter((inv) => inv.status === 'Unpaid').length;
-      const partialInvoices = c.invoices.filter((inv) => inv.status === 'Partial').length;
-      const paidInvoices = c.invoices.filter((inv) => inv.status === 'Paid').length;
+      const unpaidInvoices = invoiceDetails.filter((inv) => inv.status === 'Unpaid').length;
+      const partialInvoices = invoiceDetails.filter((inv) => inv.status === 'Partial').length;
+      const paidInvoices = invoiceDetails.filter((inv) => inv.status === 'Paid').length;
 
-      // Payments: only count Verified + Pending (Pending might still clear)
-      const totalPaid = c.payments
+      // Payments: count verified customer payments OR total paid amounts across customer invoices (whichever is higher)
+      const directVerifiedPayments = c.payments
         .filter((p) => p.status === 'Verified')
         .reduce((sum, p) => sum + Number(p.amount), 0);
+      const totalInvoicePaid = invoiceDetails.reduce((sum, inv) => sum + inv.paidAmount, 0);
+      const totalPaid = Math.max(totalInvoicePaid, directVerifiedPayments);
+
       const pendingPayments = c.payments
         .filter((p) => p.status === 'Pending')
         .reduce((sum, p) => sum + Number(p.amount), 0);
@@ -185,7 +255,7 @@ export async function GET(request: NextRequest) {
       const totalOutstanding = outstandingBalance + deliveredNotInvoiced;
 
       // Oldest unpaid invoice
-      const oldestUnpaid = c.invoices.filter((inv) => inv.status !== 'Paid' && inv.status !== 'Cancelled')
+      const oldestUnpaid = invoiceDetails.filter((inv) => inv.status !== 'Paid' && inv.status !== 'Cancelled')
         .sort((a, b) => new Date(a.invoiceDate).getTime() - new Date(b.invoiceDate).getTime())[0];
 
       const daysSinceOldest = oldestUnpaid
@@ -214,7 +284,7 @@ export async function GET(request: NextRequest) {
         paymentCount,
         oldestUnpaidDate: oldestUnpaid?.invoiceDate || null,
         daysSinceOldest,
-        recentInvoices: c.invoices.slice(0, 5),
+        recentInvoices: invoiceDetails.slice(0, 5),
         recentPayments: c.payments.slice(0, 5),
       };
     });

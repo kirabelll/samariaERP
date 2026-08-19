@@ -87,8 +87,18 @@ function Table<T extends Record<string, any>>({
 
     if (sortConfig.key && sortConfig.direction) {
       sorted.sort((a, b) => {
-        const aValue = a[sortConfig.key as keyof T];
-        const bValue = b[sortConfig.key as keyof T];
+        let aValue = a[sortConfig.key as keyof T];
+        let bValue = b[sortConfig.key as keyof T];
+
+        if (aValue && typeof aValue === 'object') {
+          aValue = aValue.companyName || aValue.name || aValue.couponNo || String(aValue);
+        }
+        if (bValue && typeof bValue === 'object') {
+          bValue = bValue.companyName || bValue.name || bValue.couponNo || String(bValue);
+        }
+
+        if (aValue == null) return 1;
+        if (bValue == null) return -1;
 
         if (aValue < bValue) {
           return sortConfig.direction === 'asc' ? -1 : 1;

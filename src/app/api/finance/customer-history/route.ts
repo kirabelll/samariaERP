@@ -62,7 +62,7 @@ export async function GET(request: NextRequest) {
               select: { amount: true, withholdingAmount: true },
             },
           },
-          orderBy: { invoiceDate: 'desc' },
+          orderBy: { invoiceDate: 'asc' },
         },
         payments: {
           where: { status: { not: 'Rejected' } },
@@ -75,7 +75,7 @@ export async function GET(request: NextRequest) {
             paymentDate: true,
             invoiceId: true,
           },
-          orderBy: { paymentDate: 'desc' },
+          orderBy: { paymentDate: 'asc' },
         },
         cementLiftings: {
           where: {
@@ -90,7 +90,7 @@ export async function GET(request: NextRequest) {
             invoices: { select: { id: true } },
             purchase: { select: { unitPrice: true } },
           },
-          orderBy: { liftingDate: 'desc' },
+          orderBy: { liftingDate: 'asc' },
         },
       },
       orderBy: { companyName: 'asc' },
@@ -204,7 +204,9 @@ export async function GET(request: NextRequest) {
           dueDate: inv.dueDate,
           liftingId: inv.liftingId,
         };
-      });
+      }).sort((a, b) => new Date(a.invoiceDate).getTime() - new Date(b.invoiceDate).getTime());
+
+      const sortedPayments = [...c.payments].sort((a, b) => new Date(a.paymentDate).getTime() - new Date(b.paymentDate).getTime());
 
       const totalInvoiced = c.invoices.reduce((sum, inv) => sum + Number(inv.totalAmount), 0);
       const invoiceCount = c.invoices.length;
@@ -285,7 +287,7 @@ export async function GET(request: NextRequest) {
         oldestUnpaidDate: oldestUnpaid?.invoiceDate || null,
         daysSinceOldest,
         recentInvoices: invoiceDetails.slice(0, 5),
-        recentPayments: c.payments.slice(0, 5),
+        recentPayments: sortedPayments.slice(0, 5),
       };
     });
 

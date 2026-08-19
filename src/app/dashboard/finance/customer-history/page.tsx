@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Card, CardBody, CardHeader, Input, Badge } from '@/components/ui';
-import { Users, TrendingDown, TrendingUp, AlertTriangle, ChevronDown, ChevronRight, CreditCard, FileText } from 'lucide-react';
+import { Users, TrendingDown, TrendingUp, AlertTriangle, ChevronDown, ChevronRight, CreditCard, FileText, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
 
 interface CustomerSummary {
   id: string;
@@ -48,6 +48,8 @@ export default function CustomerHistoryPage() {
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<'all' | 'has_debt' | 'paid_up'>('all');
   const [expandedCustomer, setExpandedCustomer] = useState<string | null>(null);
+  const [invoiceDateSort, setInvoiceDateSort] = useState<'asc' | 'desc'>('asc');
+  const [paymentDateSort, setPaymentDateSort] = useState<'asc' | 'desc'>('asc');
 
   useEffect(() => {
     const fetchData = async () => {
@@ -295,71 +297,105 @@ export default function CustomerHistoryPage() {
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         {/* Recent Invoices */}
                         <div>
-                          <h4 className="text-sm font-semibold text-slate-700 flex items-center gap-1 mb-2">
-                            <FileText className="w-4 h-4" /> Recent Invoices
-                          </h4>
+                          <div className="flex items-center justify-between mb-2">
+                            <h4 className="text-sm font-semibold text-slate-700 flex items-center gap-1">
+                              <FileText className="w-4 h-4" /> Recent Invoices
+                            </h4>
+                            <button
+                              type="button"
+                              onClick={() => setInvoiceDateSort((prev) => (prev === 'asc' ? 'desc' : 'asc'))}
+                              className="inline-flex items-center gap-1 text-xs text-[#007AFF] hover:bg-blue-50 px-2 py-0.5 rounded font-medium transition-colors border border-blue-100"
+                              title="Toggle Date Ascending / Descending order"
+                            >
+                              {invoiceDateSort === 'asc' ? <ArrowUp className="w-3 h-3 text-[#007AFF]" /> : <ArrowDown className="w-3 h-3 text-[#007AFF]" />}
+                              <span>Date: {invoiceDateSort === 'asc' ? 'Ascending' : 'Descending'}</span>
+                            </button>
+                          </div>
                           {customer.recentInvoices.length === 0 ? (
                             <p className="text-sm text-slate-400">No invoices</p>
                           ) : (
                              <div className="space-y-1">
-                              {customer.recentInvoices.map((inv) => {
-                                const paid = inv.paidAmount ?? (inv.status === 'Paid' ? inv.totalAmount : 0);
-                                const isPaid = inv.status === 'Paid';
-                                const isPartial = inv.status === 'Partial';
+                              {[...customer.recentInvoices]
+                                .sort((a, b) => {
+                                  const tA = new Date(a.invoiceDate).getTime();
+                                  const tB = new Date(b.invoiceDate).getTime();
+                                  return invoiceDateSort === 'asc' ? tA - tB : tB - tA;
+                                })
+                                .map((inv) => {
+                                  const paid = inv.paidAmount ?? (inv.status === 'Paid' ? inv.totalAmount : 0);
+                                  const isPaid = inv.status === 'Paid';
+                                  const isPartial = inv.status === 'Partial';
 
-                                return (
-                                  <div key={inv.id} className="flex items-center justify-between text-sm bg-slate-50 rounded-lg px-3 py-2">
-                                    <div>
-                                      <Link href={`/dashboard/sales/invoices/${inv.id}`} className="text-[#007AFF] hover:text-[#0055D4] font-medium">
-                                        {inv.invoiceNo}
-                                      </Link>
-                                      <span className="text-xs text-slate-400 ml-2">{new Date(inv.invoiceDate).toLocaleDateString()}</span>
-                                    </div>
-                                    <div className="flex items-center gap-3">
-                                      <div className="text-right">
-                                        <div className="font-medium text-slate-900">{fmt(inv.totalAmount)}</div>
-                                        {(isPartial || isPaid) && (
-                                          <div className="text-xs">
-                                            <span className="text-slate-400 font-normal">Paid: </span>
-                                            <span className={isPaid ? 'text-green-600 font-semibold' : 'text-amber-600 font-semibold'}>{fmt(paid)}</span>
-                                          </div>
-                                        )}
+                                  return (
+                                    <div key={inv.id} className="flex items-center justify-between text-sm bg-slate-50 rounded-lg px-3 py-2">
+                                      <div>
+                                        <Link href={`/dashboard/sales/invoices/${inv.id}`} className="text-[#007AFF] hover:text-[#0055D4] font-medium">
+                                          {inv.invoiceNo}
+                                        </Link>
+                                        <span className="text-xs text-slate-400 ml-2">{new Date(inv.invoiceDate).toLocaleDateString()}</span>
                                       </div>
-                                      <Badge status={inv.status === 'Paid' ? 'Active' : inv.status === 'Partial' ? 'Pending' : 'Lifted' as any}>
-                                        {inv.status}
-                                      </Badge>
+                                      <div className="flex items-center gap-3">
+                                        <div className="text-right">
+                                          <div className="font-medium text-slate-900">{fmt(inv.totalAmount)}</div>
+                                          {(isPartial || isPaid) && (
+                                            <div className="text-xs">
+                                              <span className="text-slate-400 font-normal">Paid: </span>
+                                              <span className={isPaid ? 'text-green-600 font-semibold' : 'text-amber-600 font-semibold'}>{fmt(paid)}</span>
+                                            </div>
+                                          )}
+                                        </div>
+                                        <Badge status={inv.status === 'Paid' ? 'Active' : inv.status === 'Partial' ? 'Pending' : 'Lifted' as any}>
+                                          {inv.status}
+                                        </Badge>
+                                      </div>
                                     </div>
-                                  </div>
-                                );
-                              })}
+                                  );
+                                })}
                             </div>
                           )}
                         </div>
 
                         {/* Recent Payments */}
                         <div>
-                          <h4 className="text-sm font-semibold text-slate-700 flex items-center gap-1 mb-2">
-                            <CreditCard className="w-4 h-4" /> Recent Payments
-                          </h4>
+                          <div className="flex items-center justify-between mb-2">
+                            <h4 className="text-sm font-semibold text-slate-700 flex items-center gap-1">
+                              <CreditCard className="w-4 h-4" /> Recent Payments
+                            </h4>
+                            <button
+                              type="button"
+                              onClick={() => setPaymentDateSort((prev) => (prev === 'asc' ? 'desc' : 'asc'))}
+                              className="inline-flex items-center gap-1 text-xs text-[#34C759] hover:bg-green-50 px-2 py-0.5 rounded font-medium transition-colors border border-green-100"
+                              title="Toggle Date Ascending / Descending order"
+                            >
+                              {paymentDateSort === 'asc' ? <ArrowUp className="w-3 h-3 text-[#34C759]" /> : <ArrowDown className="w-3 h-3 text-[#34C759]" />}
+                              <span>Date: {paymentDateSort === 'asc' ? 'Ascending' : 'Descending'}</span>
+                            </button>
+                          </div>
                           {customer.recentPayments.length === 0 ? (
                             <p className="text-sm text-slate-400">No payments recorded</p>
                           ) : (
                             <div className="space-y-1">
-                              {customer.recentPayments.map((pmt) => (
-                                <div key={pmt.id} className="flex items-center justify-between text-sm bg-slate-50 rounded-lg px-3 py-2">
-                                  <div>
-                                    <span className="font-medium text-slate-700">{pmt.receiptNo}</span>
-                                    <span className="text-xs text-slate-400 ml-2">{new Date(pmt.paymentDate).toLocaleDateString()}</span>
-                                    <span className="text-xs text-slate-400 ml-1">({pmt.paymentMethod})</span>
+                              {[...customer.recentPayments]
+                                .sort((a, b) => {
+                                  const tA = new Date(a.paymentDate).getTime();
+                                  const tB = new Date(b.paymentDate).getTime();
+                                  return paymentDateSort === 'asc' ? tA - tB : tB - tA;
+                                })
+                                .map((pmt) => (
+                                  <div key={pmt.id} className="flex items-center justify-between text-sm bg-slate-50 rounded-lg px-3 py-2">
+                                    <div>
+                                      <span className="font-medium text-slate-700">{pmt.receiptNo}</span>
+                                      <span className="text-xs text-slate-400 ml-2">{new Date(pmt.paymentDate).toLocaleDateString()}</span>
+                                      <span className="text-xs text-slate-400 ml-1">({pmt.paymentMethod})</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <span className="font-medium text-green-700">{fmt(pmt.amount)}</span>
+                                      <Badge status={pmt.status === 'Verified' ? 'Active' : 'Pending' as any}>
+                                        {pmt.status}
+                                      </Badge>
+                                    </div>
                                   </div>
-                                  <div className="flex items-center gap-2">
-                                    <span className="font-medium text-green-700">{fmt(pmt.amount)}</span>
-                                    <Badge status={pmt.status === 'Verified' ? 'Active' : 'Pending' as any}>
-                                      {pmt.status}
-                                    </Badge>
-                                  </div>
-                                </div>
-                              ))}
+                                ))}
                             </div>
                           )}
                         </div>

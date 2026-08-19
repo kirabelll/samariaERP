@@ -107,13 +107,14 @@ function CementOperationsContent() {
 
   const purchaseColumns: ColumnDef<CementPurchase>[] = [
     { header: 'Purchase No', accessor: 'purchaseNo', sortable: true },
-    { header: 'Factory', accessor: 'factory', render: (_val, row) => row.factory?.name || '-' },
-    { header: 'Date', accessor: 'createdAt', render: (val) => val ? new Date(val).toLocaleDateString() : '-' },
-    { header: 'Quantity (tons)', accessor: 'quantityTons', render: (val) => Number(val).toLocaleString('en-US') },
-    { header: 'Total (ETB)', accessor: 'totalAmount', render: (val) => Number(val).toLocaleString('en-US') },
+    { header: 'Factory', accessor: 'factory', sortable: true, render: (_val, row) => row.factory?.name || '-' },
+    { header: 'Date', accessor: 'createdAt', sortable: true, render: (val) => val ? new Date(val).toLocaleDateString() : '-' },
+    { header: 'Quantity (tons)', accessor: 'quantityTons', sortable: true, render: (val) => Number(val).toLocaleString('en-US') },
+    { header: 'Total (ETB)', accessor: 'totalAmount', sortable: true, render: (val) => Number(val).toLocaleString('en-US') },
     {
       header: 'Status',
       accessor: 'status',
+      sortable: true,
       render: (status, row: any) => (
         <div className="flex items-center gap-1.5 flex-wrap">
           <Badge status={status as any}>{status}</Badge>
@@ -146,19 +147,20 @@ function CementOperationsContent() {
 
   const liftingColumns: ColumnDef<CementLifting>[] = [
     { header: 'Lifting No', accessor: 'liftingNo', sortable: true },
-    { header: 'Customer', accessor: 'customer', render: (_val, row) => row.customer?.companyName || '-' },
-    { header: 'Factory', accessor: 'factory', render: (_val, row) => row.factory?.name || '-' },
+    { header: 'Customer', accessor: 'customer', sortable: true, render: (_val, row) => row.customer?.companyName || '-' },
+    { header: 'Factory', accessor: 'factory', sortable: true, render: (_val, row) => row.factory?.name || '-' },
     {
       header: 'Coupon',
       accessor: 'coupon' as any,
+      sortable: true,
       render: (_val: any, row: CementLifting) => {
         const couponNo = (row as any).coupon?.couponNo;
         return couponNo ? <span className="text-sm font-medium text-purple-600">{couponNo}</span> : <span className="text-gray-400">—</span>;
       },
     },
-    { header: 'Date', accessor: 'liftingDate', render: (val) => val ? new Date(val).toLocaleDateString() : '-' },
-    { header: 'Quantity (tons)', accessor: 'factoryWeight', render: (val) => Number(val).toLocaleString('en-US') },
-    { header: 'Status', accessor: 'status', render: (status) => <Badge status={status as any}>{status}</Badge> },
+    { header: 'Date', accessor: 'liftingDate', sortable: true, render: (val) => val ? new Date(val).toLocaleDateString() : '-' },
+    { header: 'Quantity (tons)', accessor: 'factoryWeight', sortable: true, render: (val) => Number(val).toLocaleString('en-US') },
+    { header: 'Status', accessor: 'status', sortable: true, render: (status) => <Badge status={status as any}>{status}</Badge> },
     {
       header: 'Actions', accessor: 'id',
       render: (id, row) => (

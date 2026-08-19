@@ -218,6 +218,27 @@ export default function WeighbridgeRegister() {
     }
   };
 
+  const handleMarkDelivered = async (liftingId: string, liftingNo: string, buyerQty: number) => {
+    if (!confirm(`Mark lifting ${liftingNo} as Delivered with Buyer weight of ${buyerQty} tons?`)) return;
+    try {
+      const res = await fetch(`/api/cement/liftings/${liftingId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'Delivered', buyerWeighbridgeQty: buyerQty }),
+      });
+      const result = await res.json();
+      if (result.success) {
+        alert(`Lifting ${liftingNo} marked as Delivered!`);
+        fetchEntries();
+        fetchLiftings();
+      } else {
+        alert(result.error || 'Failed to mark as Delivered');
+      }
+    } catch (err) {
+      alert('Error marking lifting as Delivered');
+    }
+  };
+
   const formatDate = (dateString: string) => {
     try {
       return new Date(dateString).toLocaleDateString();
@@ -279,15 +300,30 @@ export default function WeighbridgeRegister() {
     {
       header: 'Lifting',
       accessor: 'liftingNo' as const,
-      render: (val: string | null, row: WeighbridgeEntry) => val ? (
-        row.liftingId ? (
-          <Link href={`/dashboard/cement/liftings/${row.liftingId}`} className="text-blue-600 hover:underline font-medium text-xs">
-            {val}
-          </Link>
-        ) : (
-          <span className="text-blue-600 font-medium text-xs">{val}</span>
-        )
-      ) : <span className="text-gray-400">—</span>,
+      render: (val: string | null, row: WeighbridgeEntry) => {
+        if (!val) return <span className="text-gray-400">—</span>;
+        const lifting = row.liftingId ? liftings.find(l => l.id === row.liftingId) : null;
+        return (
+          <div className="flex flex-col gap-0.5">
+            {row.liftingId ? (
+              <Link href={`/dashboard/cement/liftings/${row.liftingId}`} className="text-blue-600 hover:underline font-medium text-xs">
+                {val}
+              </Link>
+            ) : (
+              <span className="text-blue-600 font-medium text-xs">{val}</span>
+            )}
+            {lifting?.status && (
+              <span className={`text-[10px] px-1.5 py-0.2 w-max rounded-full font-medium ${
+                lifting.status === 'Delivered' ? 'bg-green-100 text-green-700' :
+                lifting.status === 'Verified' ? 'bg-blue-100 text-blue-700' :
+                lifting.status === 'Lifted' ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-600'
+              }`}>
+                {lifting.status}
+              </span>
+            )}
+          </div>
+        );
+      },
     },
     {
       header: 'Coupon',
@@ -345,33 +381,47 @@ export default function WeighbridgeRegister() {
     {
       header: 'Actions',
       accessor: 'id' as const,
-      render: (_: string, row: WeighbridgeEntry) => (
-        <div className="flex items-center gap-1.5">
-          <Link href={`/dashboard/cement/weighbridge/${row.id}`}>
+      render: (_: string, row: WeighbridgeEntry) => {
+        const lifting = row.liftingId ? liftings.find(l => l.id === row.liftingId) : null;
+        const isLifted = lifting?.status === 'Lifted';
+
+        return (
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <Link href={`/dashboard/cement/weighbridge/${row.id}`}>
+              <button
+                className="px-2.5 py-1 text-xs font-medium rounded-md bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-100 transition-colors cursor-pointer"
+                title="View Details"
+              >
+                View
+              </button>
+            </Link>
+            {isLifted && (row.weighbridgeType === 'BUYER' || activeTab === 'buyer') && (
+              <button
+                onClick={() => handleMarkDelivered(row.liftingId!, row.liftingNo || 'Lifting', row.netWeight)}
+                className="px-2.5 py-1 text-xs font-medium rounded-md bg-emerald-50 text-emerald-700 border border-emerald-300 hover:bg-emerald-100 transition-colors cursor-pointer"
+                title="Mark Lifting as Delivered"
+              >
+                Mark Delivered
+              </button>
+            )}
+            <Link href={`/dashboard/cement/weighbridge/${row.id}/edit`}>
+              <button
+                className="px-2.5 py-1 text-xs font-medium rounded-md bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition-colors cursor-pointer"
+                title="Edit Entry"
+              >
+                Edit
+              </button>
+            </Link>
             <button
-              className="px-2.5 py-1 text-xs font-medium rounded-md bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-100 transition-colors cursor-pointer"
-              title="View Details"
+              onClick={() => handleDelete(row.id, row.weighbridgeNo)}
+              className="px-2.5 py-1 text-xs font-medium rounded-md bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 transition-colors cursor-pointer"
+              title="Delete Entry"
             >
-              View
+              Delete
             </button>
-          </Link>
-          <Link href={`/dashboard/cement/weighbridge/${row.id}/edit`}>
-            <button
-              className="px-2.5 py-1 text-xs font-medium rounded-md bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition-colors cursor-pointer"
-              title="Edit Entry"
-            >
-              Edit
-            </button>
-          </Link>
-          <button
-            onClick={() => handleDelete(row.id, row.weighbridgeNo)}
-            className="px-2.5 py-1 text-xs font-medium rounded-md bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 transition-colors cursor-pointer"
-            title="Delete Entry"
-          >
-            Delete
-          </button>
-        </div>
-      ),
+          </div>
+        );
+      },
     },
   ];
 
@@ -554,17 +604,24 @@ export default function WeighbridgeRegister() {
               {formData.liftingId && (() => {
                 const sel = liftings.find((l) => l.id === formData.liftingId);
                 return sel ? (
-                  <div className="mt-2 p-3 rounded-lg border border-blue-200" style={{ backgroundColor: '#EFF6FF' }}>
-                    <p className="text-xs font-semibold text-blue-800 mb-1">Lifting Details</p>
-                    <div className="grid grid-cols-2 gap-1 text-xs text-blue-700">
-                      <span>Lifting No:</span><span className="font-medium">{sel.liftingNo}</span>
-                      <span>Truck:</span><span className="font-medium">{sel.truckPlateNo}</span>
-                      <span>Factory Weight:</span><span className="font-medium">{sel.factoryWeight} tons</span>
-                      <span>Customer:</span><span className="font-medium">{sel.customerName || 'N/A'}</span>
-                      {sel.factoryName && <><span>Factory:</span><span className="font-medium">{sel.factoryName}</span></>}
-                      {sel.couponNo && <><span>Coupon:</span><span className="font-medium">{sel.couponNo}</span></>}
-                      <span>Status:</span><span className="font-medium">{sel.status}</span>
+                  <div className="mt-2 space-y-2">
+                    <div className="p-3 rounded-lg border border-blue-200" style={{ backgroundColor: '#EFF6FF' }}>
+                      <p className="text-xs font-semibold text-blue-800 mb-1">Lifting Details</p>
+                      <div className="grid grid-cols-2 gap-1 text-xs text-blue-700">
+                        <span>Lifting No:</span><span className="font-medium">{sel.liftingNo}</span>
+                        <span>Truck:</span><span className="font-medium">{sel.truckPlateNo}</span>
+                        <span>Factory Weight:</span><span className="font-medium">{sel.factoryWeight} tons</span>
+                        <span>Customer:</span><span className="font-medium">{sel.customerName || 'N/A'}</span>
+                        {sel.factoryName && <><span>Factory:</span><span className="font-medium">{sel.factoryName}</span></>}
+                        {sel.couponNo && <><span>Coupon:</span><span className="font-medium">{sel.couponNo}</span></>}
+                        <span>Status:</span><span className="font-medium">{sel.status}</span>
+                      </div>
                     </div>
+                    {formData.weighbridgeType === 'BUYER' && (
+                      <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800 font-medium">
+                        ⚡ Note: Creating this Buyer entry will automatically update lifting <span className="font-bold">{sel.liftingNo}</span> to <span className="font-bold">Delivered</span> status and calculate any shortage penalty.
+                      </div>
+                    )}
                   </div>
                 ) : null;
               })()}

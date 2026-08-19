@@ -37,15 +37,16 @@ export default function CementInvoicesPage() {
     const fetchData = async () => {
       setLoading(true);
       try {
-        // Fetch liftings and cement invoices in parallel
+        // Fetch liftings and cement invoices in parallel (only Delivered / Verified liftings)
         const [liftRes, invRes] = await Promise.all([
-          fetch('/api/cement/liftings?limit=200'),
+          fetch('/api/cement/liftings?status=Delivered&limit=200'),
           fetch('/api/sales/invoices?limit=500&division=CEMENT'),
         ]);
         const liftJson = await liftRes.json();
         const invJson = await invRes.json();
 
-        const allLiftings: LiftingRecord[] = liftJson.success ? (liftJson.data || []) : [];
+        const rawLiftings: LiftingRecord[] = liftJson.success ? (liftJson.data || []) : [];
+        const allLiftings = rawLiftings.filter((l) => l.status === 'Delivered' || l.status === 'Verified');
         const allInvoices: InvoiceInfo[] = invJson.success ? (invJson.data || []) : [];
 
         // Build a map: liftingId -> invoice

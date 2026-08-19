@@ -38,9 +38,12 @@ export async function GET(request: NextRequest) {
       case 'dispatch': {
         columns = ['Dispatch No', 'Date', 'Transporter', 'Loaded (m³)', 'Delivered (m³)', 'Shortage (m³)', 'Gross Fee', 'Net Payment', 'Status'];
 
+        const formatTransporter = (t: any) =>
+          t?.companyName || (t?.firstName ? `${t.firstName} ${t.lastName || ''}`.trim() : '') || '-';
+
         const deliveries = await prisma.aggregateDelivery.findMany({
           where: { ...dateFilter('dispatchDate') },
-          include: { transporter: { select: { name: true } } },
+          include: { transporter: { select: { companyName: true, firstName: true, lastName: true } } },
           orderBy: { dispatchDate: 'desc' },
           take: 500,
         });
@@ -48,7 +51,7 @@ export async function GET(request: NextRequest) {
         rows = deliveries.map((d) => ({
           'Dispatch No': d.dispatchNo,
           'Date': new Date(d.dispatchDate).toLocaleDateString(),
-          'Transporter': d.transporter?.name || '-',
+          'Transporter': formatTransporter(d.transporter),
           'Loaded (m³)': (d.loadedVolume || 0).toFixed(2),
           'Delivered (m³)': (d.deliveredVolume || 0).toFixed(2),
           'Shortage (m³)': (d.shortageVolume || 0).toFixed(2),
@@ -60,6 +63,9 @@ export async function GET(request: NextRequest) {
       }
 
       case 'shortage': {
+        const formatTransporter = (t: any) =>
+          t?.companyName || (t?.firstName ? `${t.firstName} ${t.lastName || ''}`.trim() : '') || '-';
+
         columns = ['Dispatch No', 'Date', 'Transporter', 'Loaded (m³)', 'Delivered (m³)', 'Shortage (m³)', 'Shortage Value', 'Status'];
 
         const shortages = await prisma.aggregateDelivery.findMany({
@@ -67,7 +73,7 @@ export async function GET(request: NextRequest) {
             shortageVolume: { gt: 0 },
             ...dateFilter('dispatchDate'),
           },
-          include: { transporter: { select: { name: true } } },
+          include: { transporter: { select: { companyName: true, firstName: true, lastName: true } } },
           orderBy: { dispatchDate: 'desc' },
           take: 500,
         });
@@ -75,7 +81,7 @@ export async function GET(request: NextRequest) {
         rows = shortages.map((d) => ({
           'Dispatch No': d.dispatchNo,
           'Date': new Date(d.dispatchDate).toLocaleDateString(),
-          'Transporter': d.transporter?.name || '-',
+          'Transporter': formatTransporter(d.transporter),
           'Loaded (m³)': (d.loadedVolume || 0).toFixed(2),
           'Delivered (m³)': (d.deliveredVolume || 0).toFixed(2),
           'Shortage (m³)': (d.shortageVolume || 0).toFixed(2),
@@ -86,11 +92,14 @@ export async function GET(request: NextRequest) {
       }
 
       case 'transport': {
+        const formatTransporter = (t: any) =>
+          t?.companyName || (t?.firstName ? `${t.firstName} ${t.lastName || ''}`.trim() : '') || '-';
+
         columns = ['Transporter', 'Total Dispatches', 'Total Loaded (m³)', 'Total Delivered (m³)', 'Total Gross Fee', 'Total Net Payment'];
 
         const deliveries = await prisma.aggregateDelivery.findMany({
           where: { ...dateFilter('dispatchDate') },
-          include: { transporter: { select: { id: true, name: true } } },
+          include: { transporter: { select: { id: true, companyName: true, firstName: true, lastName: true } } },
         });
 
         const transporterMap = new Map<string, any>();
@@ -98,7 +107,7 @@ export async function GET(request: NextRequest) {
           const key = d.transporterId;
           if (!transporterMap.has(key)) {
             transporterMap.set(key, {
-              name: d.transporter?.name || 'Unknown',
+              name: formatTransporter(d.transporter),
               dispatches: 0, loaded: 0, delivered: 0, gross: 0, net: 0,
             });
           }
@@ -122,20 +131,23 @@ export async function GET(request: NextRequest) {
       }
 
       case 'commission': {
+        const formatTransporter = (t: any) =>
+          t?.companyName || (t?.firstName ? `${t.firstName} ${t.lastName || ''}`.trim() : '') || '-';
+
         columns = ['Settlement No', 'Transporter', 'Period', 'Gross Fee', 'Association Rate', 'Association Amount', 'Final Payable', 'Status'];
 
         const settlements = await prisma.aggregateSettlement.findMany({
           where: { ...dateFilter('createdAt') },
-          include: { transporter: { select: { name: true } } },
+          include: { transporter: { select: { companyName: true, firstName: true, lastName: true } } },
           orderBy: { createdAt: 'desc' },
           take: 200,
         });
 
-        rows = settlements.map((s) => ({
+        rows = settlements.map((s: any) => ({
           'Settlement No': s.settlementNo,
-          'Transporter': s.transporter?.name || '-',
+          'Transporter': formatTransporter(s.transporter),
           'Period': `${new Date(s.periodFrom).toLocaleDateString()} - ${new Date(s.periodTo).toLocaleDateString()}`,
-          'Gross Fee': `ETB ${(s.grossFee || 0).toLocaleString('en-US')}`,
+          'Gross Fee': `ETB ${(s.totalGrossFee || s.grossFee || 0).toLocaleString('en-US')}`,
           'Association Rate': `${s.associationRate || 0}%`,
           'Association Amount': `ETB ${(s.associationAmount || 0).toLocaleString('en-US')}`,
           'Final Payable': `ETB ${(s.finalPayable || 0).toLocaleString('en-US')}`,

@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { Card, CardBody, CardHeader, Badge, Button, Input, ConfirmDialog, Modal } from '@/components/ui';
-import { ChevronLeft, Loader, Truck, Factory, Weight, FileText, Receipt, User, CreditCard, AlertTriangle, Trash2 } from 'lucide-react';
+import { ChevronLeft, Loader, Truck, Factory, Weight, FileText, Receipt, User, CreditCard, AlertTriangle, Trash2, CheckCircle } from 'lucide-react';
 
 interface CementLifting {
   id: string;
@@ -32,6 +32,7 @@ interface CementLifting {
     tonnage?: number;
   };
   deliveryNoteNo?: string;
+  notes?: string;
   liftingDate: string;
   status: string;
   registeredBy?: string;
@@ -63,6 +64,10 @@ export default function CementLiftingDetailPage() {
   // Buyer weighbridge data
   const [buyerWbEntries, setBuyerWbEntries] = useState<Array<{ weighbridgeNo: string; netWeight: number; verified: boolean; weighbridgeDate: string }>>([]);
   const [buyerWbTotal, setBuyerWbTotal] = useState<number>(0);
+  const [manualBuyerQty, setManualBuyerQty] = useState<string>('');
+  const [manualDeliveryNoteNo, setManualDeliveryNoteNo] = useState<string>('');
+  const [manualDeliveryNotes, setManualDeliveryNotes] = useState<string>('');
+  const [showDeliveryPanel, setShowDeliveryPanel] = useState<boolean>(false);
 
   // Manual Buyer Weighbridge Entry Modal state
   const [showWbModal, setShowWbModal] = useState(false);
@@ -108,6 +113,9 @@ export default function CementLiftingDetailPage() {
           .filter((e: any) => e.verified)
           .reduce((sum: number, e: any) => sum + (Number(e.netWeight) || 0), 0);
         setBuyerWbTotal(verifiedTotal);
+        if (verifiedTotal > 0 && !manualBuyerQty) {
+          setManualBuyerQty(String(verifiedTotal / 1000 > 10 ? (verifiedTotal / 1000).toFixed(3) : verifiedTotal));
+        }
       }
     } catch (err) {
       console.error('Failed to fetch buyer weighbridge entries:', err);
@@ -121,6 +129,12 @@ export default function CementLiftingDetailPage() {
       const data = await res.json();
       if (data.success && data.data) {
         setLifting(data.data);
+        if (data.data.factoryWeight && !manualBuyerQty) {
+          setManualBuyerQty(String(data.data.buyerWeighbridgeQty || data.data.factoryWeight));
+        }
+        if (data.data.deliveryNoteNo && !manualDeliveryNoteNo) {
+          setManualDeliveryNoteNo(data.data.deliveryNoteNo);
+        }
       } else {
         setError(data.error || 'Failed to load lifting');
       }
@@ -184,13 +198,11 @@ export default function CementLiftingDetailPage() {
   };
 
   const handleMarkDelivered = async () => {
-    if (buyerWbTotal === 0 && buyerWbEntries.length === 0) {
-      // Prompt modal to record buyer weighbridge entry
-      setShowWbModal(true);
+    const buyerQty = parseFloat(manualBuyerQty);
+    if (!buyerQty || buyerQty <= 0) {
+      alert('Please enter the buyer weighbridge quantity in tons before marking as Delivered.');
       return;
     }
-
-    const buyerQty = buyerWbTotal > 0 ? buyerWbTotal : (lifting?.buyerWeighbridgeQty || lifting?.factoryWeight || 0);
     const shortage = (lifting?.factoryWeight || 0) - buyerQty;
     const shortageMsg = shortage > 0
       ? `\n\nShortage: ${shortage.toFixed(2)} tons (${((shortage / (lifting?.factoryWeight || 1)) * 100).toFixed(1)}%)\nA penalty will be auto-created.`
@@ -203,11 +215,17 @@ export default function CementLiftingDetailPage() {
       const res = await fetch(`/api/cement/liftings/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'Delivered', buyerWeighbridgeQty: buyerQty }),
+        body: JSON.stringify({
+          status: 'Delivered',
+          buyerWeighbridgeQty: buyerQty,
+          deliveryNoteNo: manualDeliveryNoteNo.trim() || undefined,
+          notes: manualDeliveryNotes.trim() || undefined,
+        }),
       });
       const result = await res.json();
       if (result.success) {
         alert(`Delivery confirmed!${result.balance ? ' Balance updated.' : ''}${shortage > 0 ? ` Shortage penalty created for ${shortage.toFixed(2)} tons.` : ''}`);
+        setShowDeliveryPanel(false);
         await fetchLifting();
       } else {
         alert(result.error || 'Failed to update status');
@@ -221,7 +239,7 @@ export default function CementLiftingDetailPage() {
 
   const handleStatusTransition = async (newStatus: string) => {
     if (newStatus === 'Delivered') {
-      handleMarkDelivered();
+      setShowDeliveryPanel(true);
       return;
     }
 
@@ -343,13 +361,15 @@ export default function CementLiftingDetailPage() {
           </Badge>
 
           {/* Status Transition Buttons */}
-          {lifting.status === 'Lifted' && (
+          {lifting.status !== 'Delivered' && lifting.status !== 'Verified' && (
             <Button
               variant="primary"
               size="sm"
               onClick={() => handleStatusTransition('Delivered')}
               disabled={transitioning}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium shadow-sm"
             >
+              <CheckCircle className="w-4 h-4 mr-1.5" />
               {transitioning ? 'Updating...' : 'Mark as Delivered'}
             </Button>
           )}
@@ -361,6 +381,7 @@ export default function CementLiftingDetailPage() {
               disabled={transitioning}
               className="bg-[#34C759] hover:bg-[#248A3D]"
             >
+              <CheckCircle className="w-4 h-4 mr-1.5" />
               {transitioning ? 'Updating...' : 'Mark as Verified'}
             </Button>
           )}
@@ -369,11 +390,146 @@ export default function CementLiftingDetailPage() {
             size="sm"
             onClick={() => setShowDeleteModal(true)}
           >
-            <Trash2 className="w-4 h-4" />
+            <Trash2 className="w-4 h-4 mr-1" />
             Delete
           </Button>
         </div>
       </div>
+
+      {/* Delivery Panel — shows when user clicks "Mark as Delivered" or opens delivery form */}
+      {(showDeliveryPanel || (lifting.status !== 'Delivered' && lifting.status !== 'Verified')) && (
+        <Card className="rounded-2xl border-2 border-emerald-500/30 shadow-sm overflow-hidden">
+          <CardHeader className="bg-emerald-50/60 border-b border-emerald-100 py-3.5 flex items-center justify-between">
+            <h2 className="text-lg font-bold text-emerald-900 flex items-center gap-2">
+              <CheckCircle className="w-5 h-5 text-emerald-600" />
+              Confirm Delivery Form — Cement Lifting #{lifting.liftingNo}
+            </h2>
+            <span className="text-xs bg-emerald-100 text-emerald-800 font-semibold px-2.5 py-1 rounded-full">
+              Status: {lifting.status}
+            </span>
+          </CardHeader>
+          <CardBody className="p-6 space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Left: Linked Buyer Weighbridge Entries */}
+              <div className="space-y-3">
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Linked Buyer Weighbridge Entries</p>
+                {buyerWbEntries.length > 0 ? (
+                  <div className="space-y-2">
+                    {buyerWbEntries.map((e, i) => (
+                      <div key={i} className="flex justify-between items-center text-sm p-3 rounded-lg bg-slate-50 border border-slate-200">
+                        <div>
+                          <span className="font-semibold text-slate-900">{e.weighbridgeNo}</span>
+                          <p className="text-xs text-slate-500">{new Date(e.weighbridgeDate).toLocaleDateString()}</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-slate-800">{(e.netWeight / 1000 > 10 ? e.netWeight / 1000 : e.netWeight).toFixed(2)} Tons</span>
+                          {e.verified ? (
+                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-semibold">Verified</span>
+                          ) : (
+                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-semibold">Pending</span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                    <div className="flex justify-between items-center text-sm p-3 rounded-lg bg-blue-50 border border-blue-200">
+                      <span className="font-semibold text-blue-900">Verified Total (Weighbridge)</span>
+                      <span className="font-bold text-blue-900 text-base">{(buyerWbTotal / 1000 > 10 ? buyerWbTotal / 1000 : buyerWbTotal).toFixed(2)} Tons</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-4 bg-slate-50 border border-dashed border-slate-300 rounded-xl text-center space-y-2">
+                    <p className="text-xs text-slate-500">No buyer weighbridge entry linked to this lifting yet.</p>
+                    <Button variant="outline" size="sm" onClick={() => setShowWbModal(true)} className="text-xs">
+                      + Record Buyer Weighbridge
+                    </Button>
+                  </div>
+                )}
+              </div>
+
+              {/* Right: Delivery Form Fields */}
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1">Factory Weight</label>
+                    <div className="p-3 bg-slate-100 rounded-lg font-bold text-xl text-slate-900">
+                      {Number(lifting.factoryWeight).toFixed(2)} <span className="text-sm font-normal text-slate-500">Tons</span>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1">Buyer Delivered Weight (Tons) *</label>
+                    <input
+                      type="number"
+                      step="0.001"
+                      className="w-full p-3 border border-slate-300 rounded-lg text-xl font-bold text-emerald-800 focus:ring-2 focus:ring-emerald-500 outline-none"
+                      placeholder="e.g. 40.00"
+                      value={manualBuyerQty}
+                      onChange={(e) => setManualBuyerQty(e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1">Delivery Note / GRN No.</label>
+                  <input
+                    type="text"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none"
+                    placeholder="e.g. DN-2026-001"
+                    value={manualDeliveryNoteNo}
+                    onChange={(e) => setManualDeliveryNoteNo(e.target.value)}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1">Delivery Notes / Remarks</label>
+                  <input
+                    type="text"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none"
+                    placeholder="Optional remarks or arrival condition..."
+                    value={manualDeliveryNotes}
+                    onChange={(e) => setManualDeliveryNotes(e.target.value)}
+                  />
+                </div>
+
+                {manualBuyerQty && parseFloat(manualBuyerQty) > 0 && (() => {
+                  const shortage = lifting.factoryWeight - parseFloat(manualBuyerQty);
+                  const pct = lifting.factoryWeight > 0 ? ((shortage / lifting.factoryWeight) * 100).toFixed(1) : '0';
+                  if (shortage > 0) {
+                    return (
+                      <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-800 flex items-center gap-2">
+                        <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />
+                        <span>Shortage detected: <strong>{shortage.toFixed(2)} Tons ({pct}%)</strong>. Confirming delivery will automatically create a shortage penalty.</span>
+                      </div>
+                    );
+                  }
+                  return (
+                    <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-800">
+                      Exact match or no shortage. Delivered quantity matches dispatch weight.
+                    </div>
+                  );
+                })()}
+
+                <div className="flex justify-end gap-2 pt-2">
+                  {showDeliveryPanel && (
+                    <Button variant="secondary" size="lg" onClick={() => setShowDeliveryPanel(false)}>
+                      Cancel
+                    </Button>
+                  )}
+                  <Button
+                    variant="primary"
+                    size="lg"
+                    onClick={handleMarkDelivered}
+                    disabled={transitioning}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-6 shadow-sm"
+                  >
+                    <CheckCircle className="w-4 h-4 mr-2" />
+                    {transitioning ? 'Processing...' : 'Confirm & Complete Delivery'}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </CardBody>
+        </Card>
+      )}
 
       {/* Main Details */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -487,18 +643,18 @@ export default function CementLiftingDetailPage() {
               </div>
               <div>
                 <p className="text-xs font-medium text-[#86868B] uppercase tracking-wider mb-1">Factory Weight</p>
-                <p className="text-3xl font-bold text-[#007AFF]">{Number(lifting.factoryWeight || 0).toLocaleString('en-US')} QT</p>
+                <p className="text-3xl font-bold text-[#007AFF]">{Number(lifting.factoryWeight || 0).toLocaleString('en-US')} Tons</p>
               </div>
               {lifting.buyerWeighbridgeQty != null && lifting.buyerWeighbridgeQty > 0 && (
                 <div>
                   <p className="text-xs font-medium text-[#86868B] uppercase tracking-wider mb-1">Buyer Weighbridge</p>
-                  <p className="text-2xl font-bold text-[#1D1D1F]">{Number(lifting.buyerWeighbridgeQty).toLocaleString('en-US')} QT</p>
+                  <p className="text-2xl font-bold text-[#1D1D1F]">{Number(lifting.buyerWeighbridgeQty).toLocaleString('en-US')} Tons</p>
                 </div>
               )}
               {lifting.shortageQty != null && lifting.shortageQty > 0 && (
                 <div className="border-t pt-3">
                   <p className="text-xs font-medium text-red-500 uppercase tracking-wider mb-1">Shortage</p>
-                  <p className="text-xl font-bold text-red-600">{Number(lifting.shortageQty).toLocaleString('en-US')} QT</p>
+                  <p className="text-xl font-bold text-red-600">{Number(lifting.shortageQty).toLocaleString('en-US')} Tons</p>
                   {lifting.shortagePenalty != null && lifting.shortagePenalty > 0 && (
                     <p className="text-sm text-red-500 mt-1">Penalty: ETB {Number(lifting.shortagePenalty).toLocaleString('en-US')}</p>
                   )}
@@ -534,7 +690,7 @@ export default function CementLiftingDetailPage() {
                   Customer Agreement Unit Price
                 </p>
                 <p className="text-lg font-bold text-[#007AFF]">
-                  ETB {effectiveUnitPrice.toLocaleString('en-US')} / QT
+                  ETB {effectiveUnitPrice.toLocaleString('en-US')} / Ton
                 </p>
                 {lifting.customerAgreementNo && (
                   <p className="text-[11px] text-slate-500 mt-0.5">
@@ -548,7 +704,7 @@ export default function CementLiftingDetailPage() {
                     Factory Purchase Cost
                   </p>
                   <p className="text-sm text-slate-600 font-medium">
-                    ETB {Number(lifting.purchase.unitPrice).toLocaleString('en-US')} / QT
+                    ETB {Number(lifting.purchase.unitPrice).toLocaleString('en-US')} / Ton
                   </p>
                 </div>
               )}

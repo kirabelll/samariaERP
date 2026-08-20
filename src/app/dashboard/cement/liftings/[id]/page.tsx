@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
-import { Card, CardBody, CardHeader, Badge, Button, Input, ConfirmDialog } from '@/components/ui';
+import { Card, CardBody, CardHeader, Badge, Button, Input, ConfirmDialog, Modal } from '@/components/ui';
 import { ChevronLeft, Loader, Truck, Factory, Weight, FileText, Receipt, User, CreditCard, AlertTriangle, Trash2 } from 'lucide-react';
 
 interface CementLifting {
@@ -63,8 +63,13 @@ export default function CementLiftingDetailPage() {
   // Buyer weighbridge data
   const [buyerWbEntries, setBuyerWbEntries] = useState<Array<{ weighbridgeNo: string; netWeight: number; verified: boolean; weighbridgeDate: string }>>([]);
   const [buyerWbTotal, setBuyerWbTotal] = useState<number>(0);
-  const [manualBuyerQty, setManualBuyerQty] = useState<string>('');
-  const [showDeliveryPanel, setShowDeliveryPanel] = useState(false);
+
+  // Manual Buyer Weighbridge Entry Modal state
+  const [showWbModal, setShowWbModal] = useState(false);
+  const [modalGrossWeight, setModalGrossWeight] = useState('');
+  const [modalTareWeight, setModalTareWeight] = useState('');
+  const [modalOperatorName, setModalOperatorName] = useState('');
+  const [submittingWb, setSubmittingWb] = useState(false);
 
   const handleDelete = async () => {
     try {
@@ -103,7 +108,6 @@ export default function CementLiftingDetailPage() {
           .filter((e: any) => e.verified)
           .reduce((sum: number, e: any) => sum + (Number(e.netWeight) || 0), 0);
         setBuyerWbTotal(verifiedTotal);
-        setManualBuyerQty(verifiedTotal > 0 ? String(verifiedTotal) : '');
       }
     } catch (err) {
       console.error('Failed to fetch buyer weighbridge entries:', err);
@@ -133,12 +137,60 @@ export default function CementLiftingDetailPage() {
     fetchBuyerWeighbridge();
   }, [id]);
 
-  const handleMarkDelivered = async () => {
-    const buyerQty = parseFloat(manualBuyerQty);
-    if (!buyerQty || buyerQty <= 0) {
-      alert('Please enter the buyer weighbridge quantity before marking as Delivered.');
+  const handleAddBuyerWeighbridge = async () => {
+    const gross = parseFloat(modalGrossWeight);
+    const tare = parseFloat(modalTareWeight);
+    if (!gross || gross <= 0 || isNaN(tare) || tare < 0) {
+      alert('Please enter valid Gross and Tare weights (kg).');
       return;
     }
+    const netKg = gross - tare;
+    if (netKg <= 0) {
+      alert('Gross weight must be greater than Tare weight.');
+      return;
+    }
+
+    setSubmittingWb(true);
+    try {
+      const res = await fetch('/api/cement/weighbridge', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          weighbridgeType: 'BUYER',
+          liftingId: id,
+          truckPlateNo: lifting?.truck?.plateNo || 'N/A',
+          grossWeight: gross,
+          tareWeight: tare,
+          operatorName: modalOperatorName || null,
+        }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        alert(`Buyer weighbridge entry created! Net Weight: ${netKg.toLocaleString('en-US')} kg`);
+        setShowWbModal(false);
+        setModalGrossWeight('');
+        setModalTareWeight('');
+        setModalOperatorName('');
+        await fetchLifting();
+        await fetchBuyerWeighbridge();
+      } else {
+        alert(json.error || 'Failed to create weighbridge entry');
+      }
+    } catch (err) {
+      alert('Error creating weighbridge entry');
+    } finally {
+      setSubmittingWb(false);
+    }
+  };
+
+  const handleMarkDelivered = async () => {
+    if (buyerWbTotal === 0 && buyerWbEntries.length === 0) {
+      // Prompt modal to record buyer weighbridge entry
+      setShowWbModal(true);
+      return;
+    }
+
+    const buyerQty = buyerWbTotal > 0 ? buyerWbTotal : (lifting?.buyerWeighbridgeQty || lifting?.factoryWeight || 0);
     const shortage = (lifting?.factoryWeight || 0) - buyerQty;
     const shortageMsg = shortage > 0
       ? `\n\nShortage: ${shortage.toFixed(2)} tons (${((shortage / (lifting?.factoryWeight || 1)) * 100).toFixed(1)}%)\nA penalty will be auto-created.`
@@ -156,7 +208,6 @@ export default function CementLiftingDetailPage() {
       const result = await res.json();
       if (result.success) {
         alert(`Delivery confirmed!${result.balance ? ' Balance updated.' : ''}${shortage > 0 ? ` Shortage penalty created for ${shortage.toFixed(2)} tons.` : ''}`);
-        setShowDeliveryPanel(false);
         await fetchLifting();
       } else {
         alert(result.error || 'Failed to update status');
@@ -170,7 +221,7 @@ export default function CementLiftingDetailPage() {
 
   const handleStatusTransition = async (newStatus: string) => {
     if (newStatus === 'Delivered') {
-      setShowDeliveryPanel(true);
+      handleMarkDelivered();
       return;
     }
 
@@ -324,95 +375,6 @@ export default function CementLiftingDetailPage() {
         </div>
       </div>
 
-      {/* Delivery Panel — shows when user clicks "Mark as Delivered" */}
-      {showDeliveryPanel && lifting.status === 'Lifted' && (
-        <Card className="rounded-2xl border-2 border-[#FF9500]">
-          <CardHeader>
-            <h2 className="text-lg font-semibold text-[#1D1D1F] flex items-center gap-2">
-              <AlertTriangle className="w-5 h-5 text-[#FF9500]" />
-              Confirm Delivery — Enter Buyer Weighbridge Total
-            </h2>
-          </CardHeader>
-          <CardBody className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Left: Buyer WB entries summary */}
-              <div>
-                <p className="text-sm font-medium text-[#86868B] mb-2">Linked Buyer Weighbridge Entries</p>
-                {buyerWbEntries.length > 0 ? (
-                  <div className="space-y-1.5">
-                    {buyerWbEntries.map((e, i) => (
-                      <div key={i} className="flex justify-between items-center text-sm px-3 py-1.5 rounded bg-gray-50">
-                        <span className="text-gray-700">{e.weighbridgeNo}</span>
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium">{e.netWeight.toLocaleString('en-US')} tons</span>
-                          {e.verified ? (
-                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-green-100 text-green-700">Verified</span>
-                          ) : (
-                            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-yellow-100 text-yellow-700">Pending</span>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                    <div className="flex justify-between items-center text-sm px-3 py-2 rounded bg-blue-50 border border-blue-200 mt-2">
-                      <span className="font-medium text-blue-800">Verified Total (auto-summed)</span>
-                      <span className="font-bold text-blue-900">{buyerWbTotal.toLocaleString('en-US')} tons</span>
-                    </div>
-                  </div>
-                ) : (
-                  <p className="text-sm text-gray-500 italic">No buyer weighbridge entries linked to this lifting.</p>
-                )}
-              </div>
-
-              {/* Right: Manual input */}
-              <div className="space-y-3">
-                <div>
-                  <p className="text-sm font-medium text-[#86868B] mb-1">Factory Weight</p>
-                  <p className="text-2xl font-bold text-[#007AFF]">{Number(lifting.factoryWeight).toLocaleString('en-US')} tons</p>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Buyer Weighbridge Total (tons) *</label>
-                  <input
-                    type="number"
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-lg font-semibold focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="Enter buyer total weight"
-                    value={manualBuyerQty}
-                    onChange={(e) => setManualBuyerQty(e.target.value)}
-                  />
-                  <p className="text-xs text-gray-500 mt-1">
-                    {buyerWbTotal > 0 ? 'Pre-filled from verified weighbridge entries. You can adjust if needed.' : 'Enter the total buyer-verified weight for this lifting.'}
-                  </p>
-                </div>
-
-                {manualBuyerQty && parseFloat(manualBuyerQty) > 0 && (
-                  <div className={`p-3 rounded-lg ${(lifting.factoryWeight - parseFloat(manualBuyerQty)) > 0 ? 'bg-red-50 border border-red-200' : 'bg-green-50 border border-green-200'}`}>
-                    <p className="text-sm font-medium">
-                      {(() => {
-                        const shortage = lifting.factoryWeight - parseFloat(manualBuyerQty);
-                        const pct = ((shortage / lifting.factoryWeight) * 100).toFixed(1);
-                        if (shortage > 0) {
-                          return <span className="text-red-700">Shortage: {shortage.toFixed(2)} tons ({pct}%) — Penalty will be auto-created</span>;
-                        }
-                        return <span className="text-green-700">No shortage — weights match or buyer exceeds factory</span>;
-                      })()}
-                    </p>
-                  </div>
-                )}
-
-                <div className="flex gap-2 pt-2">
-                  <Button variant="secondary" size="sm" onClick={() => setShowDeliveryPanel(false)}>
-                    Cancel
-                  </Button>
-                  <Button variant="primary" size="lg" onClick={handleMarkDelivered} disabled={transitioning} className="flex-1">
-                    {transitioning ? 'Processing...' : 'Confirm Delivery'}
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </CardBody>
-        </Card>
-      )}
-
       {/* Main Details */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Lifting Information */}
@@ -545,8 +507,16 @@ export default function CementLiftingDetailPage() {
                   </Link>
                 </div>
               )}
-              <div className="border-t pt-3">
-                <Link href="/dashboard/cement/weighbridge" className="text-sm text-[#007AFF] hover:underline font-medium">
+              <div className="border-t pt-3 space-y-2">
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => setShowWbModal(true)}
+                  className="w-full"
+                >
+                  + Record Buyer Weighbridge Entry
+                </Button>
+                <Link href="/dashboard/cement/weighbridge" className="text-xs text-[#007AFF] hover:underline font-medium block">
                   View Weighbridge Register →
                 </Link>
               </div>
@@ -695,6 +665,56 @@ export default function CementLiftingDetailPage() {
         cancelText="Cancel"
         isDangerous={true}
         isLoading={deleting}
+      />
+
+      {/* Record Buyer Weighbridge Entry Modal */}
+      <Modal
+        isOpen={showWbModal}
+        onClose={() => setShowWbModal(false)}
+        title="Record Buyer Weighbridge Entry"
+        body={
+          <div className="space-y-4">
+            <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-800">
+              <p className="font-semibold mb-1">Lifting: {lifting?.liftingNo}</p>
+              <p>Truck: {lifting?.truck?.plateNo || 'N/A'} | Factory Weight: {lifting?.factoryWeight} tons</p>
+            </div>
+            <Input
+              label="Gross Weight (kg) *"
+              type="number"
+              placeholder="e.g. 40000"
+              value={modalGrossWeight}
+              onChange={(e) => setModalGrossWeight(e.target.value)}
+            />
+            <Input
+              label="Tare Weight (kg) *"
+              type="number"
+              placeholder="e.g. 10000"
+              value={modalTareWeight}
+              onChange={(e) => setModalTareWeight(e.target.value)}
+            />
+            {modalGrossWeight && modalTareWeight && (
+              <div className="p-3 bg-gray-100 rounded-lg text-sm font-semibold text-gray-900">
+                Net Weight: {(parseFloat(modalGrossWeight) - parseFloat(modalTareWeight)).toLocaleString('en-US')} kg ({((parseFloat(modalGrossWeight) - parseFloat(modalTareWeight)) / 1000).toFixed(2)} tons)
+              </div>
+            )}
+            <Input
+              label="Operator Name"
+              placeholder="Enter operator name"
+              value={modalOperatorName}
+              onChange={(e) => setModalOperatorName(e.target.value)}
+            />
+          </div>
+        }
+        footer={
+          <div className="flex gap-3">
+            <Button variant="secondary" onClick={() => setShowWbModal(false)}>
+              Cancel
+            </Button>
+            <Button variant="primary" onClick={handleAddBuyerWeighbridge} disabled={submittingWb}>
+              {submittingWb ? 'Saving...' : 'Save Weighbridge Entry & Deliver'}
+            </Button>
+          </div>
+        }
       />
     </div>
   );

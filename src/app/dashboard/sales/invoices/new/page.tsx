@@ -206,12 +206,13 @@ export default function NewInvoicePage() {
           if (partyType === 'Customer') params.append('customer', partyId);
           if (startDate) params.append('startDate', startDate);
           if (endDate) params.append('endDate', endDate);
+          params.append('status', 'Delivered');
           params.append('limit', '100');
 
           const res = await fetch(`/api/cement/liftings?${params.toString()}`);
           const data = await res.json();
           if (data.success) {
-            const list = data.data || [];
+            const list = (data.data || []).filter((l: any) => l.status === 'Delivered' || l.status === 'Verified');
             setCementLiftings(list);
             setSelectedLiftingIds([]);
             setItems([]);

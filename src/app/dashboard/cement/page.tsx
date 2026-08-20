@@ -182,68 +182,27 @@ function CementOperationsContent() {
 
   const activeData = activeTab === 'purchases' ? purchases : liftings;
 
-  const [exporting, setExporting] = useState(false);
-
-  const exportToExcel = async () => {
-    setExporting(true);
-    try {
-      const today = new Date().toISOString().split('T')[0];
-      let csvContent = '';
-
-      const params = new URLSearchParams();
-      params.set('page', '1');
-      params.set('limit', '10000');
-      if (searchTerm) params.set('search', searchTerm);
-      if (statusFilter) params.set('status', statusFilter);
-
-      if (activeTab === 'purchases') {
-        const res = await fetch(`/api/cement/purchases?${params.toString()}`);
-        const json = await res.json();
-        const exportData: CementPurchase[] =
-          json.success && Array.isArray(json.data)
-            ? json.data
-            : (purchases.data as CementPurchase[]);
-
-        csvContent = 'Purchase No,Factory,Date,Quantity (tons),Total (ETB),Status\n';
-        exportData.forEach((row) => {
-          csvContent += `"${row.purchaseNo || ''}","${row.factory?.name || '-'}","${
-            row.createdAt ? new Date(row.createdAt).toLocaleDateString() : '-'
-          }","${Number(row.quantityTons || 0).toLocaleString('en-US')}","${Number(
-            row.totalAmount || 0
-          ).toLocaleString('en-US')}","${row.status || ''}"\n`;
-        });
-      } else {
-        const res = await fetch(`/api/cement/liftings?${params.toString()}`);
-        const json = await res.json();
-        const exportData: CementLifting[] =
-          json.success && Array.isArray(json.data)
-            ? json.data
-            : (liftings.data as CementLifting[]);
-
-        csvContent = 'Lifting No,Customer,Factory,Coupon,Date,Quantity (tons),Status\n';
-        exportData.forEach((row) => {
-          const couponNo = (row as any).coupon?.couponNo || '-';
-          csvContent += `"${row.liftingNo || ''}","${row.customer?.companyName || '-'}","${
-            row.factory?.name || '-'
-          }","${couponNo}","${
-            row.liftingDate ? new Date(row.liftingDate).toLocaleDateString() : '-'
-          }","${Number(row.factoryWeight || 0).toLocaleString('en-US')}","${row.status || ''}"\n`;
-        });
-      }
-
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `cement-${activeTab}-all-${today}.csv`;
-      link.click();
-      URL.revokeObjectURL(url);
-    } catch (err) {
-      console.error('Export error:', err);
-      alert('Failed to export data');
-    } finally {
-      setExporting(false);
+  const exportToExcel = () => {
+    const today = new Date().toISOString().split('T')[0];
+    let csvContent = '';
+    if (activeTab === 'purchases') {
+      csvContent = 'Purchase No,Factory,Date,Quantity (tons),Total (ETB),Status\n';
+      (purchases.data as CementPurchase[]).forEach((row) => {
+        csvContent += `"${row.purchaseNo}","${row.factory?.name || '-'}","${row.createdAt ? new Date(row.createdAt).toLocaleDateString() : '-'}","${Number(row.quantityTons).toLocaleString('en-US')}","${Number(row.totalAmount).toLocaleString('en-US')}","${row.status}"\n`;
+      });
+    } else {
+      csvContent = 'Lifting No,Customer,Factory,Coupon,Date,Quantity (tons),Status\n';
+      (liftings.data as CementLifting[]).forEach((row) => {
+        csvContent += `"${row.liftingNo}","${row.customer?.companyName || '-'}","${row.factory?.name || '-'}","${row.coupon?.couponNo || '-'}","${row.liftingDate ? new Date(row.liftingDate).toLocaleDateString() : '-'}","${Number(row.factoryWeight).toLocaleString('en-US')}","${row.status}"\n`;
+      });
     }
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `cement-${activeTab}-${today}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
   };
 
   return (
@@ -257,12 +216,8 @@ function CementOperationsContent() {
           <Link href="/dashboard/cement/lifting/new">
             <Button variant="primary">+ New Lifting</Button>
           </Link>
-          <button
-            onClick={exportToExcel}
-            disabled={exporting}
-            className="px-4 py-2 rounded-lg bg-green-600 text-white font-medium hover:bg-green-700 flex items-center gap-2 text-sm disabled:opacity-50"
-          >
-            {exporting ? 'Exporting...' : 'Export Excel'}
+          <button onClick={exportToExcel} className="px-4 py-2 rounded-lg bg-green-600 text-white font-medium hover:bg-green-700 flex items-center gap-2 text-sm">
+            Export Excel
           </button>
         </div>
       </div>

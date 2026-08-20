@@ -6,6 +6,7 @@ import { Card, CardHeader, CardBody, CardFooter, Button, Input, Select } from '@
 
 interface RequestItem {
   id: number;
+  itemId?: string;
   drugName: string;
   genericName: string;
   strength: string;
@@ -19,10 +20,12 @@ export default function NewMedicalPurchaseRequestPage() {
   const [urgency, setUrgency] = useState('Normal');
   const [notes, setNotes] = useState('');
   const [items, setItems] = useState<RequestItem[]>([
-    { id: 1, drugName: '', genericName: '', strength: '', qty: 1, unitPrice: 0 },
+    { id: 1, itemId: '', drugName: '', genericName: '', strength: '', qty: 1, unitPrice: 0 },
   ]);
   const [customers, setCustomers] = useState<{ id: string; companyName: string; code: string }[]>([]);
   const [loadingCustomers, setLoadingCustomers] = useState(true);
+  const [medicalItems, setMedicalItems] = useState<{ id: string; code: string; name: string; genericName?: string; strength?: string }[]>([]);
+  const [loadingItems, setLoadingItems] = useState(true);
 
   React.useEffect(() => {
     async function fetchCustomers() {
@@ -47,12 +50,33 @@ export default function NewMedicalPurchaseRequestPage() {
         setLoadingCustomers(false);
       }
     }
+
+    async function fetchMedicalItems() {
+      try {
+        setLoadingItems(true);
+        let res = await fetch('/api/items?division=MEDICAL&limit=100');
+        let data = await res.json();
+        let list = data.success && Array.isArray(data.data) ? data.data : [];
+        if (list.length === 0) {
+          res = await fetch('/api/items?limit=100');
+          data = await res.json();
+          list = data.success && Array.isArray(data.data) ? data.data : [];
+        }
+        setMedicalItems(list);
+      } catch (err) {
+        console.error('Error fetching medical items:', err);
+      } finally {
+        setLoadingItems(false);
+      }
+    }
+
     fetchCustomers();
+    fetchMedicalItems();
   }, []);
 
   const handleAddItem = () => {
     const newId = Math.max(...items.map(i => i.id), 0) + 1;
-    setItems([...items, { id: newId, drugName: '', genericName: '', strength: '', qty: 1, unitPrice: 0 }]);
+    setItems([...items, { id: newId, itemId: '', drugName: '', genericName: '', strength: '', qty: 1, unitPrice: 0 }]);
   };
 
   const handleRemoveItem = (id: number) => {
@@ -183,11 +207,37 @@ export default function NewMedicalPurchaseRequestPage() {
                 {items.map((item) => (
                   <tr key={item.id} className="border-b">
                     <td className="py-3 px-2">
-                      <Input
-                        placeholder="Drug name"
-                        value={item.drugName}
-                        onChange={(e) => handleItemChange(item.id, 'drugName', e.target.value)}
-                      />
+                      <select
+                        value={item.itemId || ''}
+                        onChange={(e) => {
+                          const selectedItemId = e.target.value;
+                          const foundItem = medicalItems.find(m => m.id === selectedItemId);
+                          if (foundItem) {
+                            setItems(items.map(i => i.id === item.id ? {
+                              ...i,
+                              itemId: foundItem.id,
+                              drugName: foundItem.name,
+                              genericName: foundItem.genericName || i.genericName,
+                              strength: foundItem.strength || i.strength,
+                            } : i));
+                          } else {
+                            setItems(items.map(i => i.id === item.id ? {
+                              ...i,
+                              itemId: '',
+                              drugName: '',
+                            } : i));
+                          }
+                        }}
+                        className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border px-3 py-2 text-sm"
+                        disabled={loadingItems}
+                      >
+                        <option value="">{loadingItems ? 'Loading items...' : 'Select Medical Item'}</option>
+                        {medicalItems.map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.name} {m.code ? `(${m.code})` : ''}
+                          </option>
+                        ))}
+                      </select>
                     </td>
                     <td className="py-3 px-2">
                       <Input

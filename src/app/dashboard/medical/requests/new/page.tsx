@@ -21,6 +21,34 @@ export default function NewMedicalPurchaseRequestPage() {
   const [items, setItems] = useState<RequestItem[]>([
     { id: 1, drugName: '', genericName: '', strength: '', qty: 1, unitPrice: 0 },
   ]);
+  const [customers, setCustomers] = useState<{ id: string; companyName: string; code: string }[]>([]);
+  const [loadingCustomers, setLoadingCustomers] = useState(true);
+
+  React.useEffect(() => {
+    async function fetchCustomers() {
+      try {
+        setLoadingCustomers(true);
+        let res = await fetch('/api/customers?division=MEDICAL&limit=100');
+        let data = await res.json();
+        let list = data.success && Array.isArray(data.data) ? data.data : [];
+        if (list.length === 0) {
+          res = await fetch('/api/customers?limit=100');
+          data = await res.json();
+          list = data.success && Array.isArray(data.data) ? data.data : [];
+        }
+        setCustomers(list.map((c: any) => ({
+          id: c.id,
+          companyName: c.companyName || `${c.firstName || ''} ${c.lastName || ''}`.trim() || c.code,
+          code: c.code || '',
+        })));
+      } catch (err) {
+        console.error('Error fetching customers:', err);
+      } finally {
+        setLoadingCustomers(false);
+      }
+    }
+    fetchCustomers();
+  }, []);
 
   const handleAddItem = () => {
     const newId = Math.max(...items.map(i => i.id), 0) + 1;
@@ -40,6 +68,10 @@ export default function NewMedicalPurchaseRequestPage() {
   const totalAmount = items.reduce((sum, item) => sum + (item.qty * item.unitPrice), 0);
 
   const handleSave = async () => {
+    if (!customer) {
+      alert('Please select a customer');
+      return;
+    }
     if (!urgency || items.some(i => !i.drugName)) {
       alert('Please fill in all required fields');
       return;
@@ -85,12 +117,14 @@ export default function NewMedicalPurchaseRequestPage() {
                 value={customer}
                 onChange={(e) => setCustomer(e.target.value)}
                 className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border px-3 py-2"
+                disabled={loadingCustomers}
               >
-                <option value="">Select Customer</option>
-                <option value="cust_001">AYAT SHARE COMPANY</option>
-                <option value="cust_002">ELMI OLINDO</option>
-                <option value="cust_003">BETESEB CONTRACTORS</option>
-                <option value="cust_004">MEKELLE PHARMACEUTICAL</option>
+                <option value="">{loadingCustomers ? 'Loading customers...' : 'Select Customer'}</option>
+                {customers.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.companyName} {c.code ? `(${c.code})` : ''}
+                  </option>
+                ))}
               </select>
             </div>
             <div>

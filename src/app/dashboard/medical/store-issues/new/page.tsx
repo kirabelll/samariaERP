@@ -66,26 +66,41 @@ export default function NewStoreIssue() {
     },
   ]);
 
-  const medicalCustomers: MedicalCustomer[] = [
-    {
-      id: '1',
-      name: 'Unity Hospital',
-      licenseStatus: 'Valid',
-      licenseExpiryDate: '2025-12-31',
-    },
-    {
-      id: '2',
-      name: 'Addis Medical Center',
-      licenseStatus: 'Valid',
-      licenseExpiryDate: '2025-06-30',
-    },
-    {
-      id: '3',
-      name: 'Green Light Clinic',
-      licenseStatus: 'Expired',
-      licenseExpiryDate: '2024-03-15',
-    },
-  ];
+  const [medicalCustomers, setMedicalCustomers] = useState<MedicalCustomer[]>([]);
+  const [loadingCustomers, setLoadingCustomers] = useState(true);
+
+  useEffect(() => {
+    async function fetchCustomers() {
+      try {
+        setLoadingCustomers(true);
+        let res = await fetch('/api/customers?division=MEDICAL&limit=100');
+        let data = await res.json();
+        let list = data.success && Array.isArray(data.data) ? data.data : [];
+        if (list.length === 0) {
+          res = await fetch('/api/customers?limit=100');
+          data = await res.json();
+          list = data.success && Array.isArray(data.data) ? data.data : [];
+        }
+
+        const mapped: MedicalCustomer[] = list.map((c: any) => {
+          const isExpired = c.licenseExpiry ? new Date(c.licenseExpiry) < new Date() : false;
+          return {
+            id: c.id,
+            name: c.companyName || `${c.firstName || ''} ${c.lastName || ''}`.trim() || c.code,
+            licenseStatus: isExpired ? 'Expired' : 'Valid',
+            licenseExpiryDate: c.licenseExpiry ? new Date(c.licenseExpiry).toISOString().split('T')[0] : 'N/A',
+          };
+        });
+
+        setMedicalCustomers(mapped);
+      } catch (err) {
+        console.error('Error fetching medical customers:', err);
+      } finally {
+        setLoadingCustomers(false);
+      }
+    }
+    fetchCustomers();
+  }, []);
 
   const medicalItems: MedicalItem[] = [
     { id: '1', name: 'Paracetamol Tablets 500mg', unitPrice: 50 },
@@ -242,10 +257,13 @@ export default function NewStoreIssue() {
             label="Select Customer *"
             value={selectedCustomer}
             onChange={(e) => setSelectedCustomer(e.target.value)}
-            options={medicalCustomers.map((c) => ({
-              label: c.name,
-              value: c.id,
-            }))}
+            options={[
+              { label: loadingCustomers ? 'Loading customers...' : 'Select Customer', value: '' },
+              ...medicalCustomers.map((c) => ({
+                label: c.name,
+                value: c.id,
+              })),
+            ]}
           />
 
           {selectedCustomerData && (

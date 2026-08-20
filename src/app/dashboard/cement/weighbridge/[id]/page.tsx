@@ -46,7 +46,6 @@ export default function WeighbridgeDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [verifying, setVerifying] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [markingDelivered, setMarkingDelivered] = useState(false);
 
   const fetchEntry = async () => {
     try {
@@ -94,31 +93,6 @@ export default function WeighbridgeDetailPage() {
       alert('Error verifying entry');
     } finally {
       setVerifying(false);
-    }
-  };
-
-  const handleMarkDelivered = async () => {
-    if (!entry || !entry.lifting) return;
-    if (!confirm(`Mark lifting ${entry.lifting.liftingNo} as Delivered using net weight (${(entry.netWeight / 1000).toFixed(2)} tons)?`)) return;
-
-    setMarkingDelivered(true);
-    try {
-      const res = await fetch(`/api/cement/liftings/${entry.lifting.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'Delivered', buyerWeighbridgeQty: entry.netWeight / 1000 }),
-      });
-      const json = await res.json();
-      if (json.success) {
-        alert(`Lifting ${entry.lifting.liftingNo} marked as Delivered successfully!`);
-        fetchEntry();
-      } else {
-        alert(json.error || 'Failed to mark as Delivered');
-      }
-    } catch {
-      alert('Error marking lifting as Delivered');
-    } finally {
-      setMarkingDelivered(false);
     }
   };
 
@@ -223,16 +197,6 @@ export default function WeighbridgeDetailPage() {
         </div>
 
         <div className="flex gap-2 flex-wrap">
-          {entry.weighbridgeType === 'BUYER' && entry.lifting && entry.lifting.status === 'Lifted' && (
-            <Button
-              variant="primary"
-              onClick={handleMarkDelivered}
-              isLoading={markingDelivered}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white"
-            >
-              <CheckCircle className="w-4 h-4 mr-2" /> Mark Lifting as Delivered
-            </Button>
-          )}
           {!entry.verified && (
             <Button
               variant="primary"

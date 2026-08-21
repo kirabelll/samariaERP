@@ -24,6 +24,9 @@ interface SourceRefOption {
   padNumber?: string;
   supplierPayable?: number;
   customerReceivable?: number;
+  supplierName?: string;
+  paymentMethod?: string;
+  bankName?: string;
 }
 
 interface BankAccountOption {
@@ -167,6 +170,7 @@ export default function NewVoucherPage() {
     switch (formData.payeeType) {
       case 'CUSTOMER': return customers;
       case 'SUPPLIER': return suppliers;
+      case 'ONE_TIME_SUPPLIER': return [{ id: 'ONE_TIME_SUPPLIER', name: '⚡ One-Time Supplier (Ad-Hoc / Manual)', code: 'ONE-TIME' }];
       case 'EMPLOYEE': return employees;
       case 'TRANSPORTER': return transporters;
       default: return [];
@@ -186,20 +190,43 @@ export default function NewVoucherPage() {
 
         switch (formData.sourceModule) {
           case 'PURCHASE': {
-            const res = await fetch('/api/purchasing/orders?limit=100');
-            const data = await res.json();
-            if (data.success) {
-              // Only show Approved or Active purchase orders — not Draft or Pending
-              const approvedOnly = (data.data || []).filter((po: any) =>
+            const [poRes, payRes] = await Promise.all([
+              fetch('/api/purchasing/orders?limit=100').then((r) => r.json()).catch(() => ({ success: false })),
+              fetch('/api/purchasing/payments?limit=100').then((r) => r.json()).catch(() => ({ success: false })),
+            ]);
+
+            const paymentRefs: SourceRefOption[] = [];
+            if (payRes.success && Array.isArray(payRes.data)) {
+              payRes.data.forEach((pm: any) => {
+                paymentRefs.push({
+                  id: pm.id,
+                  label: `Purchasing Payment: ${pm.paymentNo || pm.id} — ${pm.supplier?.companyName || 'Unknown Supplier'} — ETB ${Number(pm.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })} (${pm.status || 'Active'})`,
+                  ref: pm.paymentNo || pm.id,
+                  amount: Number(pm.amount || 0),
+                  supplierName: pm.supplier?.companyName || '',
+                  paymentMethod: pm.paymentMethod || 'cash',
+                  bankName: pm.bankName || '',
+                });
+              });
+            }
+
+            const poRefs: SourceRefOption[] = [];
+            if (poRes.success && Array.isArray(poRes.data)) {
+              const approvedOnly = poRes.data.filter((po: any) =>
                 po.status === 'Approved' || po.status === 'Active' || po.status === 'Received'
               );
-              refs = approvedOnly.map((po: any) => ({
-                id: po.id,
-                label: `${po.poNo} — ${po.supplier?.companyName || 'Unknown'} (${po.status})`,
-                ref: po.poNo,
-                amount: po.totalAmount,
-              }));
+              approvedOnly.forEach((po: any) => {
+                poRefs.push({
+                  id: po.id,
+                  label: `PO: ${po.poNo} — ${po.supplier?.companyName || 'Unknown'} — ETB ${Number(po.totalAmount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })} (${po.status})`,
+                  ref: po.poNo,
+                  amount: Number(po.totalAmount || 0),
+                  supplierName: po.supplier?.companyName || '',
+                });
+              });
             }
+
+            refs = [...paymentRefs, ...poRefs];
             break;
           }
           case 'AGGREGATE': {
@@ -225,7 +252,7 @@ export default function NewVoucherPage() {
                 } else if (formData.payeeType === 'TRANSPORTER') {
                   amount = Number(d.transporterPayable || d.netTruckPayment || d.grossTruckFee || 0);
                   typeStr = 'Transporter Freight';
-                } else if (formData.payeeType === 'SUPPLIER') {
+                } else if (formData.payeeType === 'SUPPLIER' || formData.payeeType === 'ONE_TIME_SUPPLIER') {
                   amount = Number(d.supplierPayable || 0);
                   typeStr = 'Supplier Material';
                 } else {
@@ -403,8 +430,8 @@ export default function NewVoucherPage() {
   useEffect(() => {
     setFormData((prev) => ({
       ...prev,
-      payeeId: '',
-      payeeName: '',
+      payeeId: formData.payeeType === 'ONE_TIME_SUPPLIER' ? 'ONE_TIME_SUPPLIER' : '',
+      payeeName: formData.payeeType === 'ONE_TIME_SUPPLIER' ? prev.payeeName : '',
     }));
   }, [formData.payeeType]);
 
@@ -423,6 +450,7 @@ export default function NewVoucherPage() {
     if (!formData.payeeType) return;
     const moduleMap: Record<string, string> = {
       'SUPPLIER': 'PURCHASE',
+      'ONE_TIME_SUPPLIER': 'PURCHASE',
       'CUSTOMER': 'SALES',
       'TRANSPORTER': 'TRANSPORTER',
       'EMPLOYEE': 'PAYROLL',
@@ -434,6 +462,7 @@ export default function NewVoucherPage() {
       setFormData((prev) => ({
         ...prev,
         sourceModule: suggested,
+        payeeId: formData.payeeType === 'ONE_TIME_SUPPLIER' ? 'ONE_TIME_SUPPLIER' : prev.payeeId,
         // Auto-set RECEIPT when customer is selected (collecting money from them)
         ...(formData.payeeType === 'CUSTOMER' ? { voucherType: 'RECEIPT' } : {}),
       }));
@@ -473,24 +502,35 @@ export default function NewVoucherPage() {
     const selectedId = e.target.value;
     const selected = sourceRefs.find((r) => r.id === selectedId);
 
-    setFormData((prev) => {
-      // Auto-extract party name from reference label if available
-      const labelParts = selected?.label ? selected.label.split(' — ') : [];
-      const extractedParty = labelParts.length > 1 ? labelParts[1].split(' (')[0].trim() : '';
+    if (!selected) {
+      setFormData((prev) => ({
+        ...prev,
+        sourceId: '',
+        sourceReference: '',
+      }));
+      return;
+    }
 
-      const targetAmount = selected?.amount !== undefined && selected?.amount !== null && selected.amount > 0
+    setFormData((prev) => {
+      // Auto-extract supplier/party name from reference label if available
+      const labelParts = selected.label ? selected.label.split(' — ') : [];
+      const extractedParty = selected.supplierName || (labelParts.length > 1 ? labelParts[1].split(' (')[0].trim() : '');
+
+      const targetAmount = selected.amount !== undefined && selected.amount !== null && selected.amount > 0
         ? String(selected.amount)
         : prev.amount;
 
       return {
         ...prev,
-        sourceId: selectedId,
-        sourceReference: selected?.ref || '',
+        sourceId: selected.id,
+        sourceReference: selected.ref || '',
         amount: targetAmount,
-        payeeName: (prev.payeeId === 'ONE_TIME_SUPPLIER' && (!prev.payeeName || prev.payeeName === '⚡ One-Time Supplier (Ad-Hoc / Manual)')) && extractedParty
+        payeeName: (prev.payeeId === 'ONE_TIME_SUPPLIER' || !prev.payeeName) && extractedParty
           ? extractedParty
           : prev.payeeName,
-        description: prev.description || (selected?.ref ? `Voucher settlement for ${prev.sourceModule || 'document'} ref: ${selected.ref}` : prev.description),
+        paymentMethod: selected.paymentMethod || prev.paymentMethod,
+        bankName: selected.bankName || prev.bankName,
+        description: prev.description || (selected.ref ? `Voucher settlement for purchasing payment/order ref: ${selected.ref}` : prev.description),
       };
     });
   };
@@ -574,7 +614,7 @@ export default function NewVoucherPage() {
         sourceModule: formData.sourceModule || 'PURCHASE',
         sourceId: formData.sourceId || null,
         sourceRef: formData.sourceReference || null,
-        payeeType: formData.payeeType,
+        payeeType: formData.payeeType === 'ONE_TIME_SUPPLIER' ? 'SUPPLIER' : formData.payeeType,
         payeeId: formData.payeeId === 'ONE_TIME_SUPPLIER' ? null : (formData.payeeId || null),
         payeeName: formData.payeeName,
         amount: parseFloat(formData.amount),
@@ -656,6 +696,7 @@ export default function NewVoucherPage() {
                   { value: '', label: '-- Select Payee Type --' },
                   { value: 'CUSTOMER', label: 'Customer' },
                   { value: 'SUPPLIER', label: 'Supplier' },
+                  { value: 'ONE_TIME_SUPPLIER', label: 'One-Time Supplier' },
                   { value: 'TRANSPORTER', label: 'Transporter' },
                   { value: 'EMPLOYEE', label: 'Employee' },
                   { value: 'ASSOCIATION', label: 'Association' },
@@ -674,6 +715,7 @@ export default function NewVoucherPage() {
               <h2 className="text-lg font-semibold text-[#1D1D1F]">
                 Select {formData.payeeType === 'CUSTOMER' ? 'Customer' :
                   formData.payeeType === 'SUPPLIER' ? 'Supplier' :
+                  formData.payeeType === 'ONE_TIME_SUPPLIER' ? 'One-Time Supplier' :
                   formData.payeeType === 'TRANSPORTER' ? 'Transporter' :
                   formData.payeeType === 'EMPLOYEE' ? 'Employee' :
                   'Payee'}
@@ -685,6 +727,7 @@ export default function NewVoucherPage() {
                   <label className="block text-[13px] font-medium text-[#86868B] uppercase tracking-wider mb-1.5">
                     {formData.payeeType === 'CUSTOMER' ? 'Customer' :
                      formData.payeeType === 'SUPPLIER' ? 'Supplier' :
+                     formData.payeeType === 'ONE_TIME_SUPPLIER' ? 'One-Time Supplier' :
                      formData.payeeType === 'TRANSPORTER' ? 'Transporter' :
                      formData.payeeType === 'EMPLOYEE' ? 'Employee' : 'Payee'} *
                   </label>

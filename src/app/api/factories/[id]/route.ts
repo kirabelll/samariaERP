@@ -78,8 +78,21 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
+    const searchParams = request.nextUrl.searchParams;
+    const isPermanent = searchParams.get('permanent') === 'true' || searchParams.get('hard') === 'true';
+
     const factory = await prisma.factory.findUnique({
       where: { id: params.id },
+      include: {
+        _count: {
+          select: {
+            cementPurchases: true,
+            coupons: true,
+            cementLiftings: true,
+            cementBalances: true,
+          },
+        },
+      },
     });
 
     if (!factory) {
@@ -89,13 +102,47 @@ export async function DELETE(
       );
     }
 
+    // If already Inactive or requested permanent delete
+    if (factory.status === 'Inactive' || isPermanent) {
+      const counts = factory._count;
+      const linked: string[] = [];
+      if (counts.cementPurchases > 0) linked.push(`${counts.cementPurchases} cement purchase(s)`);
+      if (counts.coupons > 0) linked.push(`${counts.coupons} coupon(s)`);
+      if (counts.cementLiftings > 0) linked.push(`${counts.cementLiftings} cement lifting(s)`);
+      if (counts.cementBalances > 0) linked.push(`${counts.cementBalances} balance record(s)`);
+
+      if (linked.length > 0) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `Cannot permanently delete factory because it is referenced in: ${linked.join(', ')}. Please remove or reassign these records first.`,
+          },
+          { status: 400 }
+        );
+      }
+
+      // Hard delete
+      await prisma.factory.delete({
+        where: { id: params.id },
+      });
+
+      return NextResponse.json({
+        success: true,
+        message: 'Factory permanently deleted from database',
+      });
+    }
+
     // Soft delete - set status to Inactive
     const deletedFactory = await prisma.factory.update({
       where: { id: params.id },
       data: { status: 'Inactive' },
     });
 
-    return NextResponse.json({ success: true, message: 'Factory deleted successfully', data: deletedFactory });
+    return NextResponse.json({
+      success: true,
+      message: 'Factory deactivated successfully (status set to Inactive)',
+      data: deletedFactory,
+    });
   } catch (error: any) {
     console.error('Error deleting factory:', error);
     return NextResponse.json(

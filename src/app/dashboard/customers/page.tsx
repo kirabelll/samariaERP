@@ -30,7 +30,7 @@ export default function CustomersPage() {
   const [divisionFilter, setDivisionFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
-  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string; status?: string } | null>(null);
   const [deleting, setDeleting] = useState(false);
   const pageSize = 10;
 
@@ -87,10 +87,14 @@ export default function CustomersPage() {
               variant="danger"
               onClick={(e) => {
                 e.preventDefault();
-                setDeleteTarget({ id: String(id), name: (row as any)?.companyName || 'this customer' });
+                setDeleteTarget({
+                  id: String(id),
+                  name: (row as any)?.companyName || 'this customer',
+                  status: (row as any)?.status,
+                });
               }}
             >
-              Delete
+              {(row as any)?.status === 'Inactive' ? 'Delete Permanently' : 'Delete'}
             </Button>
           )}
         </div>
@@ -160,9 +164,13 @@ export default function CustomersPage() {
         isOpen={!!deleteTarget}
         onClose={() => setDeleteTarget(null)}
         onConfirm={handleDelete}
-        title="Delete Customer"
-        message={`Are you sure you want to delete "${deleteTarget?.name}"? This will set the customer as inactive.`}
-        confirmText="Delete"
+        title={deleteTarget?.status === 'Inactive' ? 'Permanently Delete Customer' : 'Deactivate Customer'}
+        message={
+          deleteTarget?.status === 'Inactive'
+            ? `Are you sure you want to permanently delete "${deleteTarget?.name}"? This action cannot be undone and will remove the customer record from the database.`
+            : `Are you sure you want to delete "${deleteTarget?.name}"? This will set the customer status to Inactive.`
+        }
+        confirmText={deleteTarget?.status === 'Inactive' ? 'Permanently Delete' : 'Deactivate'}
         cancelText="Cancel"
         isDangerous={true}
         isLoading={deleting}

@@ -90,6 +90,10 @@ export async function DELETE(
 
     const item = await prisma.item.findUnique({
       where: { id: params.id },
+      include: {
+        stockBalances: true,
+        medicalBatches: true,
+      },
     });
 
     if (!item) {
@@ -99,11 +103,29 @@ export async function DELETE(
       );
     }
 
-    if (isPermanent) {
+    // If already Inactive or requested permanent delete
+    if (item.status === 'Inactive' || isPermanent) {
+      const activeStock = item.stockBalances.filter((sb) => sb.quantity > 0);
+      const activeBatches = item.medicalBatches.filter((mb) => mb.quantity > 0);
+
+      if (activeStock.length > 0 || activeBatches.length > 0) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `Cannot permanently delete item because there is existing stock in inventory (${activeStock.reduce((s, b) => s + b.quantity, 0)} units). Adjust stock to 0 before deleting.`,
+          },
+          { status: 400 }
+        );
+      }
+
+      // Remove zero-stock balance and batch records
+      await prisma.stockBalance.deleteMany({ where: { itemId: params.id } });
+      await prisma.medicalBatch.deleteMany({ where: { itemId: params.id } });
+
       await prisma.item.delete({
         where: { id: params.id },
       });
-      return NextResponse.json({ success: true, message: 'Item permanently deleted' });
+      return NextResponse.json({ success: true, message: 'Item permanently deleted from database' });
     }
 
     // Soft delete - set status to Inactive
@@ -112,7 +134,11 @@ export async function DELETE(
       data: { status: 'Inactive' },
     });
 
-    return NextResponse.json({ success: true, message: 'Item deleted successfully', data: deletedItem });
+    return NextResponse.json({
+      success: true,
+      message: 'Item deactivated successfully (status set to Inactive)',
+      data: deletedItem,
+    });
   } catch (error: any) {
     console.error('Error deleting item:', error);
     return NextResponse.json(

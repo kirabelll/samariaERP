@@ -80,8 +80,21 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
+    const searchParams = request.nextUrl.searchParams;
+    const isPermanent = searchParams.get('permanent') === 'true' || searchParams.get('hard') === 'true';
+
     const supplier = await prisma.supplier.findUnique({
       where: { id: params.id },
+      include: {
+        _count: {
+          select: {
+            purchaseOrders: true,
+            goodsReceives: true,
+            supplierPayments: true,
+            agreements: true,
+          },
+        },
+      },
     });
 
     if (!supplier) {
@@ -91,13 +104,52 @@ export async function DELETE(
       );
     }
 
+    // If already Inactive or explicitly requested permanent delete -> hard delete
+    if (supplier.status === 'Inactive' || isPermanent) {
+      const counts = supplier._count;
+      const linked: string[] = [];
+      if (counts.purchaseOrders > 0) linked.push(`${counts.purchaseOrders} purchase order(s)`);
+      if (counts.goodsReceives > 0) linked.push(`${counts.goodsReceives} goods receive(s)`);
+      if (counts.supplierPayments > 0) linked.push(`${counts.supplierPayments} payment(s)`);
+      if (counts.agreements > 0) linked.push(`${counts.agreements} agreement(s)`);
+
+      if (linked.length > 0) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `Cannot permanently delete supplier because it is referenced in: ${linked.join(', ')}. Please remove or reassign these records first.`,
+          },
+          { status: 400 }
+        );
+      }
+
+      // Delete linked bank accounts first
+      await prisma.supplierBank.deleteMany({
+        where: { supplierId: params.id },
+      });
+
+      // Hard delete from database
+      await prisma.supplier.delete({
+        where: { id: params.id },
+      });
+
+      return NextResponse.json({
+        success: true,
+        message: 'Supplier permanently deleted from database',
+      });
+    }
+
     // Soft delete - set status to Inactive
     const deletedSupplier = await prisma.supplier.update({
       where: { id: params.id },
       data: { status: 'Inactive' },
     });
 
-    return NextResponse.json({ success: true, message: 'Supplier deleted successfully', data: deletedSupplier });
+    return NextResponse.json({
+      success: true,
+      message: 'Supplier deactivated successfully (status set to Inactive)',
+      data: deletedSupplier,
+    });
   } catch (error: any) {
     console.error('Error deleting supplier:', error);
     return NextResponse.json(

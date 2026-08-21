@@ -27,7 +27,7 @@ export default function TransportersPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
-  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string; status?: string } | null>(null);
   const [deleting, setDeleting] = useState(false);
   const pageSize = 10;
 
@@ -83,10 +83,14 @@ export default function TransportersPage() {
               variant="danger"
               onClick={(e) => {
                 e.preventDefault();
-                setDeleteTarget({ id: String(id), name: (row as any)?.companyName || 'this transporter' });
+                setDeleteTarget({
+                  id: String(id),
+                  name: (row as any)?.companyName || 'this transporter',
+                  status: (row as any)?.status,
+                });
               }}
             >
-              Delete
+              {(row as any)?.status === 'Inactive' ? 'Delete Permanently' : 'Delete'}
             </Button>
           )}
         </div>
@@ -146,9 +150,13 @@ export default function TransportersPage() {
         isOpen={!!deleteTarget}
         onClose={() => setDeleteTarget(null)}
         onConfirm={handleDelete}
-        title="Delete Transporter"
-        message={`Are you sure you want to delete "${deleteTarget?.name}"? This will set the transporter as inactive.`}
-        confirmText="Delete"
+        title={deleteTarget?.status === 'Inactive' ? 'Permanently Delete Transporter' : 'Deactivate Transporter'}
+        message={
+          deleteTarget?.status === 'Inactive'
+            ? `Are you sure you want to permanently delete "${deleteTarget?.name}"? This action cannot be undone and will remove the transporter record from the database.`
+            : `Are you sure you want to delete "${deleteTarget?.name}"? This will set the transporter status to Inactive.`
+        }
+        confirmText={deleteTarget?.status === 'Inactive' ? 'Permanently Delete' : 'Deactivate'}
         cancelText="Cancel"
         isDangerous={true}
         isLoading={deleting}

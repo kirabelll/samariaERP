@@ -16,38 +16,38 @@ interface RequestItem {
 
 export default function NewMedicalPurchaseRequestPage() {
   const router = useRouter();
-  const [customer, setCustomer] = useState('');
+  const [supplier, setSupplier] = useState('');
   const [urgency, setUrgency] = useState('Normal');
   const [notes, setNotes] = useState('');
   const [items, setItems] = useState<RequestItem[]>([
     { id: 1, itemId: '', drugName: '', genericName: '', strength: '', qty: 1, unitPrice: 0 },
   ]);
-  const [customers, setCustomers] = useState<{ id: string; companyName: string; code: string }[]>([]);
-  const [loadingCustomers, setLoadingCustomers] = useState(true);
+  const [suppliers, setSuppliers] = useState<{ id: string; companyName: string; code: string }[]>([]);
+  const [loadingSuppliers, setLoadingSuppliers] = useState(true);
   const [medicalItems, setMedicalItems] = useState<{ id: string; code: string; name: string; genericName?: string; strength?: string }[]>([]);
   const [loadingItems, setLoadingItems] = useState(true);
 
   React.useEffect(() => {
-    async function fetchCustomers() {
+    async function fetchSuppliers() {
       try {
-        setLoadingCustomers(true);
-        let res = await fetch('/api/customers?division=MEDICAL&limit=100');
+        setLoadingSuppliers(true);
+        let res = await fetch('/api/suppliers?category=Medicine&limit=100');
         let data = await res.json();
         let list = data.success && Array.isArray(data.data) ? data.data : [];
         if (list.length === 0) {
-          res = await fetch('/api/customers?limit=100');
+          res = await fetch('/api/suppliers?limit=100');
           data = await res.json();
           list = data.success && Array.isArray(data.data) ? data.data : [];
         }
-        setCustomers(list.map((c: any) => ({
-          id: c.id,
-          companyName: c.companyName || `${c.firstName || ''} ${c.lastName || ''}`.trim() || c.code,
-          code: c.code || '',
+        setSuppliers(list.map((s: any) => ({
+          id: s.id,
+          companyName: s.companyName || `${s.firstName || ''} ${s.lastName || ''}`.trim() || s.code,
+          code: s.code || '',
         })));
       } catch (err) {
-        console.error('Error fetching customers:', err);
+        console.error('Error fetching suppliers:', err);
       } finally {
-        setLoadingCustomers(false);
+        setLoadingSuppliers(false);
       }
     }
 
@@ -70,7 +70,7 @@ export default function NewMedicalPurchaseRequestPage() {
       }
     }
 
-    fetchCustomers();
+    fetchSuppliers();
     fetchMedicalItems();
   }, []);
 
@@ -92,8 +92,8 @@ export default function NewMedicalPurchaseRequestPage() {
   const totalAmount = items.reduce((sum, item) => sum + (item.qty * item.unitPrice), 0);
 
   const handleSave = async () => {
-    if (!customer) {
-      alert('Please select a customer');
+    if (!supplier) {
+      alert('Please select a supplier');
       return;
     }
     if (!urgency || items.some(i => !i.drugName)) {
@@ -105,7 +105,8 @@ export default function NewMedicalPurchaseRequestPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          customerId: customer,
+          supplierId: supplier,
+          customerId: supplier,
           items,
           priority: urgency,
           notes: notes || undefined,
@@ -136,17 +137,17 @@ export default function NewMedicalPurchaseRequestPage() {
         <CardBody className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Customer *</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Supplier *</label>
               <select
-                value={customer}
-                onChange={(e) => setCustomer(e.target.value)}
+                value={supplier}
+                onChange={(e) => setSupplier(e.target.value)}
                 className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border px-3 py-2"
-                disabled={loadingCustomers}
+                disabled={loadingSuppliers}
               >
-                <option value="">{loadingCustomers ? 'Loading customers...' : 'Select Customer'}</option>
-                {customers.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.companyName} {c.code ? `(${c.code})` : ''}
+                <option value="">{loadingSuppliers ? 'Loading suppliers...' : 'Select Supplier'}</option>
+                {suppliers.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.companyName} {s.code ? `(${s.code})` : ''}
                   </option>
                 ))}
               </select>

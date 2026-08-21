@@ -31,7 +31,7 @@ export default function ItemsPage() {
   const [isDeleting, setIsDeleting] = useState(false);
   const pageSize = 10;
 
-  const { data, pagination, loading, error } = useApiList<Item>('/api/items', {
+  const { data, pagination, loading, error, refetch } = useApiList<Item>('/api/items', {
     page: currentPage,
     limit: pageSize,
     search: searchTerm,
@@ -42,13 +42,13 @@ export default function ItemsPage() {
     if (!deleteTarget) return;
     setIsDeleting(true);
     try {
-      const res = await fetch(`/api/items/${deleteTarget.id}?permanent=true`, {
+      const res = await fetch(`/api/items/${deleteTarget.id}`, {
         method: 'DELETE',
       });
       const result = await res.json();
       if (res.ok && result.success) {
-        alert('Item deleted successfully');
-        window.location.reload();
+        setDeleteTarget(null);
+        refetch();
       } else {
         alert(result.error || 'Failed to delete item');
       }
@@ -56,7 +56,6 @@ export default function ItemsPage() {
       alert('Error deleting item: ' + err.message);
     } finally {
       setIsDeleting(false);
-      setDeleteTarget(null);
     }
   };
 
@@ -88,7 +87,7 @@ export default function ItemsPage() {
             variant="danger"
             onClick={() => setDeleteTarget(row)}
           >
-            Delete
+            {row.status === 'Inactive' ? 'Delete Permanently' : 'Delete'}
           </Button>
         </div>
       ),
@@ -160,9 +159,13 @@ export default function ItemsPage() {
         isOpen={!!deleteTarget}
         onClose={() => setDeleteTarget(null)}
         onConfirm={handleDelete}
-        title="Delete Item"
-        message={`Are you sure you want to permanently delete item "${deleteTarget?.name}"? This action cannot be undone.`}
-        confirmText="Delete"
+        title={deleteTarget?.status === 'Inactive' ? 'Permanently Delete Item' : 'Deactivate Item'}
+        message={
+          deleteTarget?.status === 'Inactive'
+            ? `Are you sure you want to permanently delete item "${deleteTarget?.name}"? This action cannot be undone and will remove the item from the database.`
+            : `Are you sure you want to delete "${deleteTarget?.name}"? This will set the item status to Inactive.`
+        }
+        confirmText={deleteTarget?.status === 'Inactive' ? 'Permanently Delete' : 'Deactivate'}
         cancelText="Cancel"
         isDangerous={true}
         isLoading={isDeleting}

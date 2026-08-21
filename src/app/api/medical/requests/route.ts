@@ -60,13 +60,47 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { customerId, items, priority, notes, createdBy } = body;
+    const { customerId, supplierId, items, priority, notes, createdBy } = body;
+    const targetId = supplierId || customerId;
 
-    if (!customerId || !items || !Array.isArray(items)) {
+    if (!targetId || !items || !Array.isArray(items)) {
       return NextResponse.json(
-        { success: false, error: 'Missing required fields: customerId, items (array)' },
+        { success: false, error: 'Missing required fields: supplier/customer, items (array)' },
         { status: 400 }
       );
+    }
+
+    // Check if targetId is an existing customer or supplier
+    let effectiveCustomerId = targetId;
+    const existingCustomer = await prisma.customer.findUnique({
+      where: { id: targetId },
+    });
+
+    if (!existingCustomer) {
+      // Check if it's a supplier and create/upsert a medical partner customer entry for FK constraint
+      const existingSupplier = await prisma.supplier.findUnique({
+        where: { id: targetId },
+      });
+
+      if (existingSupplier) {
+        const createdCustomer = await prisma.customer.upsert({
+          where: { id: existingSupplier.id },
+          create: {
+            id: existingSupplier.id,
+            code: existingSupplier.code,
+            companyName: existingSupplier.companyName || `${existingSupplier.firstName || ''} ${existingSupplier.lastName || ''}`.trim() || 'Medical Supplier',
+            phone: existingSupplier.phone || '0000000000',
+            customerType: 'COMPANY',
+            division: 'MEDICAL',
+            status: existingSupplier.status || 'Active',
+          },
+          update: {
+            companyName: existingSupplier.companyName || undefined,
+            phone: existingSupplier.phone || undefined,
+          },
+        });
+        effectiveCustomerId = createdCustomer.id;
+      }
     }
 
     // Generate request number
@@ -76,7 +110,7 @@ export async function POST(request: NextRequest) {
     const medicalRequest = await prisma.medicalRequest.create({
       data: {
         requestNo,
-        customerId,
+        customerId: effectiveCustomerId,
         items: JSON.stringify(items),
         priority: priority || 'Normal',
         status: 'Submitted',
@@ -91,13 +125,13 @@ export async function POST(request: NextRequest) {
 
     // Auto-submit for approval (medical requests need pharmacist/manager approval)
     try {
-      const customerName = medicalRequest.customer?.companyName || medicalRequest.customer?.firstName || 'Unknown';
+      const partyName = medicalRequest.customer?.companyName || medicalRequest.customer?.firstName || 'Unknown';
       await requestApproval({
         module: 'MedicalRequest',
         recordId: medicalRequest.id,
         recordRef: medicalRequest.requestNo,
         amount: 0,
-        description: `Medical Request ${medicalRequest.requestNo} — ${priority || 'Normal'} priority for ${customerName}`,
+        description: `Medical Request ${medicalRequest.requestNo} — ${priority || 'Normal'} priority for ${partyName}`,
         requesterId: createdBy || '',
       });
     } catch (e) {

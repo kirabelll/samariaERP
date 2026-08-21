@@ -143,8 +143,23 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
+    const searchParams = request.nextUrl.searchParams;
+    const isPermanent = searchParams.get('permanent') === 'true' || searchParams.get('hard') === 'true';
+
     const transporter = await prisma.transporter.findUnique({
       where: { id: params.id },
+      include: {
+        _count: {
+          select: {
+            trucks: true,
+            agreements: true,
+            aggDeliveries: true,
+            truckPayments: true,
+            settlements: true,
+            recoveries: true,
+          },
+        },
+      },
     });
 
     if (!transporter) {
@@ -154,13 +169,49 @@ export async function DELETE(
       );
     }
 
+    // If already Inactive or requested permanent delete
+    if (transporter.status === 'Inactive' || isPermanent) {
+      const counts = transporter._count;
+      const linked: string[] = [];
+      if (counts.trucks > 0) linked.push(`${counts.trucks} truck(s)`);
+      if (counts.agreements > 0) linked.push(`${counts.agreements} agreement(s)`);
+      if (counts.aggDeliveries > 0) linked.push(`${counts.aggDeliveries} aggregate delivery(ies)`);
+      if (counts.truckPayments > 0) linked.push(`${counts.truckPayments} payment(s)`);
+      if (counts.settlements > 0) linked.push(`${counts.settlements} settlement(s)`);
+      if (counts.recoveries > 0) linked.push(`${counts.recoveries} recovery(ies)`);
+
+      if (linked.length > 0) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `Cannot permanently delete transporter because it is referenced in: ${linked.join(', ')}. Please remove or reassign these records first.`,
+          },
+          { status: 400 }
+        );
+      }
+
+      // Hard delete
+      await prisma.transporter.delete({
+        where: { id: params.id },
+      });
+
+      return NextResponse.json({
+        success: true,
+        message: 'Transporter permanently deleted from database',
+      });
+    }
+
     // Soft delete - set status to Inactive
     const deletedTransporter = await prisma.transporter.update({
       where: { id: params.id },
       data: { status: 'Inactive' },
     });
 
-    return NextResponse.json({ success: true, message: 'Transporter deleted successfully', data: deletedTransporter });
+    return NextResponse.json({
+      success: true,
+      message: 'Transporter deactivated successfully (status set to Inactive)',
+      data: deletedTransporter,
+    });
   } catch (error: any) {
     console.error('Error deleting transporter:', error);
     return NextResponse.json(

@@ -29,7 +29,7 @@ export default function SuppliersPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
-  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string; status?: string } | null>(null);
   const [deleting, setDeleting] = useState(false);
   const pageSize = 10;
 
@@ -86,10 +86,14 @@ export default function SuppliersPage() {
               variant="danger"
               onClick={(e) => {
                 e.preventDefault();
-                setDeleteTarget({ id: String(id), name: (row as any)?.companyName || 'this supplier' });
+                setDeleteTarget({
+                  id: String(id),
+                  name: (row as any)?.companyName || 'this supplier',
+                  status: (row as any)?.status,
+                });
               }}
             >
-              Delete
+              {(row as any)?.status === 'Inactive' ? 'Delete Permanently' : 'Delete'}
             </Button>
           )}
         </div>
@@ -149,9 +153,13 @@ export default function SuppliersPage() {
         isOpen={!!deleteTarget}
         onClose={() => setDeleteTarget(null)}
         onConfirm={handleDelete}
-        title="Delete Supplier"
-        message={`Are you sure you want to delete "${deleteTarget?.name}"? This will set the supplier as inactive.`}
-        confirmText="Delete"
+        title={deleteTarget?.status === 'Inactive' ? 'Permanently Delete Supplier' : 'Deactivate Supplier'}
+        message={
+          deleteTarget?.status === 'Inactive'
+            ? `Are you sure you want to permanently delete "${deleteTarget?.name}"? This action cannot be undone and will remove the supplier record from the database.`
+            : `Are you sure you want to delete "${deleteTarget?.name}"? This will set the supplier status to Inactive.`
+        }
+        confirmText={deleteTarget?.status === 'Inactive' ? 'Permanently Delete' : 'Deactivate'}
         cancelText="Cancel"
         isDangerous={true}
         isLoading={deleting}

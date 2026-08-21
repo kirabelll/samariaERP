@@ -32,7 +32,7 @@ export default function MedicalRequestsPage() {
 
   const columns: ColumnDef<MedicalRequest>[] = [
     { header: 'Request No', accessor: 'requestNo', sortable: true },
-    { header: 'Customer', accessor: 'customer', render: (_val, row) => row.customer?.companyName || '-' },
+    { header: 'Supplier', accessor: 'customer', render: (_val, row) => row.customer?.companyName || '-' },
     { header: 'Date', accessor: 'requestDate', render: (val) => val ? new Date(val).toLocaleDateString() : '-' },
     { header: 'Priority', accessor: 'priority' },
     { header: 'Status', accessor: 'status', render: (status) => <Badge status={status as any}>{status}</Badge> },
@@ -58,7 +58,7 @@ export default function MedicalRequestsPage() {
       <Card>
         <CardBody>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            <Input placeholder="Search by request no or customer..." value={searchTerm} onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }} />
+            <Input placeholder="Search by request no or supplier..." value={searchTerm} onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }} />
             <Select
               options={[
                 { value: '', label: 'All Statuses' },

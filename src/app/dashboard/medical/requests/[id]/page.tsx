@@ -27,8 +27,8 @@ interface MedicalRequestData {
 
 const fieldLabels: Record<string, string> = {
   requestNo: 'Request Number',
-  customerId: 'Customer ID',
-  companyName: 'Customer',
+  customerId: 'Supplier / Partner ID',
+  companyName: 'Supplier',
   items: 'Items',
   priority: 'Priority',
   status: 'Status',
@@ -243,9 +243,9 @@ export default function MedicalRequestDetailPage() {
             </div>
           </div>
 
-          {/* Customer Section */}
+          {/* Supplier Section */}
           <div>
-            <h3 className="text-lg font-semibold text-slate-900 mb-4">Customer</h3>
+            <h3 className="text-lg font-semibold text-slate-900 mb-4">Supplier</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
@@ -257,7 +257,7 @@ export default function MedicalRequestDetailPage() {
               </div>
               <div>
                 <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
-                  Customer Code
+                  Supplier Code
                 </label>
                 <p className="text-lg font-medium text-slate-900 mt-1">
                   {data.customer?.code || 'N/A'}

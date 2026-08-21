@@ -3,6 +3,8 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { Card, CardHeader, CardBody, Button, Badge } from '@/components/ui';
+import { ConfirmDialog } from '@/components/ui/Modal';
+import { useSession } from 'next-auth/react';
 import Link from 'next/link';
 
 interface BankAccount {
@@ -35,11 +37,15 @@ export default function SupplierDetails() {
   const router = useRouter();
   const params = useParams();
   const supplierId = params?.id as string;
+  const { data: session } = useSession();
+  const isAdmin = (session?.user as any)?.role === 'ADMIN';
 
   const [supplier, setSupplier] = useState<Supplier | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [vouchers, setVouchers] = useState<any[]>([]);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     const fetchSupplier = async () => {
@@ -64,6 +70,26 @@ export default function SupplierDetails() {
       fetchSupplier();
     }
   }, [supplierId]);
+
+  const handleDelete = async () => {
+    if (!supplier) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/suppliers/${supplier.id}`, { method: 'DELETE' });
+      const result = await res.json();
+      if (!result.success) throw new Error(result.error);
+      setShowDeleteDialog(false);
+      if (supplier.status === 'Inactive') {
+        router.push('/dashboard/suppliers');
+      } else {
+        setSupplier((prev) => prev ? { ...prev, status: 'Inactive' } : null);
+      }
+    } catch (err: any) {
+      alert('Failed to delete: ' + (err.message || 'Unknown error'));
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   useEffect(() => {
     const fetchVouchers = async () => {
@@ -162,6 +188,15 @@ export default function SupplierDetails() {
             <Button variant="primary" size="lg" onClick={handleEdit}>
               Edit
             </Button>
+            {isAdmin && (
+              <Button
+                variant="danger"
+                size="lg"
+                onClick={() => setShowDeleteDialog(true)}
+              >
+                {supplier.status === 'Inactive' ? 'Delete Permanently' : 'Deactivate'}
+              </Button>
+            )}
             <Button variant="outline" size="lg" onClick={handleBack}>
               Back
             </Button>
@@ -345,6 +380,22 @@ export default function SupplierDetails() {
           </div>
         </CardBody>
       </Card>
+
+      <ConfirmDialog
+        isOpen={showDeleteDialog}
+        onClose={() => setShowDeleteDialog(false)}
+        onConfirm={handleDelete}
+        title={supplier?.status === 'Inactive' ? 'Permanently Delete Supplier' : 'Deactivate Supplier'}
+        message={
+          supplier?.status === 'Inactive'
+            ? `Are you sure you want to permanently delete "${supplierName}"? This action cannot be undone and will remove the supplier record from the database.`
+            : `Are you sure you want to deactivate "${supplierName}"? This will set the supplier status to Inactive.`
+        }
+        confirmText={supplier?.status === 'Inactive' ? 'Permanently Delete' : 'Deactivate'}
+        cancelText="Cancel"
+        isDangerous={true}
+        isLoading={deleting}
+      />
     </div>
   );
 }

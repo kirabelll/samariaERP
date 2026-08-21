@@ -204,11 +204,11 @@ export default function NewVoucherPage() {
           }
           case 'AGGREGATE': {
             const aggParams = new URLSearchParams({ limit: '500' });
-            if (formData.payeeType === 'CUSTOMER' && formData.payeeId) {
+            if (formData.payeeType === 'CUSTOMER' && formData.payeeId && formData.payeeId !== 'ONE_TIME_SUPPLIER') {
               aggParams.set('customerId', formData.payeeId);
-            } else if (formData.payeeType === 'SUPPLIER' && formData.payeeId) {
+            } else if (formData.payeeType === 'SUPPLIER' && formData.payeeId && formData.payeeId !== 'ONE_TIME_SUPPLIER') {
               aggParams.set('supplierId', formData.payeeId);
-            } else if (formData.payeeType === 'TRANSPORTER' && formData.payeeId) {
+            } else if (formData.payeeType === 'TRANSPORTER' && formData.payeeId && formData.payeeId !== 'ONE_TIME_SUPPLIER') {
               aggParams.set('transporterId', formData.payeeId);
             }
 
@@ -318,7 +318,7 @@ export default function NewVoucherPage() {
           case 'SALES': {
             // Fetch sales invoices using server-side filters
             const invoiceParams = new URLSearchParams({ limit: '200' });
-            if (formData.payeeId) {
+            if (formData.payeeId && formData.payeeId !== 'ONE_TIME_SUPPLIER') {
               invoiceParams.set('customerId', formData.payeeId);
             }
 
@@ -473,15 +473,26 @@ export default function NewVoucherPage() {
     const selectedId = e.target.value;
     const selected = sourceRefs.find((r) => r.id === selectedId);
 
-    setFormData((prev) => ({
-      ...prev,
-      sourceId: selectedId,
-      sourceReference: selected?.ref || '',
-      // For One-Time Supplier or if user already entered an amount, fetch/preserve entered amount
-      amount: (formData.payeeId === 'ONE_TIME_SUPPLIER' && prev.amount)
-        ? prev.amount
-        : (selected?.amount ? String(selected.amount) : prev.amount),
-    }));
+    setFormData((prev) => {
+      // Auto-extract party name from reference label if available
+      const labelParts = selected?.label ? selected.label.split(' — ') : [];
+      const extractedParty = labelParts.length > 1 ? labelParts[1].split(' (')[0].trim() : '';
+
+      const targetAmount = selected?.amount !== undefined && selected?.amount !== null && selected.amount > 0
+        ? String(selected.amount)
+        : prev.amount;
+
+      return {
+        ...prev,
+        sourceId: selectedId,
+        sourceReference: selected?.ref || '',
+        amount: targetAmount,
+        payeeName: (prev.payeeId === 'ONE_TIME_SUPPLIER' && (!prev.payeeName || prev.payeeName === '⚡ One-Time Supplier (Ad-Hoc / Manual)')) && extractedParty
+          ? extractedParty
+          : prev.payeeName,
+        description: prev.description || (selected?.ref ? `Voucher settlement for ${prev.sourceModule || 'document'} ref: ${selected.ref}` : prev.description),
+      };
+    });
   };
 
   // Toggle aggregate delivery selection (multi-select)

@@ -213,6 +213,11 @@ export default function NewInvoicePage() {
           const data = await res.json();
           if (data.success) {
             const list = (data.data || []).filter((l: any) => l.status === 'Delivered' || l.status === 'Verified');
+            list.sort((a: any, b: any) => {
+              const podA = String(a.padNumber || a.podNumber || a.liftingNo || '');
+              const podB = String(b.padNumber || b.podNumber || b.liftingNo || '');
+              return podA.localeCompare(podB, undefined, { numeric: true, sensitivity: 'base' });
+            });
             setCementLiftings(list);
             setSelectedLiftingIds([]);
             setItems([]);
@@ -237,6 +242,11 @@ export default function NewInvoicePage() {
           const data = await res.json();
           if (data.success) {
             const list = data.records || data.data || [];
+            list.sort((a: any, b: any) => {
+              const podA = String(a.padNumber || a.podNumber || a.dispatchNo || '');
+              const podB = String(b.padNumber || b.podNumber || b.dispatchNo || '');
+              return podA.localeCompare(podB, undefined, { numeric: true, sensitivity: 'base' });
+            });
             setAggregateDispatches(list);
             setSelectedDispatchIds([]);
             setItems([]);
@@ -362,6 +372,13 @@ export default function NewInvoicePage() {
     const shouldGroup = isGrouped !== undefined ? isGrouped : groupByCategory;
     const selected = aggregateDispatches.filter((d) => dispatchIds.includes(d.id));
 
+    // Sort selected dispatches in natural numerical order by POD / Pad / dispatch number
+    selected.sort((a, b) => {
+      const podA = String(a.padNumber || a.podNumber || a.dispatchNo || '');
+      const podB = String(b.padNumber || b.podNumber || b.dispatchNo || '');
+      return podA.localeCompare(podB, undefined, { numeric: true, sensitivity: 'base' });
+    });
+
     if (shouldGroup && selected.length > 0) {
       // Group dispatches by resolved item category / name
       const groupedMap = new Map<string, typeof selected>();
@@ -391,6 +408,7 @@ export default function NewInvoicePage() {
         const total = subtotal + subtotal * (vat / 100);
 
         const podList = Array.from(new Set(group.map((d) => d.padNumber || d.podNumber || d.dispatchNo).filter(Boolean)));
+        podList.sort((a, b) => String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' }));
         const podHeader = podList.length > 0 ? `PODs #${podList.join(', #')}` : 'POD #N/A';
         const itemName = `${podHeader} — ${categoryName}`;
 
@@ -467,6 +485,13 @@ export default function NewInvoicePage() {
     const shouldGroup = isGrouped !== undefined ? isGrouped : groupByCategory;
     const selected = cementLiftings.filter((l) => liftingIds.includes(l.id));
 
+    // Sort selected liftings in natural numerical order by POD / Pad / lifting number
+    selected.sort((a, b) => {
+      const podA = String(a.padNumber || a.podNumber || a.liftingNo || '');
+      const podB = String(b.padNumber || b.podNumber || b.liftingNo || '');
+      return podA.localeCompare(podB, undefined, { numeric: true, sensitivity: 'base' });
+    });
+
     if (shouldGroup && selected.length > 0) {
       // Group liftings by resolved item category / cementType
       const groupedMap = new Map<string, typeof selected>();
@@ -497,6 +522,7 @@ export default function NewInvoicePage() {
         const total = subtotal + subtotal * (vat / 100);
 
         const podList = Array.from(new Set(group.map((l) => l.padNumber || l.podNumber || l.liftingNo).filter(Boolean)));
+        podList.sort((a, b) => String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' }));
         const podHeader = podList.length > 0 ? `PODs #${podList.join(', #')}` : 'POD #N/A';
         const itemName = `${podHeader} — ${cementType} Cement — ${factory}`;
 

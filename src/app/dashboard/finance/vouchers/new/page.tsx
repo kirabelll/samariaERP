@@ -125,11 +125,19 @@ export default function NewVoucherPage() {
 
         setCustomers(Array.from(customerMap.values()));
         if (suppRes.success) {
-          setSuppliers((suppRes.data || []).map((s: any) => ({
+          const fetchedSuppliers = (suppRes.data || []).map((s: any) => ({
             id: s.id,
             name: s.companyName || s.name || '',
             code: s.code,
-          })));
+          }));
+          setSuppliers([
+            { id: 'ONE_TIME_SUPPLIER', name: '⚡ One-Time Supplier (Ad-Hoc / Manual)', code: 'ONE-TIME' },
+            ...fetchedSuppliers,
+          ]);
+        } else {
+          setSuppliers([
+            { id: 'ONE_TIME_SUPPLIER', name: '⚡ One-Time Supplier (Ad-Hoc / Manual)', code: 'ONE-TIME' },
+          ]);
         }
         if (empRes.success) {
           setEmployees((empRes.data || []).map((e: any) => ({
@@ -445,11 +453,20 @@ export default function NewVoucherPage() {
     const options = getPayeeOptions();
     const selected = options.find((o) => o.id === selectedId);
 
-    setFormData((prev) => ({
-      ...prev,
-      payeeId: selectedId,
-      payeeName: selected ? `${selected.name}${selected.code ? ` (${selected.code})` : ''}` : '',
-    }));
+    if (selectedId === 'ONE_TIME_SUPPLIER') {
+      setFormData((prev) => ({
+        ...prev,
+        payeeId: 'ONE_TIME_SUPPLIER',
+        payeeName: prev.payeeName && prev.payeeName !== '⚡ One-Time Supplier (Ad-Hoc / Manual)' ? prev.payeeName : '',
+        sourceModule: prev.sourceModule || 'PURCHASE',
+      }));
+    } else {
+      setFormData((prev) => ({
+        ...prev,
+        payeeId: selectedId,
+        payeeName: selected ? `${selected.name}${selected.code ? ` (${selected.code})` : ''}` : '',
+      }));
+    }
   };
 
   const handleSourceSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -460,7 +477,10 @@ export default function NewVoucherPage() {
       ...prev,
       sourceId: selectedId,
       sourceReference: selected?.ref || '',
-      amount: selected?.amount ? String(selected.amount) : prev.amount,
+      // For One-Time Supplier or if user already entered an amount, fetch/preserve entered amount
+      amount: (formData.payeeId === 'ONE_TIME_SUPPLIER' && prev.amount)
+        ? prev.amount
+        : (selected?.amount ? String(selected.amount) : prev.amount),
     }));
   };
 
@@ -526,7 +546,7 @@ export default function NewVoucherPage() {
         throw new Error('Please select a payee type');
       }
       if (!formData.payeeName) {
-        throw new Error('Please select a payee');
+        throw new Error('Please select or enter a payee name');
       }
       if (!formData.amount || parseFloat(formData.amount) <= 0) {
         throw new Error('Please enter a valid amount');
@@ -540,11 +560,11 @@ export default function NewVoucherPage() {
 
       const payload = {
         voucherType: formData.voucherType,
-        sourceModule: formData.sourceModule,
+        sourceModule: formData.sourceModule || 'PURCHASE',
         sourceId: formData.sourceId || null,
         sourceRef: formData.sourceReference || null,
         payeeType: formData.payeeType,
-        payeeId: formData.payeeId || null,
+        payeeId: formData.payeeId === 'ONE_TIME_SUPPLIER' ? null : (formData.payeeId || null),
         payeeName: formData.payeeName,
         amount: parseFloat(formData.amount),
         paymentMethod: formData.paymentMethod,
@@ -552,7 +572,7 @@ export default function NewVoucherPage() {
         bankName: formData.bankName || null,
         checkNo: formData.checkNo || null,
         refNo: formData.referenceNo || null,
-        description: formData.description || null,
+        description: formData.description || (formData.payeeId === 'ONE_TIME_SUPPLIER' ? `One-Time Supplier payment to ${formData.payeeName}` : null),
       };
 
       const response = await fetch('/api/finance/vouchers', {
@@ -666,31 +686,32 @@ export default function NewVoucherPage() {
                     <option value="">-- Select --</option>
                     {payeeOptions.map((opt) => (
                       <option key={opt.id} value={opt.id}>
-                        {opt.name}{opt.code ? ` (${opt.code})` : ''}
+                        {opt.name}{opt.code && opt.id !== 'ONE_TIME_SUPPLIER' ? ` (${opt.code})` : ''}
                       </option>
                     ))}
                   </select>
                 </div>
-              ) : (
+              ) : null}
+
+              {/* Show manual Payee Name input if ONE_TIME_SUPPLIER is selected or if no dropdown options exist */}
+              {(formData.payeeId === 'ONE_TIME_SUPPLIER' || payeeOptions.length === 0) && (
                 <div>
                   <Input
-                    label="Payee Name"
+                    label="One-Time Payee / Supplier Name *"
                     name="payeeName"
                     type="text"
-                    placeholder="Enter payee name"
+                    placeholder="Enter one-time supplier or payee name"
                     value={formData.payeeName}
                     onChange={handleChange}
                     required
                   />
-                  <p className="text-xs text-amber-600 mt-1">
-                    {formData.payeeType === 'CUSTOMER'
-                      ? 'No customers with active sales agreements found. Enter the name manually.'
-                      : `No ${formData.payeeType.toLowerCase()}s found in the system. Enter the name manually.`}
+                  <p className="text-xs text-blue-600 mt-1 font-medium">
+                    ⚡ One-Time Supplier mode active: Enter the name above and specify your payment amount below.
                   </p>
                 </div>
               )}
 
-              {formData.payeeName && (
+              {formData.payeeName && formData.payeeId !== 'ONE_TIME_SUPPLIER' && (
                 <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-3">
                   <span className="text-sm text-green-800">
                     Selected: <strong>{formData.payeeName}</strong>
@@ -879,16 +900,24 @@ export default function NewVoucherPage() {
             </CardHeader>
             <CardBody className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Input
-                  label="Amount (ETB)"
-                  name="amount"
-                  type="number"
-                  placeholder="0.00"
-                  step="0.01"
-                  value={formData.amount}
-                  onChange={handleChange}
-                  required
-                />
+                <div>
+                  <Input
+                    label="Amount (ETB) *"
+                    name="amount"
+                    type="number"
+                    placeholder="0.00"
+                    step="0.01"
+                    value={formData.amount}
+                    onChange={handleChange}
+                    required
+                  />
+                  {formData.payeeId === 'ONE_TIME_SUPPLIER' && (
+                    <p className="text-xs text-blue-600 mt-1 font-medium flex items-center gap-1">
+                      <span>✓ Amount fetched from your manual entry:</span>
+                      <strong>ETB {formData.amount ? parseFloat(formData.amount).toLocaleString('en-US', { minimumFractionDigits: 2 }) : '0.00'}</strong>
+                    </p>
+                  )}
+                </div>
 
                 <Select
                   label="Payment Method"

@@ -6,6 +6,12 @@ import { Card, CardHeader, CardBody, Button, Badge } from '@/components/ui';
 
 interface MedicalRequestItem {
   itemId: string;
+  itemName?: string;
+  drugName?: string;
+  itemCode?: string;
+  genericName?: string;
+  strength?: string;
+  unit?: string;
   qty: number;
   batchPref?: string;
   notes?: string;
@@ -18,7 +24,8 @@ interface MedicalRequestData {
     companyName: string;
     code: string;
   };
-  items: string;
+  items: string | MedicalRequestItem[];
+  parsedItems?: MedicalRequestItem[];
   priority: string;
   status: string;
   requestDate: string;
@@ -29,7 +36,7 @@ const fieldLabels: Record<string, string> = {
   requestNo: 'Request Number',
   customerId: 'Supplier / Partner ID',
   companyName: 'Supplier',
-  items: 'Items',
+  items: 'Requested Items',
   priority: 'Priority',
   status: 'Status',
   requestDate: 'Request Date',
@@ -59,7 +66,9 @@ export default function MedicalRequestDetailPage() {
 
         setData(result.data);
 
-        if (result.data.items) {
+        if (result.data.parsedItems && Array.isArray(result.data.parsedItems)) {
+          setParsedItems(result.data.parsedItems);
+        } else if (result.data.items) {
           try {
             const items = typeof result.data.items === 'string' 
               ? JSON.parse(result.data.items) 
@@ -274,21 +283,37 @@ export default function MedicalRequestDetailPage() {
                 <table className="w-full border-collapse">
                   <thead>
                     <tr className="bg-slate-100">
-                      <th className="border border-slate-200 px-4 py-2 text-left text-sm font-semibold text-slate-900">Item ID</th>
+                      <th className="border border-slate-200 px-4 py-2 text-left text-sm font-semibold text-slate-900">Item Name</th>
                       <th className="border border-slate-200 px-4 py-2 text-left text-sm font-semibold text-slate-900">Quantity</th>
                       <th className="border border-slate-200 px-4 py-2 text-left text-sm font-semibold text-slate-900">Batch Preference</th>
                       <th className="border border-slate-200 px-4 py-2 text-left text-sm font-semibold text-slate-900">Notes</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {parsedItems.map((item, index) => (
-                      <tr key={index} className="hover:bg-slate-50">
-                        <td className="border border-slate-200 px-4 py-2 text-slate-900">{item.itemId}</td>
-                        <td className="border border-slate-200 px-4 py-2 text-slate-900">{item.qty}</td>
-                        <td className="border border-slate-200 px-4 py-2 text-slate-900">{item.batchPref || 'N/A'}</td>
-                        <td className="border border-slate-200 px-4 py-2 text-slate-900">{item.notes || 'N/A'}</td>
-                      </tr>
-                    ))}
+                    {parsedItems.map((item, index) => {
+                      const itemName = item.itemName || item.drugName || item.itemId || 'N/A';
+                      const subDetails = [
+                        item.itemCode && `Code: ${item.itemCode}`,
+                        item.genericName,
+                        item.strength,
+                      ].filter(Boolean).join(' • ');
+
+                      return (
+                        <tr key={index} className="hover:bg-slate-50">
+                          <td className="border border-slate-200 px-4 py-2 text-slate-900">
+                            <div className="font-medium text-slate-900">{itemName}</div>
+                            {subDetails && (
+                              <div className="text-xs text-slate-500 mt-0.5">{subDetails}</div>
+                            )}
+                          </td>
+                          <td className="border border-slate-200 px-4 py-2 text-slate-900">
+                            {item.qty} {item.unit || ''}
+                          </td>
+                          <td className="border border-slate-200 px-4 py-2 text-slate-900">{item.batchPref || 'N/A'}</td>
+                          <td className="border border-slate-200 px-4 py-2 text-slate-900">{item.notes || 'N/A'}</td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

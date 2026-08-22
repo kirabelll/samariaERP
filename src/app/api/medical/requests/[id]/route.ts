@@ -27,7 +27,60 @@ export async function GET(
       );
     }
 
-    return NextResponse.json({ success: true, data: record });
+    // Parse and enrich items with item details from DB
+    let parsedItems: any[] = [];
+    if (record.items) {
+      try {
+        parsedItems = typeof record.items === 'string' ? JSON.parse(record.items) : record.items;
+      } catch {
+        parsedItems = [];
+      }
+    }
+
+    if (Array.isArray(parsedItems) && parsedItems.length > 0) {
+      const itemIds = parsedItems
+        .map((i: any) => i.itemId || i.id)
+        .filter((id: any): id is string => typeof id === 'string' && id.length > 0);
+
+      if (itemIds.length > 0) {
+        const dbItems = await prisma.item.findMany({
+          where: { id: { in: itemIds } },
+          select: {
+            id: true,
+            code: true,
+            name: true,
+            genericName: true,
+            strength: true,
+            unit: true,
+          },
+        });
+
+        const itemMap = new Map(dbItems.map((item) => [item.id, item]));
+
+        parsedItems = parsedItems.map((item: any) => {
+          const targetId = item.itemId || item.id;
+          const dbItem = targetId ? itemMap.get(targetId) : undefined;
+
+          return {
+            ...item,
+            itemId: item.itemId || item.id || '',
+            itemName: item.drugName || item.itemName || dbItem?.name || item.name || item.itemId || 'N/A',
+            itemCode: item.code || item.itemCode || dbItem?.code,
+            genericName: item.genericName || dbItem?.genericName,
+            strength: item.strength || dbItem?.strength,
+            unit: item.unit || dbItem?.unit,
+          };
+        });
+      }
+    }
+
+    return NextResponse.json({
+      success: true,
+      data: {
+        ...record,
+        parsedItems,
+      },
+    });
   } catch (error: any) {
     console.error('Error fetching record:', error);
     return NextResponse.json(

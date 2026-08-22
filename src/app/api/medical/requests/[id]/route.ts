@@ -69,6 +69,8 @@ export async function GET(
             genericName: item.genericName || dbItem?.genericName,
             strength: item.strength || dbItem?.strength,
             unit: item.unit || dbItem?.unit,
+            batchPref: item.batchPref || item.batchPreference || (record as any).batchPreference || null,
+            expiryDate: item.expiryDate || item.expiredDate || (record as any).expiryDate || null,
           };
         });
       }

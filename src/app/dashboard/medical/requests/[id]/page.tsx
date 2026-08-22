@@ -14,6 +14,7 @@ interface MedicalRequestItem {
   unit?: string;
   qty: number;
   batchPref?: string;
+  expiryDate?: string;
   notes?: string;
 }
 
@@ -29,6 +30,8 @@ interface MedicalRequestData {
   priority: string;
   status: string;
   requestDate: string;
+  batchPreference?: string;
+  expiryDate?: string;
   notes?: string;
 }
 
@@ -40,6 +43,8 @@ const fieldLabels: Record<string, string> = {
   priority: 'Priority',
   status: 'Status',
   requestDate: 'Request Date',
+  batchPreference: 'Batch Preference',
+  expiryDate: 'Required Expiry Date',
   notes: 'Notes',
 };
 
@@ -241,6 +246,22 @@ export default function MedicalRequestDetailPage() {
                 </label>
                 <p className="text-lg font-medium text-slate-900 mt-1">{formatDate(data.requestDate)}</p>
               </div>
+              {data.batchPreference && (
+                <div>
+                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                    {fieldLabels.batchPreference}
+                  </label>
+                  <p className="text-lg font-medium text-slate-900 mt-1">{data.batchPreference}</p>
+                </div>
+              )}
+              {data.expiryDate && (
+                <div>
+                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                    {fieldLabels.expiryDate}
+                  </label>
+                  <p className="text-lg font-medium text-slate-900 mt-1">{formatDate(data.expiryDate)}</p>
+                </div>
+              )}
               {data.notes && (
                 <div className="md:col-span-2">
                   <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
@@ -286,6 +307,7 @@ export default function MedicalRequestDetailPage() {
                       <th className="border border-slate-200 px-4 py-2 text-left text-sm font-semibold text-slate-900">Item Name</th>
                       <th className="border border-slate-200 px-4 py-2 text-left text-sm font-semibold text-slate-900">Quantity</th>
                       <th className="border border-slate-200 px-4 py-2 text-left text-sm font-semibold text-slate-900">Batch Preference</th>
+                      <th className="border border-slate-200 px-4 py-2 text-left text-sm font-semibold text-slate-900">Expiry Date</th>
                       <th className="border border-slate-200 px-4 py-2 text-left text-sm font-semibold text-slate-900">Notes</th>
                     </tr>
                   </thead>
@@ -310,6 +332,9 @@ export default function MedicalRequestDetailPage() {
                             {item.qty} {item.unit || ''}
                           </td>
                           <td className="border border-slate-200 px-4 py-2 text-slate-900">{item.batchPref || 'N/A'}</td>
+                          <td className="border border-slate-200 px-4 py-2 text-slate-900">
+                            {item.expiryDate ? formatDate(item.expiryDate) : 'N/A'}
+                          </td>
                           <td className="border border-slate-200 px-4 py-2 text-slate-900">{item.notes || 'N/A'}</td>
                         </tr>
                       );

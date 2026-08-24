@@ -14,7 +14,25 @@ import {
   CheckSquare,
   Truck,
   Package,
+  Landmark,
+  Eye,
+  EyeOff,
+  Plus,
+  ArrowUpRight,
+  Building2,
+  CreditCard,
 } from 'lucide-react';
+
+interface BankAccountSummary {
+  id: string;
+  bankName: string;
+  accountNo: string;
+  accountName: string;
+  branch?: string | null;
+  currency: string;
+  balance: number;
+  status: string;
+}
 
 interface DashboardStats {
   summary: {
@@ -27,6 +45,11 @@ interface DashboardStats {
     totalRevenue: number;
     outstandingReceivables: number;
     pendingApprovals: number;
+    totalBankBalance?: number;
+  };
+  bankSummary?: {
+    totalBalance: number;
+    accounts: BankAccountSummary[];
   };
   charts: {
     recentOrders: any[];
@@ -62,13 +85,30 @@ const getGreeting = () => {
   return 'Good evening';
 };
 
-const fmtMoney = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const fmtMoney = (n: number) => (n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export default function DashboardPage() {
   const { data: session } = useSession();
   const { t } = useI18n();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showBankBalances, setShowBankBalances] = useState(true);
+
+  useEffect(() => {
+    // Check if user previously saved visibility preference
+    const savedVisibility = localStorage.getItem('samaria_show_bank_balances');
+    if (savedVisibility !== null) {
+      setShowBankBalances(savedVisibility === 'true');
+    }
+  }, []);
+
+  const toggleBankVisibility = () => {
+    setShowBankBalances((prev) => {
+      const next = !prev;
+      localStorage.setItem('samaria_show_bank_balances', String(next));
+      return next;
+    });
+  };
 
   useEffect(() => {
     const fetchStats = async () => {
@@ -86,6 +126,8 @@ export default function DashboardPage() {
   }, []);
 
   const s = stats?.summary;
+  const bankAccounts = stats?.bankSummary?.accounts || [];
+  const totalBankBalance = stats?.bankSummary?.totalBalance || (s?.totalBankBalance ?? 0);
   const firstName = session?.user?.name?.split(' ')[0] || '';
 
   return (
@@ -165,6 +207,147 @@ export default function DashboardPage() {
           color="#248A3D"
           mono={false}
         />
+      </div>
+
+      {/* Bank Summary Card - Total Sum of all Banks */}
+      <div style={{
+        background: 'var(--surface-0)',
+        borderRadius: 16,
+        border: '1px solid var(--border)',
+        boxShadow: 'var(--shadow-md)',
+        padding: '24px 28px',
+      }}>
+        <div style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 20,
+        }}>
+          {/* Left: Bank Icon, Title & Active Accounts Count */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+            <div style={{
+              width: 52,
+              height: 52,
+              borderRadius: 14,
+              background: '#E5F0FF',
+              color: '#0B6DE5',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+            }}>
+              <Landmark className="w-7 h-7" />
+            </div>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span className="t-h3" style={{ fontSize: 20, fontWeight: 700, color: 'var(--fg-1)' }}>
+                  Total Bank Balance
+                </span>
+                <span style={{
+                  fontSize: 12,
+                  fontWeight: 600,
+                  padding: '3px 10px',
+                  borderRadius: 20,
+                  background: 'var(--surface-2)',
+                  color: 'var(--fg-2)',
+                }}>
+                  {bankAccounts.length} {bankAccounts.length === 1 ? 'Bank Account' : 'Bank Accounts'}
+                </span>
+              </div>
+              <p style={{ fontSize: 13, color: 'var(--fg-2)', margin: 0, marginTop: 4 }}>
+                Aggregated liquid balance across all registered company bank accounts
+              </p>
+            </div>
+          </div>
+
+          {/* Right: Sum Display, Visible/Invisible Toggle & Link */}
+          <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 14 }}>
+            {/* Prominent Balance Display */}
+            <div style={{
+              padding: '10px 20px',
+              borderRadius: 12,
+              background: 'var(--surface-1)',
+              border: '1px solid var(--border)',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'flex-start',
+            }}>
+              <span style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--fg-2)' }}>
+                Total Available Funds
+              </span>
+              <span style={{
+                fontSize: 24,
+                fontWeight: 800,
+                fontFamily: 'var(--font-mono)',
+                color: totalBankBalance >= 0 ? '#107C41' : '#D70015',
+                letterSpacing: showBankBalances ? 'normal' : '0.18em',
+                marginTop: 2,
+              }}>
+                {loading ? '...' : showBankBalances ? `ETB ${fmtMoney(totalBankBalance)}` : 'ETB ••••••••••••'}
+              </span>
+            </div>
+
+            {/* Visible / Invisible Click Button */}
+            <button
+              onClick={toggleBankVisibility}
+              title={showBankBalances ? 'Click to hide balance (Invisible)' : 'Click to show balance (Visible)'}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 8,
+                padding: '10px 16px',
+                borderRadius: 10,
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: 'pointer',
+                border: '1px solid var(--border)',
+                background: showBankBalances ? 'var(--surface-1)' : '#FFF3E0',
+                color: showBankBalances ? 'var(--fg-1)' : '#C93400',
+                transition: 'all 0.15s ease',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = showBankBalances ? 'var(--surface-2)' : '#FFE0B2';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = showBankBalances ? 'var(--surface-1)' : '#FFF3E0';
+              }}
+            >
+              {showBankBalances ? (
+                <>
+                  <EyeOff className="w-4 h-4 text-slate-500" />
+                  <span>Hide Balance</span>
+                </>
+              ) : (
+                <>
+                  <Eye className="w-4 h-4 text-amber-600" />
+                  <span>Show Balance</span>
+                </>
+              )}
+            </button>
+
+            {/* View All Accounts Link */}
+            <Link
+              href="/dashboard/finance/bank"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '10px 16px',
+                borderRadius: 10,
+                fontSize: 13,
+                fontWeight: 600,
+                background: 'var(--surface-2)',
+                color: 'var(--fg-1)',
+                border: '1px solid var(--border)',
+                textDecoration: 'none',
+              }}
+            >
+              <span>View Accounts</span>
+              <ArrowUpRight className="w-4 h-4" />
+            </Link>
+          </div>
+        </div>
       </div>
 
       {/* Quick Links */}
@@ -294,8 +477,8 @@ export default function DashboardPage() {
                   <tr>
                     <td colSpan={4} style={{
                       textAlign: 'center',
-                      padding: '40px 24px',
-                      color: 'var(--fg-2)',
+                      padding: '40px 24px',             
+                      color: 'var(--fg-2)',                         
                       fontSize: 14,
                     }}>
                       No recent activity

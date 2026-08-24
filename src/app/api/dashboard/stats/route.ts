@@ -69,6 +69,14 @@ export async function GET(request: NextRequest) {
       orderBy: { invoiceDate: 'desc' },
     });
 
+    // Get bank accounts
+    const bankAccounts = await prisma.bankAccount.findMany({
+      orderBy: [{ status: 'asc' }, { balance: 'desc' }],
+    });
+    const totalBankBalance = bankAccounts
+      .filter((b) => b.status === 'Active')
+      .reduce((sum, b) => sum + (b.balance || 0), 0);
+
     return NextResponse.json({
       success: true,
       data: {
@@ -82,6 +90,20 @@ export async function GET(request: NextRequest) {
           totalRevenue,
           outstandingReceivables,
           pendingApprovals,
+          totalBankBalance,
+        },
+        bankSummary: {
+          totalBalance: totalBankBalance,
+          accounts: bankAccounts.map((b) => ({
+            id: b.id,
+            bankName: b.bankName,
+            accountNo: b.accountNo,
+            accountName: b.accountName,
+            branch: b.branch,
+            currency: b.currency,
+            balance: b.balance,
+            status: b.status,
+          })),
         },
         charts: {
           lowStockItems: lowStockItems.map((item) => ({

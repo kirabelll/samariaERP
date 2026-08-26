@@ -333,7 +333,7 @@ export default function NewVoucherPage() {
           }
           case 'TRANSPORTER':
           case 'AGGREGATE': {
-            const aggParams = new URLSearchParams({ limit: '500' });
+            const aggParams = new URLSearchParams({ limit: '1000' });
             if (formData.payeeType === 'CUSTOMER' && formData.payeeId && formData.payeeId !== 'ONE_TIME_SUPPLIER') {
               aggParams.set('customerId', formData.payeeId);
             } else if (formData.payeeType === 'SUPPLIER' && formData.payeeId && formData.payeeId !== 'ONE_TIME_SUPPLIER') {
@@ -344,69 +344,164 @@ export default function NewVoucherPage() {
               }
             }
 
-            const res = await fetch(`/api/aggregate?${aggParams.toString()}`);
-            const data = await res.json();
-            if (data.success) {
-              let deliveryList = data.data || [];
+            let res = await fetch(`/api/aggregate?${aggParams.toString()}`);
+            let data = await res.json();
+            let deliveryList = data.success && Array.isArray(data.data) ? data.data : [];
 
-              // If specific transporters are selected in multi-select mode, filter dispatches
-              if (formData.payeeType === 'TRANSPORTER' && selectedTransporterIds.size > 0) {
-                deliveryList = deliveryList.filter(
-                  (d: any) =>
-                    selectedTransporterIds.has(d.transporterId) ||
-                    (d.transporter && selectedTransporterIds.has(d.transporter.id))
-                );
+            // Fallback: if filtered query returned empty, fetch all dispatches and filter client-side
+            if (deliveryList.length === 0 && (formData.payeeId || selectedTransporterIds.size > 0)) {
+              const allRes = await fetch('/api/aggregate?limit=1000');
+              const allData = await allRes.json();
+              if (allData.success && Array.isArray(allData.data)) {
+                deliveryList = allData.data;
+              }
+            }
+
+            // Filter for Customer if selected
+            if (formData.payeeType === 'CUSTOMER' && formData.payeeId) {
+              const custMatches = deliveryList.filter(
+                (d: any) =>
+                  d.customerId === formData.payeeId ||
+                  d.customer?.id === formData.payeeId ||
+                  (d.customer?.companyName &&
+                    formData.payeeName &&
+                    d.customer.companyName.toLowerCase().includes(formData.payeeName.toLowerCase()))
+              );
+              if (custMatches.length > 0) {
+                deliveryList = custMatches;
+              }
+            }
+
+            // Filter for Supplier if selected
+            if (
+              (formData.payeeType === 'SUPPLIER' || formData.payeeType === 'ONE_TIME_SUPPLIER') &&
+              formData.payeeId &&
+              formData.payeeId !== 'ONE_TIME_SUPPLIER'
+            ) {
+              const suppMatches = deliveryList.filter(
+                (d: any) =>
+                  d.supplierId === formData.payeeId ||
+                  d.supplier?.id === formData.payeeId ||
+                  (d.supplier?.companyName &&
+                    formData.payeeName &&
+                    d.supplier.companyName.toLowerCase().includes(formData.payeeName.toLowerCase()))
+              );
+              if (suppMatches.length > 0) {
+                deliveryList = suppMatches;
+              }
+            }
+
+            // Filter for Transporter if selected
+            if (formData.payeeType === 'TRANSPORTER' && selectedTransporterIds.size > 0) {
+              deliveryList = deliveryList.filter(
+                (d: any) =>
+                  selectedTransporterIds.has(d.transporterId) ||
+                  (d.transporter && selectedTransporterIds.has(d.transporter.id))
+              );
+            }
+
+            refs = deliveryList.map((d: any) => {
+              let amount = 0;
+              let typeStr = 'Payable';
+
+              if (formData.payeeType === 'CUSTOMER') {
+                amount = Number(d.customerReceivable || 0);
+                typeStr = 'Customer Receivable';
+              } else if (formData.payeeType === 'TRANSPORTER') {
+                amount = Number(d.transporterPayable || d.netTruckPayment || d.grossTruckFee || 0);
+                typeStr = 'Transporter Freight';
+              } else if (formData.payeeType === 'SUPPLIER' || formData.payeeType === 'ONE_TIME_SUPPLIER') {
+                amount = Number(d.supplierPayable || 0);
+                typeStr = 'Supplier Material';
+              } else {
+                amount = Number(d.supplierPayable || d.netTruckPayment || 0);
+                typeStr = 'Payable';
               }
 
-              refs = deliveryList.map((d: any) => {
-                let amount = 0;
-                let typeStr = 'Payable';
+              const podStr = d.padNumber ? `POD: ${d.padNumber}` : 'POD: N/A';
+              const partyStr =
+                d.customer?.companyName ||
+                d.supplier?.companyName ||
+                d.transporter?.companyName ||
+                d.transporter?.name ||
+                '';
 
-                if (formData.payeeType === 'CUSTOMER') {
-                  amount = Number(d.customerReceivable || 0);
-                  typeStr = 'Customer Receivable';
-                } else if (formData.payeeType === 'TRANSPORTER') {
-                  amount = Number(d.transporterPayable || d.netTruckPayment || d.grossTruckFee || 0);
-                  typeStr = 'Transporter Freight';
-                } else if (formData.payeeType === 'SUPPLIER' || formData.payeeType === 'ONE_TIME_SUPPLIER') {
-                  amount = Number(d.supplierPayable || 0);
-                  typeStr = 'Supplier Material';
-                } else {
-                  amount = Number(d.supplierPayable || d.netTruckPayment || 0);
-                  typeStr = 'Payable';
-                }
-
-                const podStr = d.padNumber ? `POD: ${d.padNumber}` : 'POD: N/A';
-                const partyStr =
-                  d.transporter?.companyName ||
-                  d.transporter?.name ||
-                  d.customer?.companyName ||
-                  d.supplier?.companyName ||
-                  '';
-
-                return {
-                  id: d.id,
-                  dispatchNo: d.dispatchNo,
-                  padNumber: d.padNumber || 'N/A',
-                  label: `${d.dispatchNo} — ${podStr}${partyStr ? ` — ${partyStr}` : ''} — ETB ${amount.toLocaleString('en-US', { minimumFractionDigits: 2 })} (${typeStr})`,
-                  ref: d.dispatchNo,
-                  amount: Math.round(amount * 100) / 100,
-                  supplierPayable: Number(d.supplierPayable || 0),
-                  transporterPayable: Number(d.transporterPayable || d.netTruckPayment || 0),
-                  customerReceivable: Number(d.customerReceivable || 0),
-                };
-              });
-            }
+              return {
+                id: d.id,
+                dispatchNo: d.dispatchNo,
+                padNumber: d.padNumber || 'N/A',
+                label: `${d.dispatchNo} — ${podStr}${partyStr ? ` — ${partyStr}` : ''} — ETB ${amount.toLocaleString('en-US', { minimumFractionDigits: 2 })} (${typeStr})`,
+                ref: d.dispatchNo,
+                amount: Math.round(amount * 100) / 100,
+                supplierPayable: Number(d.supplierPayable || 0),
+                transporterPayable: Number(d.transporterPayable || d.netTruckPayment || 0),
+                customerReceivable: Number(d.customerReceivable || 0),
+              };
+            });
             break;
           }
           case 'CEMENT': {
-            const res = await fetch('/api/cement/purchases?limit=100&paymentStatus=Unpaid,Partial');
-            const data = await res.json();
-            if (data.success) {
-              const approvedOnly = (data.data || []).filter(
-                (p: any) => p.status === 'Active' || p.status === 'Approved' || p.status === 'Checked'
-              );
-              refs = approvedOnly.map((p: any) => {
+            const [purchasesRes, liftingsRes] = await Promise.all([
+              fetch('/api/cement/purchases?limit=200').then((r) => r.json()).catch(() => ({ success: false })),
+              fetch('/api/cement/liftings?limit=200').then((r) => r.json()).catch(() => ({ success: false })),
+            ]);
+
+            const cementRefs: SourceRefOption[] = [];
+
+            // Customer cement liftings
+            if (liftingsRes.success && Array.isArray(liftingsRes.data)) {
+              let liftingList = liftingsRes.data;
+              if (formData.payeeType === 'CUSTOMER' && formData.payeeId) {
+                const custLiftings = liftingList.filter(
+                  (l: any) =>
+                    l.customerId === formData.payeeId ||
+                    l.customer?.id === formData.payeeId ||
+                    (l.customer?.companyName &&
+                      formData.payeeName &&
+                      l.customer.companyName.toLowerCase().includes(formData.payeeName.toLowerCase()))
+                );
+                if (custLiftings.length > 0) {
+                  liftingList = custLiftings;
+                }
+              }
+
+              liftingList.forEach((l: any) => {
+                const total = Number(l.totalAmount || 0);
+                cementRefs.push({
+                  id: l.id,
+                  dispatchNo: l.liftingNo,
+                  padNumber: l.couponNo || l.padNumber || 'N/A',
+                  label: `Cement Lifting: ${l.liftingNo} — ${l.customer?.companyName || l.factory?.name || 'Customer'} — ${l.cementType || 'Cement'} — ETB ${total.toLocaleString('en-US', { minimumFractionDigits: 2 })} (${l.status || 'Active'})`,
+                  ref: l.liftingNo,
+                  amount: total,
+                  totalAmount: total,
+                  status: l.status || 'Active',
+                });
+              });
+            }
+
+            // Supplier/Factory cement purchases
+            if (purchasesRes.success && Array.isArray(purchasesRes.data)) {
+              let purchaseList = purchasesRes.data;
+              if (
+                (formData.payeeType === 'SUPPLIER' || formData.payeeType === 'ONE_TIME_SUPPLIER') &&
+                formData.payeeId &&
+                formData.payeeId !== 'ONE_TIME_SUPPLIER'
+              ) {
+                const suppPurchases = purchaseList.filter(
+                  (p: any) =>
+                    p.factoryId === formData.payeeId ||
+                    p.factory?.id === formData.payeeId ||
+                    (p.factory?.name &&
+                      formData.payeeName &&
+                      p.factory.name.toLowerCase().includes(formData.payeeName.toLowerCase()))
+                );
+                if (suppPurchases.length > 0) {
+                  purchaseList = suppPurchases;
+                }
+              }
+
+              purchaseList.forEach((p: any) => {
                 const total = Number(p.totalAmount) || 0;
                 const paid = Number(p.paidAmount) || 0;
                 const remaining = Math.max(0, total - paid);
@@ -414,9 +509,11 @@ export default function NewVoucherPage() {
                 const statusStr = isPartial ? 'Partial' : remaining <= 0 ? 'Paid' : 'Unpaid';
                 const badge = isPartial ? '🟡 Partial Payment' : statusStr === 'Paid' ? '🟢 Paid' : '🔴 Unpaid';
 
-                return {
+                cementRefs.push({
                   id: p.id,
-                  label: `${p.purchaseNo} — ${p.factory?.name || 'Unknown'} — Total: ETB ${total.toLocaleString('en-US')} | Paid: ETB ${paid.toLocaleString('en-US')} | Rem: ETB ${remaining.toLocaleString('en-US')} (${badge})`,
+                  dispatchNo: p.purchaseNo,
+                  padNumber: p.orderNo || 'N/A',
+                  label: `Cement Purchase: ${p.purchaseNo} — ${p.factory?.name || 'Factory'} — Total: ETB ${total.toLocaleString('en-US', { minimumFractionDigits: 2 })} | Paid: ETB ${paid.toLocaleString('en-US', { minimumFractionDigits: 2 })} | Rem: ETB ${remaining.toLocaleString('en-US', { minimumFractionDigits: 2 })} (${badge})`,
                   ref: p.purchaseNo,
                   amount: remaining > 0 ? remaining : total,
                   totalAmount: total,
@@ -424,9 +521,11 @@ export default function NewVoucherPage() {
                   remainingAmount: remaining,
                   isPartial,
                   status: statusStr,
-                };
+                });
               });
             }
+
+            refs = cementRefs;
             break;
           }
           case 'PAYROLL': {
@@ -1092,10 +1191,15 @@ export default function NewVoucherPage() {
 
               {formData.sourceModule &&
                 sourceRefs.length > 0 &&
-                (formData.sourceModule === 'AGGREGATE' || formData.sourceModule === 'TRANSPORTER') && (
+                (formData.sourceModule === 'AGGREGATE' ||
+                  formData.sourceModule === 'TRANSPORTER' ||
+                  formData.sourceModule === 'CEMENT') && (
                   <div>
                     <label className="block text-[13px] font-medium text-[#86868B] uppercase tracking-wider mb-1.5">
-                      Select Deliveries to Settle ({selectedDeliveryIds.size} selected)
+                      {formData.sourceModule === 'CEMENT'
+                        ? 'Select Cement Records to Settle'
+                        : 'Select Deliveries to Settle'}{' '}
+                      ({selectedDeliveryIds.size} selected)
                     </label>
                     <div className="border border-[#D2D2D7] rounded-xl overflow-hidden bg-white/80">
                       <div className="px-4 py-2 bg-gray-50 border-b border-[#D2D2D7] flex items-center justify-between">
@@ -1106,7 +1210,9 @@ export default function NewVoucherPage() {
                             onChange={handleSelectAllDeliveries}
                             className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"
                           />
-                          <span className="font-medium">Select All Deliveries</span>
+                          <span className="font-medium">
+                            {formData.sourceModule === 'CEMENT' ? 'Select All Records' : 'Select All Deliveries'}
+                          </span>
                         </label>
                         {selectedDeliveryIds.size > 0 && (
                           <span className="text-sm text-blue-600 font-medium">
@@ -1133,11 +1239,15 @@ export default function NewVoucherPage() {
                             <div className="flex-1 text-sm">
                               <div className="flex items-center gap-2">
                                 <span className="font-semibold text-slate-900">
-                                  Dispatch: {ref.dispatchNo || ref.ref}
+                                  {formData.sourceModule === 'CEMENT'
+                                    ? ref.ref || ref.dispatchNo
+                                    : `Dispatch: ${ref.dispatchNo || ref.ref}`}
                                 </span>
-                                <span className="px-2 py-0.5 bg-blue-50 text-blue-700 text-xs font-semibold rounded-md border border-blue-200">
-                                  POD: {ref.padNumber || 'N/A'}
-                                </span>
+                                {ref.padNumber && ref.padNumber !== 'N/A' && (
+                                  <span className="px-2 py-0.5 bg-blue-50 text-blue-700 text-xs font-semibold rounded-md border border-blue-200">
+                                    {formData.sourceModule === 'CEMENT' ? `Order/Coupon: ${ref.padNumber}` : `POD: ${ref.padNumber}`}
+                                  </span>
+                                )}
                               </div>
                               <p className="text-xs text-slate-500 mt-0.5">{ref.label}</p>
                             </div>
@@ -1150,7 +1260,9 @@ export default function NewVoucherPage() {
                                 })}
                               </span>
                               <p className="text-[11px] font-medium text-slate-500">
-                                {formData.payeeType === 'CUSTOMER'
+                                {formData.sourceModule === 'CEMENT'
+                                  ? 'Cement Settlement'
+                                  : formData.payeeType === 'CUSTOMER'
                                   ? 'Customer Receivable'
                                   : formData.payeeType === 'TRANSPORTER'
                                   ? 'Transporter Freight'
@@ -1170,7 +1282,8 @@ export default function NewVoucherPage() {
               {formData.sourceModule &&
                 sourceRefs.length > 0 &&
                 formData.sourceModule !== 'AGGREGATE' &&
-                formData.sourceModule !== 'TRANSPORTER' && (
+                formData.sourceModule !== 'TRANSPORTER' &&
+                formData.sourceModule !== 'CEMENT' && (
                   <div>
                     <label className="block text-[13px] font-medium text-[#86868B] uppercase tracking-wider mb-1.5">
                       Source Document

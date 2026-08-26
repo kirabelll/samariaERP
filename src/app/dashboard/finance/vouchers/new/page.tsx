@@ -8,6 +8,8 @@ interface EntityOption {
   id: string;
   name: string;
   code?: string;
+  pendingAmount?: number;
+  pendingTrips?: number;
 }
 
 interface SourceRefOption {
@@ -24,6 +26,9 @@ interface SourceRefOption {
   padNumber?: string;
   supplierPayable?: number;
   customerReceivable?: number;
+  transporterPayable?: number;
+  driverName?: string;
+  truckPlate?: string;
   supplierName?: string;
   paymentMethod?: string;
   bankName?: string;
@@ -70,6 +75,11 @@ export default function NewVoucherPage() {
   // Multi-select for AGGREGATE deliveries
   const [selectedDeliveryIds, setSelectedDeliveryIds] = useState<Set<string>>(new Set());
 
+  // Multi-transporter selection with amount state
+  const [transporterMode, setTransporterMode] = useState<'single' | 'multi'>('multi');
+  const [multiTransporters, setMultiTransporters] = useState<Record<string, { selected: boolean; amount: string }>>({});
+  const [transporterSearch, setTransporterSearch] = useState('');
+
   const [formData, setFormData] = useState<FormData>({
     voucherType: 'PAYMENT',
     sourceModule: '',
@@ -87,17 +97,144 @@ export default function NewVoucherPage() {
     description: '',
   });
 
+  const handleMultiTransporterToggle = (id: string) => {
+    const targetTransporter = transporters.find((t) => t.id === id);
+    setMultiTransporters((prev) => {
+      const current = prev[id] || { selected: false, amount: '' };
+      const nextSelected = !current.selected;
+      const defaultAmt = targetTransporter?.pendingAmount && targetTransporter.pendingAmount > 0
+        ? String(targetTransporter.pendingAmount)
+        : '';
+      const updated = {
+        ...prev,
+        [id]: {
+          selected: nextSelected,
+          amount: nextSelected ? (current.amount || defaultAmt) : '',
+        },
+      };
+
+      const selectedList = transporters.filter((t) => updated[t.id]?.selected);
+      const total = selectedList.reduce((sum, t) => sum + (parseFloat(updated[t.id]?.amount || '0') || 0), 0);
+
+      const breakdown = selectedList
+        .filter((t) => parseFloat(updated[t.id]?.amount || '0') > 0)
+        .map((t) => `${t.name}: ETB ${(parseFloat(updated[t.id]?.amount || '0') || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}`)
+        .join(' | ');
+
+      setFormData((f) => ({
+        ...f,
+        payeeId: selectedList.map((t) => t.id).join(','),
+        payeeName: selectedList.length === 1 ? selectedList[0].name : selectedList.length > 1 ? `Multi-Transporters (${selectedList.length} Selected)` : '',
+        amount: total > 0 ? String(Math.round(total * 100) / 100) : f.amount,
+        description: breakdown ? `Transporter Settlements: ${breakdown}` : f.description,
+      }));
+
+      return updated;
+    });
+  };
+
+  const handleMultiTransporterAmountChange = (id: string, val: string) => {
+    setMultiTransporters((prev) => {
+      const updated = {
+        ...prev,
+        [id]: {
+          selected: true,
+          amount: val,
+        },
+      };
+
+      const selectedList = transporters.filter((t) => updated[t.id]?.selected);
+      const total = selectedList.reduce((sum, t) => sum + (parseFloat(updated[t.id]?.amount || '0') || 0), 0);
+
+      const breakdown = selectedList
+        .filter((t) => parseFloat(updated[t.id]?.amount || '0') > 0)
+        .map((t) => `${t.name}: ETB ${(parseFloat(updated[t.id]?.amount || '0') || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}`)
+        .join(' | ');
+
+      setFormData((f) => ({
+        ...f,
+        payeeId: selectedList.map((t) => t.id).join(','),
+        payeeName: selectedList.length === 1 ? selectedList[0].name : selectedList.length > 1 ? `Multi-Transporters (${selectedList.length} Selected)` : f.payeeName,
+        amount: total > 0 ? String(Math.round(total * 100) / 100) : '',
+        description: breakdown ? `Transporter Settlements: ${breakdown}` : f.description,
+      }));
+
+      return updated;
+    });
+  };
+
+  const handleAutoFillPendingAmounts = () => {
+    const nextMap: Record<string, { selected: boolean; amount: string }> = {};
+    transporters.forEach((t) => {
+      const amt = t.pendingAmount && t.pendingAmount > 0 ? String(t.pendingAmount) : '';
+      nextMap[t.id] = {
+        selected: amt !== '' ? true : (multiTransporters[t.id]?.selected || false),
+        amount: amt,
+      };
+    });
+
+    const selectedList = transporters.filter((t) => nextMap[t.id]?.selected);
+    const total = selectedList.reduce((sum, t) => sum + (parseFloat(nextMap[t.id]?.amount || '0') || 0), 0);
+
+    const breakdown = selectedList
+      .filter((t) => parseFloat(nextMap[t.id]?.amount || '0') > 0)
+      .map((t) => `${t.name}: ETB ${(parseFloat(nextMap[t.id]?.amount || '0') || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}`)
+      .join(' | ');
+
+    setFormData((f) => ({
+      ...f,
+      payeeId: selectedList.map((t) => t.id).join(','),
+      payeeName: selectedList.length === 1 ? selectedList[0].name : selectedList.length > 1 ? `Multi-Transporters (${selectedList.length} Selected)` : f.payeeName,
+      amount: total > 0 ? String(Math.round(total * 100) / 100) : '',
+      description: breakdown ? `Transporter Settlements: ${breakdown}` : f.description,
+    }));
+
+    setMultiTransporters(nextMap);
+  };
+
+  const handleSelectAllMultiTransporters = () => {
+    const allSelected = transporters.length > 0 && transporters.every((t) => multiTransporters[t.id]?.selected);
+    const nextMap: Record<string, { selected: boolean; amount: string }> = {};
+
+    if (allSelected) {
+      transporters.forEach((t) => {
+        nextMap[t.id] = { selected: false, amount: '' };
+      });
+      setFormData((f) => ({
+        ...f,
+        payeeId: '',
+        payeeName: '',
+        amount: '',
+        description: '',
+      }));
+    } else {
+      transporters.forEach((t) => {
+        const defaultAmt = t.pendingAmount && t.pendingAmount > 0 ? String(t.pendingAmount) : (multiTransporters[t.id]?.amount || '');
+        nextMap[t.id] = { selected: true, amount: defaultAmt };
+      });
+      const total = transporters.reduce((sum, t) => sum + (parseFloat(nextMap[t.id]?.amount || '0') || 0), 0);
+      setFormData((f) => ({
+        ...f,
+        payeeId: transporters.map((t) => t.id).join(','),
+        payeeName: `Multi-Transporters (${transporters.length} Selected)`,
+        amount: total > 0 ? String(Math.round(total * 100) / 100) : f.amount,
+      }));
+    }
+    setMultiTransporters(nextMap);
+  };
+
   // Fetch all entity lists on mount
   useEffect(() => {
     const fetchAll = async () => {
       try {
-        const [custRes, suppRes, empRes, transRes, bankRes, allCustRes] = await Promise.all([
+        const [custRes, suppRes, empRes, transRes, bankRes, allCustRes, aggRes] = await Promise.all([
           fetch('/api/sales/agreements/customers').then(r => r.json()).catch(() => ({ success: false })),
           fetch('/api/suppliers?limit=1000').then(r => r.json()).catch(() => ({ success: false })),
           fetch('/api/employees?limit=1000').then(r => r.json()).catch(() => ({ success: false })),
           fetch('/api/transporters?limit=1000').then(r => r.json()).catch(() => ({ success: false })),
           fetch('/api/finance/bank?limit=100').then(r => r.json()).catch(() => ({ success: false })),
           fetch('/api/customers?limit=1000').then(r => r.json()).catch(() => ({ success: false })),
+          fetch('/api/aggregate?limit=1000').then(r => r.json()).catch(() => ({ success: false })),
         ]);
 
         const customerMap = new Map<string, EntityOption>();
@@ -149,12 +286,41 @@ export default function NewVoucherPage() {
             code: e.employeeId || e.code,
           })));
         }
+
+        // Aggregate pending balances per transporter
+        const transPendingMap = new Map<string, { amount: number; count: number }>();
+        if (aggRes.success && Array.isArray(aggRes.data)) {
+          aggRes.data.forEach((d: any) => {
+            if (d.transporterId && d.status !== 'Settled' && d.status !== 'Void' && d.status !== 'Cancelled') {
+              const amt = Number(d.transporterPayable || d.netTruckPayment || d.grossTruckFee || 0);
+              const current = transPendingMap.get(d.transporterId) || { amount: 0, count: 0 };
+              transPendingMap.set(d.transporterId, {
+                amount: current.amount + amt,
+                count: current.count + 1,
+              });
+            }
+          });
+        }
+
         if (transRes.success) {
-          setTransporters((transRes.data || []).map((t: any) => ({
-            id: t.id,
-            name: t.companyName || t.name || '',
-            code: t.code,
-          })));
+          const initialMap: Record<string, { selected: boolean; amount: string }> = {};
+          const list = (transRes.data || []).map((t: any) => {
+            const pendingInfo = transPendingMap.get(t.id) || { amount: 0, count: 0 };
+            const pendingAmt = Math.round(pendingInfo.amount * 100) / 100;
+            initialMap[t.id] = {
+              selected: false,
+              amount: pendingAmt > 0 ? String(pendingAmt) : '',
+            };
+            return {
+              id: t.id,
+              name: t.companyName || t.name || '',
+              code: t.code,
+              pendingAmount: pendingAmt,
+              pendingTrips: pendingInfo.count,
+            };
+          });
+          setTransporters(list);
+          setMultiTransporters(initialMap);
         }
         if (bankRes.success) {
           setBankAccounts(bankRes.data || []);
@@ -392,19 +558,36 @@ export default function NewVoucherPage() {
             break;
           }
           case 'TRANSPORTER': {
-            const res = await fetch('/api/aggregate?limit=100');
+            const transParams = new URLSearchParams({ limit: '500' });
+            if (formData.payeeId && formData.payeeId !== 'ONE_TIME_SUPPLIER') {
+              transParams.set('transporterId', formData.payeeId);
+            }
+            const res = await fetch(`/api/aggregate?${transParams.toString()}`);
             const data = await res.json();
             if (data.success) {
-              // Only show Delivered/Completed dispatches for transporter payment
-              const approvedOnly = (data.data || []).filter((d: any) =>
-                d.status === 'Approved' || d.status === 'Delivered' || d.status === 'Completed' || d.status === 'Active'
+              const eligible = (data.data || []).filter((d: any) =>
+                d.status !== 'Void' && d.status !== 'Cancelled'
               );
-              refs = approvedOnly.map((d: any) => ({
-                id: d.id,
-                label: `${d.dispatchNo} — Truck: ${d.driverName || 'N/A'} (${d.status || 'Active'})`,
-                ref: d.dispatchNo,
-                amount: d.netTruckPayment,
-              }));
+              refs = eligible.map((d: any) => {
+                const amount = Number(d.transporterPayable || d.netTruckPayment || d.grossTruckFee || 0);
+                const podStr = d.padNumber ? `POD: ${d.padNumber}` : 'POD: N/A';
+                const driverInfo = d.driverName || d.plateNumber || d.truck?.plateNumber
+                  ? `Truck: ${d.driverName || ''} ${d.plateNumber || d.truck?.plateNumber || ''}`.trim()
+                  : '';
+                const partyStr = d.transporter?.companyName || d.customer?.companyName || '';
+
+                return {
+                  id: d.id,
+                  dispatchNo: d.dispatchNo,
+                  padNumber: d.padNumber || 'N/A',
+                  label: `${d.dispatchNo} — ${podStr}${driverInfo ? ` — ${driverInfo}` : ''}${partyStr ? ` (${partyStr})` : ''} — ETB ${amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}`,
+                  ref: d.dispatchNo,
+                  amount: Math.round(amount * 100) / 100,
+                  transporterPayable: amount,
+                  driverName: d.driverName,
+                  truckPlate: d.plateNumber || d.truck?.plateNumber,
+                };
+              });
             }
             break;
           }
@@ -712,17 +895,161 @@ export default function NewVoucherPage() {
         {formData.payeeType && (
           <Card>
             <CardHeader>
-              <h2 className="text-lg font-semibold text-[#1D1D1F]">
-                Select {formData.payeeType === 'CUSTOMER' ? 'Customer' :
-                  formData.payeeType === 'SUPPLIER' ? 'Supplier' :
-                  formData.payeeType === 'ONE_TIME_SUPPLIER' ? 'One-Time Supplier' :
-                  formData.payeeType === 'TRANSPORTER' ? 'Transporter' :
-                  formData.payeeType === 'EMPLOYEE' ? 'Employee' :
-                  'Payee'}
-              </h2>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h2 className="text-lg font-semibold text-[#1D1D1F]">
+                  Select {formData.payeeType === 'CUSTOMER' ? 'Customer' :
+                    formData.payeeType === 'SUPPLIER' ? 'Supplier' :
+                    formData.payeeType === 'ONE_TIME_SUPPLIER' ? 'One-Time Supplier' :
+                    formData.payeeType === 'TRANSPORTER' ? 'Transporter(s)' :
+                    formData.payeeType === 'EMPLOYEE' ? 'Employee' :
+                    'Payee'}
+                </h2>
+                {formData.payeeType === 'TRANSPORTER' && (
+                  <div className="flex items-center bg-gray-100 p-1 rounded-xl gap-1 text-xs">
+                    <button
+                      type="button"
+                      onClick={() => setTransporterMode('multi')}
+                      className={`px-3 py-1.5 rounded-lg font-medium transition-all ${transporterMode === 'multi' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
+                    >
+                      Multi-Transporter (with Amount)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setTransporterMode('single')}
+                      className={`px-3 py-1.5 rounded-lg font-medium transition-all ${transporterMode === 'single' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
+                    >
+                      Single Transporter
+                    </button>
+                  </div>
+                )}
+              </div>
             </CardHeader>
             <CardBody className="space-y-4">
-              {payeeOptions.length > 0 ? (
+              {formData.payeeType === 'TRANSPORTER' && transporterMode === 'multi' ? (
+                /* Multi-Transporter Selection with Individual Amounts */
+                <div className="space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <input
+                      type="text"
+                      placeholder="Search transporter by name or code..."
+                      value={transporterSearch}
+                      onChange={(e) => setTransporterSearch(e.target.value)}
+                      className="px-3 py-2 text-sm bg-white border border-[#D2D2D7] rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 w-full sm:w-72"
+                    />
+                    <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+                      <button
+                        type="button"
+                        onClick={handleAutoFillPendingAmounts}
+                        className="px-2.5 py-1 text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors flex items-center gap-1"
+                        title="Import and populate each transporter's pending unsettled trip balance automatically"
+                      >
+                        <span>⚡</span>
+                        <span>Auto-Fill / Import Total Balances</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleSelectAllMultiTransporters}
+                        className="text-xs font-semibold text-blue-600 hover:text-blue-700 underline"
+                      >
+                        {transporters.length > 0 && transporters.every((t) => multiTransporters[t.id]?.selected) ? 'Deselect All' : 'Select All'}
+                      </button>
+                      <span className="text-xs text-slate-500 font-medium">
+                        ({transporters.filter((t) => multiTransporters[t.id]?.selected).length} selected)
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="border border-[#D2D2D7] rounded-xl overflow-hidden bg-white/80 max-h-80 overflow-y-auto divide-y divide-gray-100">
+                    {transporters
+                      .filter((t) => !transporterSearch || t.name.toLowerCase().includes(transporterSearch.toLowerCase()) || (t.code && t.code.toLowerCase().includes(transporterSearch.toLowerCase())))
+                      .map((t) => {
+                        const isSelected = !!multiTransporters[t.id]?.selected;
+                        const currentAmt = multiTransporters[t.id]?.amount || '';
+
+                        return (
+                          <div
+                            key={t.id}
+                            className={`flex flex-wrap sm:flex-nowrap items-center justify-between gap-3 px-4 py-3 transition-colors ${isSelected ? 'bg-blue-50/70' : 'hover:bg-gray-50'}`}
+                          >
+                            <label className="flex items-center gap-3 cursor-pointer flex-1 min-w-0">
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={() => handleMultiTransporterToggle(t.id)}
+                                className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"
+                              />
+                              <div className="min-w-0">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span className="font-semibold text-sm text-slate-900 truncate">
+                                    {t.name}
+                                  </span>
+                                  {t.code && (
+                                    <span className="px-1.5 py-0.5 text-[11px] bg-gray-100 text-gray-600 rounded">
+                                      {t.code}
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-2 mt-0.5">
+                                  {t.pendingTrips && t.pendingTrips > 0 ? (
+                                    <span className="px-2 py-0.5 text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-md">
+                                      🚚 {t.pendingTrips} Trip{t.pendingTrips > 1 ? 's' : ''} — Total: ETB {(t.pendingAmount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                                    </span>
+                                  ) : (
+                                    <span className="text-[11px] text-slate-400">
+                                      No pending trips recorded
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </label>
+
+                            <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                              {t.pendingAmount && t.pendingAmount > 0 ? (
+                                <button
+                                  type="button"
+                                  onClick={() => handleMultiTransporterAmountChange(t.id, String(t.pendingAmount))}
+                                  title="Import this transporter's calculated balance into the amount field"
+                                  className="text-[11px] text-blue-600 hover:text-blue-800 font-semibold underline whitespace-nowrap"
+                                >
+                                  Import Total
+                                </button>
+                              ) : null}
+                              <span className="text-xs text-slate-500 font-medium">ETB</span>
+                              <input
+                                type="number"
+                                placeholder="0.00"
+                                step="0.01"
+                                value={currentAmt}
+                                onChange={(e) => handleMultiTransporterAmountChange(t.id, e.target.value)}
+                                className="w-32 px-3 py-1.5 text-sm bg-white border border-[#D2D2D7] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-right font-medium text-slate-900"
+                              />
+                            </div>
+                          </div>
+                        );
+                      })}
+                  </div>
+
+                  {/* Multi-transporter live calculation summary banner */}
+                  {transporters.some((t) => multiTransporters[t.id]?.selected) && (
+                    <div className="bg-blue-50 border border-blue-200 rounded-xl p-3.5 flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <span className="text-xs uppercase font-bold text-blue-700 block">
+                          Selected Batch ({transporters.filter((t) => multiTransporters[t.id]?.selected).length} Transporters)
+                        </span>
+                        <p className="text-xs text-blue-600 mt-0.5">
+                          Total amount is automatically calculated and linked to this voucher.
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-xs text-slate-500 block">Total Amount:</span>
+                        <span className="text-base font-bold text-blue-900">
+                          ETB {transporters.filter((t) => multiTransporters[t.id]?.selected).reduce((sum, t) => sum + (parseFloat(multiTransporters[t.id]?.amount || '0') || 0), 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : payeeOptions.length > 0 ? (
                 <div>
                   <label className="block text-[13px] font-medium text-[#86868B] uppercase tracking-wider mb-1.5">
                     {formData.payeeType === 'CUSTOMER' ? 'Customer' :
@@ -748,7 +1075,7 @@ export default function NewVoucherPage() {
               ) : null}
 
               {/* Show manual Payee Name input if ONE_TIME_SUPPLIER is selected or if no dropdown options exist */}
-              {(formData.payeeId === 'ONE_TIME_SUPPLIER' || payeeOptions.length === 0) && (
+              {(formData.payeeId === 'ONE_TIME_SUPPLIER' || (payeeOptions.length === 0 && formData.payeeType !== 'TRANSPORTER')) && (
                 <div>
                   <Input
                     label="One-Time Payee / Supplier Name *"
@@ -765,7 +1092,7 @@ export default function NewVoucherPage() {
                 </div>
               )}
 
-              {formData.payeeName && formData.payeeId !== 'ONE_TIME_SUPPLIER' && (
+              {formData.payeeName && formData.payeeId !== 'ONE_TIME_SUPPLIER' && formData.payeeType !== 'TRANSPORTER' && (
                 <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-3">
                   <span className="text-sm text-green-800">
                     Selected: <strong>{formData.payeeName}</strong>
@@ -803,11 +1130,20 @@ export default function NewVoucherPage() {
                 ]}
               />
 
-              {formData.sourceModule && sourceRefs.length > 0 && formData.sourceModule === 'AGGREGATE' && (
+              {formData.sourceModule && sourceRefs.length > 0 && (formData.sourceModule === 'AGGREGATE' || formData.sourceModule === 'TRANSPORTER') && (
                 <div>
-                  <label className="block text-[13px] font-medium text-[#86868B] uppercase tracking-wider mb-1.5">
-                    Select Deliveries to Settle ({selectedDeliveryIds.size} selected)
-                  </label>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="block text-[13px] font-medium text-[#86868B] uppercase tracking-wider">
+                      Select {formData.sourceModule === 'TRANSPORTER' ? 'Transporter Trips / Dispatches' : 'Deliveries'} to Settle ({selectedDeliveryIds.size} selected)
+                    </label>
+                    <button
+                      type="button"
+                      onClick={handleSelectAllDeliveries}
+                      className="text-xs font-semibold text-blue-600 hover:text-blue-700 underline"
+                    >
+                      {selectedDeliveryIds.size === sourceRefs.length ? 'Deselect All' : 'Select All'}
+                    </button>
+                  </div>
                   <div className="border border-[#D2D2D7] rounded-xl overflow-hidden bg-white/80">
                     <div className="px-4 py-2 bg-gray-50 border-b border-[#D2D2D7] flex items-center justify-between">
                       <label className="flex items-center gap-2 cursor-pointer text-sm">
@@ -815,55 +1151,71 @@ export default function NewVoucherPage() {
                           type="checkbox"
                           checked={selectedDeliveryIds.size === sourceRefs.length && sourceRefs.length > 0}
                           onChange={handleSelectAllDeliveries}
-                          className="w-4 h-4 rounded"
+                          className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"
                         />
-                        <span className="font-medium">Select All</span>
+                        <span className="font-medium text-slate-700">Select All ({sourceRefs.length})</span>
                       </label>
                       {selectedDeliveryIds.size > 0 && (
-                        <span className="text-sm text-blue-600 font-medium">
-                          Total: ETB {sourceRefs.filter((r) => selectedDeliveryIds.has(r.id)).reduce((s, r) => s + (r.amount || 0), 0).toLocaleString('en-US', { maximumFractionDigits: 2 })}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-slate-500 font-medium">Selected Total:</span>
+                          <span className="text-sm font-bold text-blue-600">
+                            ETB {sourceRefs.filter((r) => selectedDeliveryIds.has(r.id)).reduce((s, r) => s + (r.amount || 0), 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </span>
+                        </div>
                       )}
                     </div>
-                    <div className="max-h-60 overflow-y-auto">
-                      {sourceRefs.map((ref) => (
-                        <label key={ref.id} className="flex items-center gap-3 px-4 py-3 hover:bg-blue-50 cursor-pointer border-b border-gray-100 last:border-0">
-                          <input
-                            type="checkbox"
-                            checked={selectedDeliveryIds.has(ref.id)}
-                            onChange={() => handleDeliveryToggle(ref.id)}
-                            className="w-4 h-4 rounded"
-                          />
-                          <div className="flex-1 text-sm">
-                            <div className="flex items-center gap-2">
-                              <span className="font-semibold text-slate-900">
-                                Dispatch: {ref.dispatchNo || ref.ref}
-                              </span>
-                              <span className="px-2 py-0.5 bg-blue-50 text-blue-700 text-xs font-semibold rounded-md border border-blue-200">
-                                POD: {ref.padNumber || 'N/A'}
-                              </span>
+                    <div className="max-h-72 overflow-y-auto divide-y divide-gray-100">
+                      {sourceRefs.map((ref) => {
+                        const isSelected = selectedDeliveryIds.has(ref.id);
+                        return (
+                          <label
+                            key={ref.id}
+                            className={`flex items-center gap-3 px-4 py-3 cursor-pointer transition-colors ${isSelected ? 'bg-blue-50/70' : 'hover:bg-gray-50'}`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => handleDeliveryToggle(ref.id)}
+                              className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"
+                            />
+                            <div className="flex-1 text-sm min-w-0">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="font-semibold text-slate-900">
+                                  Dispatch: {ref.dispatchNo || ref.ref}
+                                </span>
+                                {ref.padNumber && ref.padNumber !== 'N/A' && (
+                                  <span className="px-2 py-0.5 bg-blue-50 text-blue-700 text-xs font-semibold rounded-md border border-blue-200">
+                                    POD: {ref.padNumber}
+                                  </span>
+                                )}
+                                {(ref.driverName || ref.truckPlate) && (
+                                  <span className="px-2 py-0.5 bg-gray-100 text-gray-700 text-xs font-medium rounded-md">
+                                    🚚 {ref.driverName || ''} {ref.truckPlate ? `(${ref.truckPlate})` : ''}
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-xs text-slate-500 mt-0.5 truncate">{ref.label}</p>
                             </div>
-                            <p className="text-xs text-slate-500 mt-0.5">{ref.label}</p>
-                          </div>
-                          <div className="text-right">
-                            <span className="text-sm font-bold text-slate-900">
-                              ETB {(ref.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                            </span>
-                            <p className="text-[11px] font-medium text-slate-500">
-                              {formData.payeeType === 'CUSTOMER' ? 'Customer Receivable' :
-                               formData.payeeType === 'TRANSPORTER' ? 'Transporter Freight' :
-                               formData.payeeType === 'SUPPLIER' ? 'Supplier Material' : 'Payable'}
-                            </p>
-                          </div>
-                        </label>
-                      ))}
+                            <div className="text-right whitespace-nowrap ml-3">
+                              <span className="text-sm font-bold text-slate-900">
+                                ETB {(ref.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </span>
+                              <p className="text-[11px] font-medium text-slate-500">
+                                {formData.payeeType === 'CUSTOMER' ? 'Customer Receivable' :
+                                 formData.payeeType === 'TRANSPORTER' || formData.sourceModule === 'TRANSPORTER' ? 'Transporter Freight' :
+                                 formData.payeeType === 'SUPPLIER' ? 'Supplier Material' : 'Payable'}
+                              </p>
+                            </div>
+                          </label>
+                        );
+                      })}
                     </div>
                   </div>
                   {loadingRefs && <p className="text-xs text-slate-500 mt-1">Loading references...</p>}
                 </div>
               )}
 
-              {formData.sourceModule && sourceRefs.length > 0 && formData.sourceModule !== 'AGGREGATE' && (
+              {formData.sourceModule && sourceRefs.length > 0 && formData.sourceModule !== 'AGGREGATE' && formData.sourceModule !== 'TRANSPORTER' && (
                 <div>
                   <label className="block text-[13px] font-medium text-[#86868B] uppercase tracking-wider mb-1.5">
                     Source Document

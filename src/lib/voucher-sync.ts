@@ -84,8 +84,8 @@ export async function updateVoucherLinkedDocument(voucher: any) {
     }
   }
 
-  // 2. AGGREGATE DISPATCHES
-  if (sourceModule === 'AGGREGATE' && (sourceId || sourceRef)) {
+  // 2. AGGREGATE DISPATCHES & TRANSPORTER TRIPS
+  if ((sourceModule === 'AGGREGATE' || sourceModule === 'TRANSPORTER') && (sourceId || sourceRef)) {
     try {
       const ids = (sourceId || '').split(',').map((s: string) => s.trim()).filter(Boolean);
       const refs = (sourceRef || '').split(',').map((s: string) => s.trim()).filter(Boolean);
@@ -98,13 +98,13 @@ export async function updateVoucherLinkedDocument(voucher: any) {
         await prisma.aggregateDelivery.updateMany({
           where: {
             OR: whereOr,
-            status: { in: ['Verified', 'Delivered', 'Dispatched'] },
+            status: { in: ['Verified', 'Delivered', 'Dispatched', 'Approved', 'Active'] },
           },
           data: { status: 'Settled' },
         });
 
         notify({
-          module: 'AGGREGATE',
+          module: sourceModule === 'TRANSPORTER' ? 'PURCHASING' : 'AGGREGATE',
           event: 'aggregate_bulk_settled',
           details: {
             voucherNo: voucher.voucherNo,
@@ -114,7 +114,7 @@ export async function updateVoucherLinkedDocument(voucher: any) {
         });
       }
     } catch (err: any) {
-      console.error('[VoucherSync] Failed to update AggregateDelivery status:', err.message);
+      console.error('[VoucherSync] Failed to update AggregateDelivery / Transporter status:', err.message);
     }
   }
 

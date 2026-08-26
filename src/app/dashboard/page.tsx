@@ -25,9 +25,12 @@ import {
   LayoutDashboard,
   ExternalLink,
   Boxes,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
 import { Button } from '@/components/ui/Button';
+import { useAmountVisibility } from '@/hooks/useAmountVisibility';
 import {
   Card,
   CardHeader,
@@ -100,6 +103,7 @@ export default function DashboardPage() {
   const [stats, setStats] = React.useState<DashboardStats | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [refreshing, setRefreshing] = React.useState(false);
+  const { showAmounts, toggleVisibility, formatCompactAmount } = useAmountVisibility();
   const [activeSubDashboard, setActiveSubDashboard] = React.useState<
     'overview' | 'finance' | 'construction' | 'medical' | 'sales' | 'purchasing' | 'transport' | 'stock'
   >('overview');
@@ -284,13 +288,27 @@ export default function DashboardPage() {
                 <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                   Total Revenue
                 </span>
-                <div className="h-9 w-9 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
-                  <DollarSign className="w-5 h-5" />
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={toggleVisibility}
+                    title={showAmounts ? 'Click to hide amounts' : 'Click to show amounts'}
+                    className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/80 transition-colors cursor-pointer"
+                  >
+                    {showAmounts ? (
+                      <Eye className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                    ) : (
+                      <EyeOff className="w-4 h-4 text-amber-500" />
+                    )}
+                  </button>
+                  <div className="h-9 w-9 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+                    <DollarSign className="w-5 h-5" />
+                  </div>
                 </div>
               </div>
               <div className="mt-3">
                 <div className="text-2xl font-bold font-mono tracking-tight text-foreground">
-                  {s ? `${(s.totalRevenue / 1e6).toFixed(2)}M ETB` : '—'}
+                  {s ? formatCompactAmount(s.totalRevenue) : '—'}
                 </div>
                 <p className="text-xs text-emerald-600 dark:text-emerald-400 font-medium mt-1 flex items-center gap-1">
                   <TrendingUp className="w-3.5 h-3.5" />
@@ -304,13 +322,27 @@ export default function DashboardPage() {
                 <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                   Receivables
                 </span>
-                <div className="h-9 w-9 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center">
-                  <Wallet className="w-5 h-5" />
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={toggleVisibility}
+                    title={showAmounts ? 'Click to hide amounts' : 'Click to show amounts'}
+                    className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/80 transition-colors cursor-pointer"
+                  >
+                    {showAmounts ? (
+                      <Eye className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                    ) : (
+                      <EyeOff className="w-4 h-4 text-amber-500" />
+                    )}
+                  </button>
+                  <div className="h-9 w-9 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center">
+                    <Wallet className="w-5 h-5" />
+                  </div>
                 </div>
               </div>
               <div className="mt-3">
                 <div className="text-2xl font-bold font-mono tracking-tight text-foreground">
-                  {s ? `${(s.outstandingReceivables / 1e6).toFixed(2)}M ETB` : '—'}
+                  {s ? formatCompactAmount(s.outstandingReceivables) : '—'}
                 </div>
                 <p className="text-xs text-muted-foreground font-medium mt-1">
                   Outstanding customer credit
@@ -454,8 +486,8 @@ export default function DashboardPage() {
                   { key: 'receivables', name: 'Outstanding Debt', color: '#f59e0b', strokeWidth: 2.5, strokeDasharray: '4 4' },
                 ]}
                 height={260}
-                valueFormatter={(val, name) => `${(val / 1e6).toFixed(2)}M ETB`}
-                yAxisFormatter={(val) => `${(val / 1e6).toFixed(1)}M`}
+                valueFormatter={(val) => (showAmounts ? `${(val / 1e6).toFixed(2)}M ETB` : '•••••• ETB')}
+                yAxisFormatter={(val) => (showAmounts ? `${(val / 1e6).toFixed(1)}M` : '••••')}
               />
             </Card>
 

@@ -18,6 +18,8 @@ import {
   AlertCircle,
   Receipt,
   FileCheck2,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -28,6 +30,7 @@ import {
   DashboardRadialChart,
 } from '@/components/dashboard/charts';
 import { TrendingUp, BarChart3, PieChart } from 'lucide-react';
+import { useAmountVisibility } from '@/hooks/useAmountVisibility';
 
 
 interface FinanceStats {
@@ -76,6 +79,7 @@ export function FinanceDashboardView({ standalone = false }: { standalone?: bool
   const [data, setData] = React.useState<FinanceStats | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [refreshing, setRefreshing] = React.useState(false);
+  const { showAmounts, toggleVisibility, formatAmount } = useAmountVisibility();
 
   const fetchFinanceStats = async () => {
     try {
@@ -147,13 +151,27 @@ export function FinanceDashboardView({ standalone = false }: { standalone?: bool
             <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               Total Realized Revenue
             </span>
-            <div className="h-8 w-8 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
-              <DollarSign className="w-4 h-4" />
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={toggleVisibility}
+                title={showAmounts ? 'Click to hide amounts' : 'Click to show amounts'}
+                className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/80 transition-colors cursor-pointer"
+              >
+                {showAmounts ? (
+                  <Eye className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                ) : (
+                  <EyeOff className="w-4 h-4 text-amber-500" />
+                )}
+              </button>
+              <div className="h-8 w-8 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+                <DollarSign className="w-4 h-4" />
+              </div>
             </div>
           </div>
           <div className="mt-3">
             <div className="text-2xl font-bold font-mono tracking-tight text-foreground">
-              {s ? `${s.totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ETB` : '—'}
+              {s ? formatAmount(s.totalRevenue) : '—'}
             </div>
             <p className="text-xs text-emerald-600 dark:text-emerald-400 font-medium mt-1 flex items-center gap-1">
               <CheckCircle2 className="w-3.5 h-3.5" />
@@ -168,13 +186,27 @@ export function FinanceDashboardView({ standalone = false }: { standalone?: bool
             <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               Total Bank Liquidity
             </span>
-            <div className="h-8 w-8 rounded-lg bg-sky-500/10 text-sky-600 dark:text-sky-400 flex items-center justify-center">
-              <Landmark className="w-4 h-4" />
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={toggleVisibility}
+                title={showAmounts ? 'Click to hide amounts' : 'Click to show amounts'}
+                className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/80 transition-colors cursor-pointer"
+              >
+                {showAmounts ? (
+                  <Eye className="w-4 h-4 text-sky-600 dark:text-sky-400" />
+                ) : (
+                  <EyeOff className="w-4 h-4 text-amber-500" />
+                )}
+              </button>
+              <div className="h-8 w-8 rounded-lg bg-sky-500/10 text-sky-600 dark:text-sky-400 flex items-center justify-center">
+                <Landmark className="w-4 h-4" />
+              </div>
             </div>
           </div>
           <div className="mt-3">
             <div className="text-2xl font-bold font-mono tracking-tight text-foreground">
-              {s ? `${s.totalBankBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ETB` : '—'}
+              {s ? formatAmount(s.totalBankBalance) : '—'}
             </div>
             <p className="text-xs text-muted-foreground font-medium mt-1 flex items-center gap-1">
               <span>Across {data?.bankAccounts.length || 0} active bank accounts</span>
@@ -188,13 +220,27 @@ export function FinanceDashboardView({ standalone = false }: { standalone?: bool
             <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               Outstanding Receivables
             </span>
-            <div className="h-8 w-8 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center">
-              <Wallet className="w-4 h-4" />
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={toggleVisibility}
+                title={showAmounts ? 'Click to hide amounts' : 'Click to show amounts'}
+                className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/80 transition-colors cursor-pointer"
+              >
+                {showAmounts ? (
+                  <Eye className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                ) : (
+                  <EyeOff className="w-4 h-4 text-amber-500" />
+                )}
+              </button>
+              <div className="h-8 w-8 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center">
+                <Wallet className="w-4 h-4" />
+              </div>
             </div>
           </div>
           <div className="mt-3">
             <div className="text-2xl font-bold font-mono tracking-tight text-foreground">
-              {s ? `${s.outstandingReceivables.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ETB` : '—'}
+              {s ? formatAmount(s.outstandingReceivables) : '—'}
             </div>
             <p className="text-xs text-amber-600 dark:text-amber-400 font-medium mt-1 flex items-center gap-1">
               <Clock className="w-3.5 h-3.5" />
@@ -209,13 +255,27 @@ export function FinanceDashboardView({ standalone = false }: { standalone?: bool
             <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               Pending Payables
             </span>
-            <div className="h-8 w-8 rounded-lg bg-rose-500/10 text-rose-600 dark:text-rose-400 flex items-center justify-center">
-              <CreditCard className="w-4 h-4" />
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={toggleVisibility}
+                title={showAmounts ? 'Click to hide amounts' : 'Click to show amounts'}
+                className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/80 transition-colors cursor-pointer"
+              >
+                {showAmounts ? (
+                  <Eye className="w-4 h-4 text-rose-600 dark:text-rose-400" />
+                ) : (
+                  <EyeOff className="w-4 h-4 text-amber-500" />
+                )}
+              </button>
+              <div className="h-8 w-8 rounded-lg bg-rose-500/10 text-rose-600 dark:text-rose-400 flex items-center justify-center">
+                <CreditCard className="w-4 h-4" />
+              </div>
             </div>
           </div>
           <div className="mt-3">
             <div className="text-2xl font-bold font-mono tracking-tight text-foreground">
-              {s ? `${s.pendingPayables.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ETB` : '—'}
+              {s ? formatAmount(s.pendingPayables) : '—'}
             </div>
             <p className="text-xs text-rose-600 dark:text-rose-400 font-medium mt-1 flex items-center gap-1">
               <AlertCircle className="w-3.5 h-3.5" />
@@ -227,40 +287,82 @@ export function FinanceDashboardView({ standalone = false }: { standalone?: bool
 
       {/* Secondary Metrics: Petty Cash, Unapplied Deposits, VAT Liability */}
       <div className="grid gap-4 sm:grid-cols-3">
-        <Card className="p-4 flex items-center gap-3.5 hover:border-border transition-colors shadow-xs">
-          <div className="h-10 w-10 rounded-lg bg-violet-500/10 text-violet-600 dark:text-violet-400 flex items-center justify-center shrink-0">
-            <Receipt className="w-5 h-5" />
-          </div>
-          <div>
-            <span className="text-xs font-medium text-muted-foreground">Petty Cash Balance</span>
-            <div className="text-lg font-bold font-mono text-foreground">
-              {s ? `${s.pettyCashBalance.toLocaleString()} ETB` : '—'}
+        <Card className="p-4 flex items-center justify-between gap-3.5 hover:border-border transition-colors shadow-xs">
+          <div className="flex items-center gap-3.5">
+            <div className="h-10 w-10 rounded-lg bg-violet-500/10 text-violet-600 dark:text-violet-400 flex items-center justify-center shrink-0">
+              <Receipt className="w-5 h-5" />
+            </div>
+            <div>
+              <span className="text-xs font-medium text-muted-foreground">Petty Cash Balance</span>
+              <div className="text-lg font-bold font-mono text-foreground">
+                {s ? formatAmount(s.pettyCashBalance, 'ETB', 0) : '—'}
+              </div>
             </div>
           </div>
+          <button
+            type="button"
+            onClick={toggleVisibility}
+            title={showAmounts ? 'Click to hide amounts' : 'Click to show amounts'}
+            className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/80 transition-colors cursor-pointer"
+          >
+            {showAmounts ? (
+              <Eye className="w-4 h-4 text-violet-600 dark:text-violet-400" />
+            ) : (
+              <EyeOff className="w-4 h-4 text-amber-500" />
+            )}
+          </button>
         </Card>
 
-        <Card className="p-4 flex items-center gap-3.5 hover:border-border transition-colors shadow-xs">
-          <div className="h-10 w-10 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
-            <FileCheck2 className="w-5 h-5" />
-          </div>
-          <div>
-            <span className="text-xs font-medium text-muted-foreground">Unapplied Customer Deposits</span>
-            <div className="text-lg font-bold font-mono text-foreground">
-              {s ? `${s.unappliedDeposits.toLocaleString()} ETB` : '—'}
+        <Card className="p-4 flex items-center justify-between gap-3.5 hover:border-border transition-colors shadow-xs">
+          <div className="flex items-center gap-3.5">
+            <div className="h-10 w-10 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+              <FileCheck2 className="w-5 h-5" />
+            </div>
+            <div>
+              <span className="text-xs font-medium text-muted-foreground">Unapplied Customer Deposits</span>
+              <div className="text-lg font-bold font-mono text-foreground">
+                {s ? formatAmount(s.unappliedDeposits, 'ETB', 0) : '—'}
+              </div>
             </div>
           </div>
+          <button
+            type="button"
+            onClick={toggleVisibility}
+            title={showAmounts ? 'Click to hide amounts' : 'Click to show amounts'}
+            className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/80 transition-colors cursor-pointer"
+          >
+            {showAmounts ? (
+              <Eye className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+            ) : (
+              <EyeOff className="w-4 h-4 text-amber-500" />
+            )}
+          </button>
         </Card>
 
-        <Card className="p-4 flex items-center gap-3.5 hover:border-border transition-colors shadow-xs">
-          <div className="h-10 w-10 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
-            <Percent className="w-5 h-5" />
-          </div>
-          <div>
-            <span className="text-xs font-medium text-muted-foreground">Net VAT Balance</span>
-            <div className="text-lg font-bold font-mono text-foreground">
-              {s ? `${s.netVatLiability.toLocaleString()} ETB` : '—'}
+        <Card className="p-4 flex items-center justify-between gap-3.5 hover:border-border transition-colors shadow-xs">
+          <div className="flex items-center gap-3.5">
+            <div className="h-10 w-10 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+              <Percent className="w-5 h-5" />
+            </div>
+            <div>
+              <span className="text-xs font-medium text-muted-foreground">Net VAT Balance</span>
+              <div className="text-lg font-bold font-mono text-foreground">
+                {s ? formatAmount(s.netVatLiability, 'ETB', 0) : '—'}
+              </div>
             </div>
           </div>
+          <button
+            type="button"
+            onClick={toggleVisibility}
+            title={showAmounts ? 'Click to hide amounts' : 'Click to show amounts'}
+            className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/80 transition-colors cursor-pointer"
+          >
+            {showAmounts ? (
+              <Eye className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+            ) : (
+              <EyeOff className="w-4 h-4 text-amber-500" />
+            )}
+          </button>
         </Card>
       </div>
 
@@ -420,8 +522,12 @@ export function FinanceDashboardView({ standalone = false }: { standalone?: bool
           singleBarName="Bank Balance (ETB)"
           colorKey="color"
           height={240}
-          valueFormatter={(val) => `${val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ETB`}
-          yAxisFormatter={(val) => `${(val / 1e6).toFixed(1)}M`}
+          valueFormatter={(val) =>
+            showAmounts
+              ? `${val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ETB`
+              : '•••••• ETB'
+          }
+          yAxisFormatter={(val) => (showAmounts ? `${(val / 1e6).toFixed(1)}M` : '••••')}
         />
       </Card>
 
@@ -486,7 +592,7 @@ export function FinanceDashboardView({ standalone = false }: { standalone?: bool
                     </div>
                     <div className="text-right">
                       <p className="text-xs font-bold font-mono text-foreground">
-                        {b.balance.toLocaleString(undefined, { minimumFractionDigits: 2 })} {b.currency}
+                        {formatAmount(b.balance, b.currency)}
                       </p>
                       <Badge variant="success" className="text-[9px] py-0 px-1 mt-0.5">
                         Active
@@ -537,7 +643,7 @@ export function FinanceDashboardView({ standalone = false }: { standalone?: bool
                         <td className="px-3.5 py-2.5 text-muted-foreground">{v.payeeName}</td>
                         <td className="px-3.5 py-2.5 text-muted-foreground uppercase text-[11px]">{v.paymentMethod}</td>
                         <td className="px-3.5 py-2.5 font-mono font-semibold text-right text-foreground">
-                          {v.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                          {formatAmount(v.amount, '')}
                         </td>
                         <td className="px-3.5 py-2.5 text-right">
                           <Badge

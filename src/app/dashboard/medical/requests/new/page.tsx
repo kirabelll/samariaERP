@@ -12,19 +12,15 @@ interface RequestItem {
   strength: string;
   qty: number;
   unitPrice: number;
-  batchPref?: string;
-  expiryDate?: string;
 }
 
 export default function NewMedicalPurchaseRequestPage() {
   const router = useRouter();
   const [supplier, setSupplier] = useState('');
   const [urgency, setUrgency] = useState('Normal');
-  const [batchPreference, setBatchPreference] = useState('');
-  const [expiryDate, setExpiryDate] = useState('');
   const [notes, setNotes] = useState('');
   const [items, setItems] = useState<RequestItem[]>([
-    { id: 1, itemId: '', drugName: '', genericName: '', strength: '', qty: 1, unitPrice: 0, batchPref: '', expiryDate: '' },
+    { id: 1, itemId: '', drugName: '', genericName: '', strength: '', qty: 1, unitPrice: 0 },
   ]);
   const [suppliers, setSuppliers] = useState<{ id: string; companyName: string; code: string }[]>([]);
   const [loadingSuppliers, setLoadingSuppliers] = useState(true);
@@ -80,7 +76,7 @@ export default function NewMedicalPurchaseRequestPage() {
 
   const handleAddItem = () => {
     const newId = Math.max(...items.map(i => i.id), 0) + 1;
-    setItems([...items, { id: newId, itemId: '', drugName: '', genericName: '', strength: '', qty: 1, unitPrice: 0, batchPref: batchPreference || '', expiryDate: expiryDate || '' }]);
+    setItems([...items, { id: newId, itemId: '', drugName: '', genericName: '', strength: '', qty: 1, unitPrice: 0 }]);
   };
 
   const handleRemoveItem = (id: number) => {
@@ -105,12 +101,6 @@ export default function NewMedicalPurchaseRequestPage() {
       return;
     }
 
-    const itemsToSave = items.map(item => ({
-      ...item,
-      batchPref: item.batchPref || batchPreference || undefined,
-      expiryDate: item.expiryDate || expiryDate || undefined,
-    }));
-
     try {
       const res = await fetch('/api/medical/requests', {
         method: 'POST',
@@ -118,10 +108,8 @@ export default function NewMedicalPurchaseRequestPage() {
         body: JSON.stringify({
           supplierId: supplier,
           customerId: supplier,
-          items: itemsToSave,
+          items: items,
           priority: urgency,
-          batchPreference: batchPreference || undefined,
-          expiryDate: expiryDate || undefined,
           notes: notes || undefined,
           status: 'Submitted'
         }),
@@ -178,23 +166,6 @@ export default function NewMedicalPurchaseRequestPage() {
                 <option value="Urgent">Urgent</option>
               </select>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Batch Preference</label>
-              <Input
-                type="text"
-                placeholder="e.g., Latest Batch, Any, Min 18 Months"
-                value={batchPreference}
-                onChange={(e) => setBatchPreference(e.target.value)}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Required Expiry Date</label>
-              <Input
-                type="date"
-                value={expiryDate}
-                onChange={(e) => setExpiryDate(e.target.value)}
-              />
-            </div>
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Notes</label>
@@ -232,8 +203,6 @@ export default function NewMedicalPurchaseRequestPage() {
                   <th className="text-left py-2 px-2 text-sm font-semibold text-gray-900 min-w-[100px]">Strength</th>
                   <th className="text-left py-2 px-2 text-sm font-semibold text-gray-900">Qty</th>
                   <th className="text-left py-2 px-2 text-sm font-semibold text-gray-900">Unit Price</th>
-                  <th className="text-left py-2 px-2 text-sm font-semibold text-gray-900 min-w-[130px]">Batch Pref</th>
-                  <th className="text-left py-2 px-2 text-sm font-semibold text-gray-900 min-w-[140px]">Expiry Date</th>
                   <th className="text-left py-2 px-2 text-sm font-semibold text-gray-900">Action</th>
                 </tr>
               </thead>
@@ -303,20 +272,6 @@ export default function NewMedicalPurchaseRequestPage() {
                         value={item.unitPrice}
                         onChange={(e) => handleItemChange(item.id, 'unitPrice', parseFloat(e.target.value) || 0)}
                         className="w-28 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border px-2 py-1"
-                      />
-                    </td>
-                    <td className="py-3 px-2">
-                      <Input
-                        placeholder={batchPreference || "e.g. Latest"}
-                        value={item.batchPref || ''}
-                        onChange={(e) => handleItemChange(item.id, 'batchPref', e.target.value)}
-                      />
-                    </td>
-                    <td className="py-3 px-2">
-                      <Input
-                        type="date"
-                        value={item.expiryDate || ''}
-                        onChange={(e) => handleItemChange(item.id, 'expiryDate', e.target.value)}
                       />
                     </td>
                     <td className="py-3 px-2">

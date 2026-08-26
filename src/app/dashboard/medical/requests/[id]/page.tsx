@@ -13,8 +13,8 @@ interface MedicalRequestItem {
   strength?: string;
   unit?: string;
   qty: number;
-  batchPref?: string;
-  expiryDate?: string;
+  unitPrice?: number;
+  totalAmount?: number;
   notes?: string;
 }
 
@@ -30,8 +30,6 @@ interface MedicalRequestData {
   priority: string;
   status: string;
   requestDate: string;
-  batchPreference?: string;
-  expiryDate?: string;
   notes?: string;
 }
 
@@ -43,8 +41,6 @@ const fieldLabels: Record<string, string> = {
   priority: 'Priority',
   status: 'Status',
   requestDate: 'Request Date',
-  batchPreference: 'Batch Preference',
-  expiryDate: 'Required Expiry Date',
   notes: 'Notes',
 };
 
@@ -146,6 +142,22 @@ export default function MedicalRequestDetailPage() {
     }
   };
 
+  const formatCurrency = (amount: number) => {
+    return `ETB ${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  };
+
+  const calculateItemTotal = (item: MedicalRequestItem) => {
+    if (item.totalAmount !== undefined && item.totalAmount !== null && !isNaN(Number(item.totalAmount))) {
+      return Number(item.totalAmount);
+    }
+    const qty = Number(item.qty) || 0;
+    const unitPrice = Number(item.unitPrice) || 0;
+    return qty * unitPrice;
+  };
+
+  const grandTotal = parsedItems.reduce((sum, item) => sum + calculateItemTotal(item), 0);
+  const totalQuantity = parsedItems.reduce((sum, item) => sum + (Number(item.qty) || 0), 0);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -246,22 +258,6 @@ export default function MedicalRequestDetailPage() {
                 </label>
                 <p className="text-lg font-medium text-slate-900 mt-1">{formatDate(data.requestDate)}</p>
               </div>
-              {data.batchPreference && (
-                <div>
-                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
-                    {fieldLabels.batchPreference}
-                  </label>
-                  <p className="text-lg font-medium text-slate-900 mt-1">{data.batchPreference}</p>
-                </div>
-              )}
-              {data.expiryDate && (
-                <div>
-                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
-                    {fieldLabels.expiryDate}
-                  </label>
-                  <p className="text-lg font-medium text-slate-900 mt-1">{formatDate(data.expiryDate)}</p>
-                </div>
-              )}
               {data.notes && (
                 <div className="md:col-span-2">
                   <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
@@ -299,16 +295,21 @@ export default function MedicalRequestDetailPage() {
           {/* Items Section */}
           {parsedItems.length > 0 && (
             <div>
-              <h3 className="text-lg font-semibold text-slate-900 mb-4">Requested Items</h3>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-slate-900">Requested Items</h3>
+                <span className="text-sm text-slate-500 font-medium">
+                  {parsedItems.length} {parsedItems.length === 1 ? 'item' : 'items'}
+                </span>
+              </div>
               <div className="overflow-x-auto">
                 <table className="w-full border-collapse">
                   <thead>
                     <tr className="bg-slate-100">
-                      <th className="border border-slate-200 px-4 py-2 text-left text-sm font-semibold text-slate-900">Item Name</th>
-                      <th className="border border-slate-200 px-4 py-2 text-left text-sm font-semibold text-slate-900">Quantity</th>
-                      <th className="border border-slate-200 px-4 py-2 text-left text-sm font-semibold text-slate-900">Batch Preference</th>
-                      <th className="border border-slate-200 px-4 py-2 text-left text-sm font-semibold text-slate-900">Expiry Date</th>
-                      <th className="border border-slate-200 px-4 py-2 text-left text-sm font-semibold text-slate-900">Notes</th>
+                      <th className="border border-slate-200 px-4 py-2.5 text-left text-sm font-semibold text-slate-900">Item Name</th>
+                      <th className="border border-slate-200 px-4 py-2.5 text-right text-sm font-semibold text-slate-900">Quantity</th>
+                      <th className="border border-slate-200 px-4 py-2.5 text-right text-sm font-semibold text-slate-900">Unit Price</th>
+                      <th className="border border-slate-200 px-4 py-2.5 text-right text-sm font-semibold text-slate-900">Total Amount</th>
+                      <th className="border border-slate-200 px-4 py-2.5 text-left text-sm font-semibold text-slate-900">Notes</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -320,27 +321,51 @@ export default function MedicalRequestDetailPage() {
                         item.strength,
                       ].filter(Boolean).join(' • ');
 
+                      const unitPrice = Number(item.unitPrice) || 0;
+                      const lineTotal = calculateItemTotal(item);
+
                       return (
                         <tr key={index} className="hover:bg-slate-50">
-                          <td className="border border-slate-200 px-4 py-2 text-slate-900">
+                          <td className="border border-slate-200 px-4 py-2.5 text-slate-900">
                             <div className="font-medium text-slate-900">{itemName}</div>
                             {subDetails && (
                               <div className="text-xs text-slate-500 mt-0.5">{subDetails}</div>
                             )}
                           </td>
-                          <td className="border border-slate-200 px-4 py-2 text-slate-900">
+                          <td className="border border-slate-200 px-4 py-2.5 text-right text-slate-900 font-medium whitespace-nowrap">
                             {item.qty} {item.unit || ''}
                           </td>
-                          <td className="border border-slate-200 px-4 py-2 text-slate-900">{item.batchPref || 'N/A'}</td>
-                          <td className="border border-slate-200 px-4 py-2 text-slate-900">
-                            {item.expiryDate ? formatDate(item.expiryDate) : 'N/A'}
+                          <td className="border border-slate-200 px-4 py-2.5 text-right text-slate-900 whitespace-nowrap">
+                            {formatCurrency(unitPrice)}
                           </td>
-                          <td className="border border-slate-200 px-4 py-2 text-slate-900">{item.notes || 'N/A'}</td>
+                          <td className="border border-slate-200 px-4 py-2.5 text-right font-semibold text-slate-900 whitespace-nowrap">
+                            {formatCurrency(lineTotal)}
+                          </td>
+                          <td className="border border-slate-200 px-4 py-2.5 text-slate-900">{item.notes || 'N/A'}</td>
                         </tr>
                       );
                     })}
                   </tbody>
+                  <tfoot>
+                    <tr className="bg-slate-50 font-semibold text-slate-900">
+                      <td className="border border-slate-200 px-4 py-2.5 text-left">Total</td>
+                      <td className="border border-slate-200 px-4 py-2.5 text-right">{totalQuantity}</td>
+                      <td className="border border-slate-200 px-4 py-2.5"></td>
+                      <td className="border border-slate-200 px-4 py-2.5 text-right text-blue-700 text-base">{formatCurrency(grandTotal)}</td>
+                      <td className="border border-slate-200 px-4 py-2.5"></td>
+                    </tr>
+                  </tfoot>
                 </table>
+              </div>
+
+              {/* Total Summary */}
+              <div className="mt-4 flex justify-end">
+                <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 min-w-[260px] text-right">
+                  <div className="text-sm text-slate-600 mb-1">Total Requested Amount:</div>
+                  <div className="text-2xl font-bold text-blue-600">
+                    {formatCurrency(grandTotal)}
+                  </div>
+                </div>
               </div>
             </div>
           )}

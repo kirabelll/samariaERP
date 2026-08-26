@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardBody, CardHeader, Button, Input, Select } from '@/components/ui';
 
@@ -74,6 +74,7 @@ export default function NewVoucherPage() {
   const [loadingRefs, setLoadingRefs] = useState(false);
   // Multi-select for AGGREGATE deliveries
   const [selectedDeliveryIds, setSelectedDeliveryIds] = useState<Set<string>>(new Set());
+  const [deliverySearch, setDeliverySearch] = useState('');
 
   // Multi-transporter selection with amount state
   const [transporterMode, setTransporterMode] = useState<'single' | 'multi'>('multi');
@@ -740,23 +741,54 @@ export default function NewVoucherPage() {
     });
   };
 
+  // Filter source refs (deliveries/trips) by search query (matching POD number, dispatch no, driver, truck, etc.)
+  const filteredSourceRefs = useMemo(() => {
+    if (!deliverySearch.trim()) return sourceRefs;
+    const rawQ = deliverySearch.toLowerCase().trim();
+    const q = rawQ.replace(/^#+/, '').replace(/^pad\s*#*/i, '').replace(/^pod\s*#*/i, '').trim();
+
+    return sourceRefs.filter((r) => {
+      const pod = String(r.padNumber || '').toLowerCase();
+      const dispatchNo = String(r.dispatchNo || r.ref || '').toLowerCase();
+      const label = String(r.label || '').toLowerCase();
+      const driver = String(r.driverName || '').toLowerCase();
+      const plate = String(r.truckPlate || '').toLowerCase();
+
+      return (
+        pod.includes(rawQ) ||
+        (q && pod.includes(q)) ||
+        dispatchNo.includes(rawQ) ||
+        label.includes(rawQ) ||
+        driver.includes(rawQ) ||
+        plate.includes(rawQ)
+      );
+    });
+  }, [sourceRefs, deliverySearch]);
+
   const handleSelectAllDeliveries = () => {
-    if (selectedDeliveryIds.size === sourceRefs.length) {
-      // Deselect all
-      setSelectedDeliveryIds(new Set());
-      setFormData((prev) => ({ ...prev, sourceId: '', sourceReference: '', amount: '' }));
-    } else {
-      // Select all
-      const allIds = new Set(sourceRefs.map((r) => r.id));
-      const totalAmount = sourceRefs.reduce((sum, r) => sum + (r.amount || 0), 0);
-      setSelectedDeliveryIds(allIds);
-      setFormData((prev) => ({
-        ...prev,
-        sourceId: Array.from(allIds).join(','),
-        sourceReference: sourceRefs.map((r) => r.ref).join(', '),
-        amount: String(Math.round(totalAmount * 100) / 100),
+    const targetList = deliverySearch.trim() ? filteredSourceRefs : sourceRefs;
+    const targetIds = targetList.map((r) => r.id);
+    const allTargetSelected = targetIds.length > 0 && targetIds.every((id) => selectedDeliveryIds.has(id));
+
+    setSelectedDeliveryIds((prev) => {
+      const next = new Set(prev);
+      if (allTargetSelected) {
+        // Deselect filtered
+        targetIds.forEach((id) => next.delete(id));
+      } else {
+        // Select all filtered
+        targetIds.forEach((id) => next.add(id));
+      }
+      const selectedRefs = sourceRefs.filter((r) => next.has(r.id));
+      const totalAmount = selectedRefs.reduce((sum, r) => sum + (r.amount || 0), 0);
+      setFormData((f) => ({
+        ...f,
+        sourceId: Array.from(next).join(','),
+        sourceReference: selectedRefs.map((r) => r.ref).join(', '),
+        amount: totalAmount > 0 ? String(Math.round(totalAmount * 100) / 100) : '',
       }));
-    }
+      return next;
+    });
   };
 
   const handleBankSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -1131,8 +1163,8 @@ export default function NewVoucherPage() {
               />
 
               {formData.sourceModule && sourceRefs.length > 0 && (formData.sourceModule === 'AGGREGATE' || formData.sourceModule === 'TRANSPORTER') && (
-                <div>
-                  <div className="flex items-center justify-between mb-1.5">
+                <div className="space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
                     <label className="block text-[13px] font-medium text-[#86868B] uppercase tracking-wider">
                       Select {formData.sourceModule === 'TRANSPORTER' ? 'Transporter Trips / Dispatches' : 'Deliveries'} to Settle ({selectedDeliveryIds.size} selected)
                     </label>
@@ -1141,76 +1173,126 @@ export default function NewVoucherPage() {
                       onClick={handleSelectAllDeliveries}
                       className="text-xs font-semibold text-blue-600 hover:text-blue-700 underline"
                     >
-                      {selectedDeliveryIds.size === sourceRefs.length ? 'Deselect All' : 'Select All'}
+                      {filteredSourceRefs.length > 0 && filteredSourceRefs.every((r) => selectedDeliveryIds.has(r.id))
+                        ? (deliverySearch ? 'Deselect Filtered' : 'Deselect All')
+                        : (deliverySearch ? `Select All Filtered (${filteredSourceRefs.length})` : 'Select All')}
                     </button>
                   </div>
-                  <div className="border border-[#D2D2D7] rounded-xl overflow-hidden bg-white/80">
-                    <div className="px-4 py-2 bg-gray-50 border-b border-[#D2D2D7] flex items-center justify-between">
-                      <label className="flex items-center gap-2 cursor-pointer text-sm">
-                        <input
-                          type="checkbox"
-                          checked={selectedDeliveryIds.size === sourceRefs.length && sourceRefs.length > 0}
-                          onChange={handleSelectAllDeliveries}
-                          className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"
-                        />
-                        <span className="font-medium text-slate-700">Select All ({sourceRefs.length})</span>
-                      </label>
-                      {selectedDeliveryIds.size > 0 && (
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-slate-500 font-medium">Selected Total:</span>
-                          <span className="text-sm font-bold text-blue-600">
-                            ETB {sourceRefs.filter((r) => selectedDeliveryIds.has(r.id)).reduce((s, r) => s + (r.amount || 0), 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                          </span>
-                        </div>
-                      )}
+
+                  {/* Search box for POD / Dispatch number */}
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                      </svg>
                     </div>
-                    <div className="max-h-72 overflow-y-auto divide-y divide-gray-100">
-                      {sourceRefs.map((ref) => {
-                        const isSelected = selectedDeliveryIds.has(ref.id);
-                        return (
-                          <label
-                            key={ref.id}
-                            className={`flex items-center gap-3 px-4 py-3 cursor-pointer transition-colors ${isSelected ? 'bg-blue-50/70' : 'hover:bg-gray-50'}`}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={isSelected}
-                              onChange={() => handleDeliveryToggle(ref.id)}
-                              className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"
-                            />
-                            <div className="flex-1 text-sm min-w-0">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <span className="font-semibold text-slate-900">
-                                  Dispatch: {ref.dispatchNo || ref.ref}
-                                </span>
-                                {ref.padNumber && ref.padNumber !== 'N/A' && (
-                                  <span className="px-2 py-0.5 bg-blue-50 text-blue-700 text-xs font-semibold rounded-md border border-blue-200">
-                                    POD: {ref.padNumber}
-                                  </span>
-                                )}
-                                {(ref.driverName || ref.truckPlate) && (
-                                  <span className="px-2 py-0.5 bg-gray-100 text-gray-700 text-xs font-medium rounded-md">
-                                    🚚 {ref.driverName || ''} {ref.truckPlate ? `(${ref.truckPlate})` : ''}
-                                  </span>
-                                )}
-                              </div>
-                              <p className="text-xs text-slate-500 mt-0.5 truncate">{ref.label}</p>
-                            </div>
-                            <div className="text-right whitespace-nowrap ml-3">
-                              <span className="text-sm font-bold text-slate-900">
-                                ETB {(ref.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                              </span>
-                              <p className="text-[11px] font-medium text-slate-500">
-                                {formData.payeeType === 'CUSTOMER' ? 'Customer Receivable' :
-                                 formData.payeeType === 'TRANSPORTER' || formData.sourceModule === 'TRANSPORTER' ? 'Transporter Freight' :
-                                 formData.payeeType === 'SUPPLIER' ? 'Supplier Material' : 'Payable'}
-                              </p>
-                            </div>
-                          </label>
-                        );
-                      })}
-                    </div>
+                    <input
+                      type="text"
+                      value={deliverySearch}
+                      onChange={(e) => setDeliverySearch(e.target.value)}
+                      placeholder="Search deliveries by POD number (e.g. 01995), Dispatch No, or Truck..."
+                      className="block w-full pl-9 pr-8 py-2 text-sm bg-white border border-[#D2D2D7] rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-900 placeholder:text-slate-400"
+                    />
+                    {deliverySearch && (
+                      <button
+                        type="button"
+                        onClick={() => setDeliverySearch('')}
+                        className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    )}
                   </div>
+
+                  {filteredSourceRefs.length === 0 ? (
+                    <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-center">
+                      <p className="text-slate-600 text-sm">
+                        No deliveries matching &quot;{deliverySearch}&quot;
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setDeliverySearch('')}
+                        className="text-xs text-blue-600 font-semibold mt-1 hover:underline"
+                      >
+                        Clear search filter
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="border border-[#D2D2D7] rounded-xl overflow-hidden bg-white/80">
+                      <div className="px-4 py-2 bg-gray-50 border-b border-[#D2D2D7] flex items-center justify-between">
+                        <label className="flex items-center gap-2 cursor-pointer text-sm">
+                          <input
+                            type="checkbox"
+                            checked={
+                              filteredSourceRefs.length > 0 &&
+                              filteredSourceRefs.every((r) => selectedDeliveryIds.has(r.id))
+                            }
+                            onChange={handleSelectAllDeliveries}
+                            className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"
+                          />
+                          <span className="font-medium text-slate-700">
+                            Select All {deliverySearch ? `Filtered (${filteredSourceRefs.length})` : `(${sourceRefs.length})`}
+                          </span>
+                        </label>
+                        {selectedDeliveryIds.size > 0 && (
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-slate-500 font-medium">Selected Total:</span>
+                            <span className="text-sm font-bold text-blue-600">
+                              ETB {sourceRefs.filter((r) => selectedDeliveryIds.has(r.id)).reduce((s, r) => s + (r.amount || 0), 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                      <div className="max-h-72 overflow-y-auto divide-y divide-gray-100">
+                        {filteredSourceRefs.map((ref) => {
+                          const isSelected = selectedDeliveryIds.has(ref.id);
+                          return (
+                            <label
+                              key={ref.id}
+                              className={`flex items-center gap-3 px-4 py-3 cursor-pointer transition-colors ${isSelected ? 'bg-blue-50/70' : 'hover:bg-gray-50'}`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={() => handleDeliveryToggle(ref.id)}
+                                className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"
+                              />
+                              <div className="flex-1 text-sm min-w-0">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span className="font-semibold text-slate-900">
+                                    Dispatch: {ref.dispatchNo || ref.ref}
+                                  </span>
+                                  {ref.padNumber && ref.padNumber !== 'N/A' && (
+                                    <span className="px-2 py-0.5 bg-blue-50 text-blue-700 text-xs font-semibold rounded-md border border-blue-200">
+                                      POD: {ref.padNumber}
+                                    </span>
+                                  )}
+                                  {(ref.driverName || ref.truckPlate) && (
+                                    <span className="px-2 py-0.5 bg-gray-100 text-gray-700 text-xs font-medium rounded-md">
+                                      🚚 {ref.driverName || ''} {ref.truckPlate ? `(${ref.truckPlate})` : ''}
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-xs text-slate-500 mt-0.5 truncate">{ref.label}</p>
+                              </div>
+                              <div className="text-right whitespace-nowrap ml-3">
+                                <span className="text-sm font-bold text-slate-900">
+                                  ETB {(ref.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </span>
+                                <p className="text-[11px] font-medium text-slate-500">
+                                  {formData.payeeType === 'CUSTOMER' ? 'Customer Receivable' :
+                                   formData.payeeType === 'TRANSPORTER' || formData.sourceModule === 'TRANSPORTER' ? 'Transporter Freight' :
+                                   formData.payeeType === 'SUPPLIER' ? 'Supplier Material' : 'Payable'}
+                                </p>
+                              </div>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                   {loadingRefs && <p className="text-xs text-slate-500 mt-1">Loading references...</p>}
                 </div>
               )}

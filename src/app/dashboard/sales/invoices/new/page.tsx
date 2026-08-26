@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Card, CardHeader, CardBody, Button, Input } from '@/components/ui';
@@ -73,6 +73,7 @@ export default function NewInvoicePage() {
   const [selectedDispatchIds, setSelectedDispatchIds] = useState<string[]>([]);
   const [selectedLiftingIds, setSelectedLiftingIds] = useState<string[]>([]);
   const [groupByCategory, setGroupByCategory] = useState(false);
+  const [dispatchSearch, setDispatchSearch] = useState('');
   const [items, setItems] = useState<InvoiceItem[]>([]);
   const [saving, setSaving] = useState(false);
   const [applyWithholding, setApplyWithholding] = useState(false);
@@ -316,15 +317,48 @@ export default function NewInvoicePage() {
     updateItemsFromDispatches(updated, undefined, groupByCategory);
   };
 
+  // Filter dispatches by search query (matching POD number, dispatch no, date, truck, driver, etc.)
+  const filteredDispatches = useMemo(() => {
+    if (!dispatchSearch.trim()) return aggregateDispatches;
+    const q = dispatchSearch.toLowerCase().trim().replace(/^#+/, '').replace(/^pad\s*#*/i, '').trim();
+    const rawQ = dispatchSearch.toLowerCase().trim();
+    return aggregateDispatches.filter((d: any) => {
+      const pod = String(d.padNumber || d.podNumber || '').toLowerCase();
+      const dispatchNo = String(d.dispatchNo || '').toLowerCase();
+      const date = d.dispatchDate || d.createdAt
+        ? new Date(d.dispatchDate || d.createdAt).toLocaleDateString().toLowerCase()
+        : '';
+      const driver = String(d.driverName || '').toLowerCase();
+      const plate = String(d.plateNumber || d.truck?.plateNumber || '').toLowerCase();
+      const volume = String(d.deliveredVolume || d.loadedVolume || '').toLowerCase();
+
+      return (
+        pod.includes(rawQ) ||
+        (q && pod.includes(q)) ||
+        dispatchNo.includes(rawQ) ||
+        date.includes(rawQ) ||
+        driver.includes(rawQ) ||
+        plate.includes(rawQ) ||
+        volume.includes(rawQ)
+      );
+    });
+  }, [aggregateDispatches, dispatchSearch]);
+
   const toggleAllDispatches = () => {
-    if (selectedDispatchIds.length === aggregateDispatches.length) {
-      setSelectedDispatchIds([]);
-      updateItemsFromDispatches([], undefined, groupByCategory);
+    const targetList = dispatchSearch.trim() ? filteredDispatches : aggregateDispatches;
+    const targetIds = targetList.map((d) => d.id);
+    const allTargetSelected = targetIds.length > 0 && targetIds.every((id) => selectedDispatchIds.includes(id));
+
+    let updated: string[];
+    if (allTargetSelected) {
+      // Deselect filtered/visible items
+      updated = selectedDispatchIds.filter((id) => !targetIds.includes(id));
     } else {
-      const allIds = aggregateDispatches.map((d) => d.id);
-      setSelectedDispatchIds(allIds);
-      updateItemsFromDispatches(allIds, undefined, groupByCategory);
+      // Add all filtered/visible items to current selection
+      updated = Array.from(new Set([...selectedDispatchIds, ...targetIds]));
     }
+    setSelectedDispatchIds(updated);
+    updateItemsFromDispatches(updated, undefined, groupByCategory);
   };
 
   // Helper to identify and resolve exact item name from ID, code, system items, or agreements
@@ -1052,7 +1086,7 @@ export default function NewInvoicePage() {
           {/* Aggregate Dispatch Checkbox Table */}
           {partyId && division === 'AGGREGATE' && (
             <div className="space-y-3">
-              <div className="flex justify-between items-center">
+              <div className="flex flex-wrap justify-between items-center gap-2">
                 <label className="block text-sm font-semibold text-slate-900">
                   Select Aggregate Dispatches ({selectedDispatchIds.length} selected)
                 </label>
@@ -1062,12 +1096,41 @@ export default function NewInvoicePage() {
                     onClick={toggleAllDispatches}
                     className="text-xs font-semibold text-blue-600 hover:text-blue-800"
                   >
-                    {selectedDispatchIds.length === aggregateDispatches.length
-                      ? 'Deselect All'
-                      : 'Select All Dispatches'}
+                    {filteredDispatches.length > 0 && filteredDispatches.every((d) => selectedDispatchIds.includes(d.id))
+                      ? (dispatchSearch ? 'Deselect Filtered' : 'Deselect All')
+                      : (dispatchSearch ? `Select All Filtered (${filteredDispatches.length})` : 'Select All Dispatches')}
                   </button>
                 )}
               </div>
+
+              {/* Search Box by POD / Dispatch No */}
+              {aggregateDispatches.length > 0 && (
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                  </div>
+                  <input
+                    type="text"
+                    value={dispatchSearch}
+                    onChange={(e) => setDispatchSearch(e.target.value)}
+                    placeholder="Search by POD number (e.g. 01995), Dispatch No, or Date..."
+                    className="block w-full pl-9 pr-8 py-2 text-sm bg-white border border-slate-300 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 text-slate-900 placeholder:text-slate-400"
+                  />
+                  {dispatchSearch && (
+                    <button
+                      type="button"
+                      onClick={() => setDispatchSearch('')}
+                      className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  )}
+                </div>
+              )}
 
               {loadingDispatches ? (
                 <p className="text-blue-600 text-sm">Loading aggregate dispatches...</p>
@@ -1080,6 +1143,19 @@ export default function NewInvoicePage() {
                     You can manually add invoice items below.
                   </p>
                 </div>
+              ) : filteredDispatches.length === 0 ? (
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-center">
+                  <p className="text-slate-600 text-sm">
+                    No dispatches matching &quot;{dispatchSearch}&quot;
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setDispatchSearch('')}
+                    className="text-xs text-blue-600 font-semibold mt-1 hover:underline"
+                  >
+                    Clear search filter
+                  </button>
+                </div>
               ) : (
                 <div className="border border-slate-200 rounded-xl overflow-hidden max-h-72 overflow-y-auto">
                   <table className="w-full text-left text-sm">
@@ -1089,8 +1165,8 @@ export default function NewInvoicePage() {
                           <input
                             type="checkbox"
                             checked={
-                              aggregateDispatches.length > 0 &&
-                              selectedDispatchIds.length === aggregateDispatches.length
+                              filteredDispatches.length > 0 &&
+                              filteredDispatches.every((d) => selectedDispatchIds.includes(d.id))
                             }
                             onChange={toggleAllDispatches}
                             className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
@@ -1103,7 +1179,7 @@ export default function NewInvoicePage() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 bg-white">
-                      {aggregateDispatches.map((d) => {
+                      {filteredDispatches.map((d) => {
                         const isChecked = selectedDispatchIds.includes(d.id);
                         return (
                           <tr
@@ -1122,7 +1198,7 @@ export default function NewInvoicePage() {
                               />
                             </td>
                             <td className="py-2.5 px-3 font-semibold text-slate-900">{d.dispatchNo}</td>
-                            <td className="py-2.5 px-3 text-slate-600">Pad #{d.padNumber || 'N/A'}</td>
+                            <td className="py-2.5 px-3 text-slate-600 font-medium">Pad #{d.padNumber || 'N/A'}</td>
                             <td className="py-2.5 px-3 text-slate-900 font-semibold">
                               {Number(d.deliveredVolume || d.loadedVolume || 0).toLocaleString('en-US')} m³
                             </td>

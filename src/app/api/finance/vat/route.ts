@@ -104,25 +104,88 @@ export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
     const periodId = searchParams.get('periodId');
+    const startDateParam = searchParams.get('startDate') || searchParams.get('from');
+    const endDateParam = searchParams.get('endDate') || searchParams.get('to');
 
     // Auto-create VAT periods if needed
     const periods = await ensureVatPeriodsExist();
 
-    // Calculate summary totals across ALL periods from invoices and cement purchases
+    // Prepare date filter for sales invoices and cement purchases
+    let invoiceDateWhere: any = {};
+    let purchaseDateWhere: any = {};
+
+    let startDateObj: Date | null = null;
+    let endDateObj: Date | null = null;
+
+    if (startDateParam) {
+      startDateObj = new Date(startDateParam);
+      startDateObj.setHours(0, 0, 0, 0);
+    }
+
+    if (endDateParam) {
+      endDateObj = new Date(endDateParam);
+      endDateObj.setHours(23, 59, 59, 999);
+    }
+
+    if (startDateObj && endDateObj) {
+      invoiceDateWhere = {
+        invoiceDate: {
+          gte: startDateObj,
+          lte: endDateObj,
+        },
+      };
+      purchaseDateWhere = {
+        createdAt: {
+          gte: startDateObj,
+          lte: endDateObj,
+        },
+      };
+    } else if (startDateObj) {
+      invoiceDateWhere = {
+        invoiceDate: {
+          gte: startDateObj,
+        },
+      };
+      purchaseDateWhere = {
+        createdAt: {
+          gte: startDateObj,
+        },
+      };
+    } else if (endDateObj) {
+      invoiceDateWhere = {
+        invoiceDate: {
+          lte: endDateObj,
+        },
+      };
+      purchaseDateWhere = {
+        createdAt: {
+          lte: endDateObj,
+        },
+      };
+    }
+
+    // Query sales invoices matching date filter
     const allSalesInvoices = await prisma.salesInvoice.findMany({
       where: {
         status: { not: 'Cancelled' },
+        ...invoiceDateWhere,
       },
+      include: {
+        customer: { select: { companyName: true } },
+      },
+      orderBy: { invoiceDate: 'desc' },
     });
 
-    // Input VAT: from CementPurchase records that have VAT
+    // Query cement purchases with VAT matching date filter
     const allCementPurchasesWithVat = await prisma.cementPurchase.findMany({
       where: {
         vatAmount: { gt: 0 },
+        ...purchaseDateWhere,
       },
       include: {
         factory: { select: { name: true } },
       },
+      orderBy: { createdAt: 'desc' },
     });
 
     // Calculate totals - use Number() to safely handle potential null/undefined
@@ -136,7 +199,7 @@ export async function GET(request: NextRequest) {
     );
     const netVatPayable = totalOutputVat - totalInputVat;
 
-    // If a specific period is requested, get its invoice details and calculate its VAT
+    // Detailed transactions
     let salesInvoices: any[] = [];
     let cementPurchases: any[] = [];
     let periodSummary = { outputVat: 0, inputVat: 0, netVat: 0 };
@@ -145,7 +208,7 @@ export async function GET(request: NextRequest) {
       const period = periods.find((p) => p.id === periodId);
       if (period) {
         // Get sales invoices for the period
-        salesInvoices = await prisma.salesInvoice.findMany({
+        const periodSalesInvoices = await prisma.salesInvoice.findMany({
           where: {
             invoiceDate: {
               gte: period.startDate,
@@ -157,11 +220,11 @@ export async function GET(request: NextRequest) {
             customer: { select: { companyName: true } },
           },
           orderBy: { invoiceDate: 'desc' },
-          take: 50,
+          take: 100,
         });
 
         // Map customer companyName to name for frontend compatibility
-        salesInvoices = salesInvoices.map((inv: any) => ({
+        salesInvoices = periodSalesInvoices.map((inv: any) => ({
           ...inv,
           customer: inv.customer ? { name: inv.customer.companyName } : null,
         }));
@@ -179,7 +242,7 @@ export async function GET(request: NextRequest) {
             factory: { select: { name: true } },
           },
           orderBy: { createdAt: 'desc' },
-          take: 50,
+          take: 100,
         });
 
         // Calculate VAT for this specific period
@@ -197,23 +260,47 @@ export async function GET(request: NextRequest) {
           netVat: periodOutputVat - periodInputVat,
         };
       }
+    } else {
+      // Return the invoices and purchases matching the date filter
+      salesInvoices = allSalesInvoices.slice(0, 100).map((inv: any) => ({
+        ...inv,
+        customer: inv.customer ? { name: inv.customer.companyName } : null,
+      }));
+      cementPurchases = allCementPurchasesWithVat.slice(0, 100);
     }
 
-    // Enhance periods with calculated VAT amounts from actual transaction data
+    // Enhance periods with calculated VAT amounts
+    // Query full dataset for period calculations if date filtering narrowed allSalesInvoices
+    let periodSalesData = allSalesInvoices;
+    let periodPurchasesData = allCementPurchasesWithVat;
+
+    if (startDateParam || endDateParam) {
+      // Fetch full data for period summaries so periods table remains accurate
+      periodSalesData = await prisma.salesInvoice.findMany({
+        where: { status: { not: 'Cancelled' } },
+        select: { invoiceDate: true, vatAmount: true },
+      }) as any;
+
+      periodPurchasesData = await prisma.cementPurchase.findMany({
+        where: { vatAmount: { gt: 0 } },
+        select: { createdAt: true, vatAmount: true },
+      }) as any;
+    }
+
     const enhancedPeriods = periods.map((period) => {
-      const periodSalesInvoices = allSalesInvoices.filter(
-        (inv) => inv.invoiceDate >= period.startDate && inv.invoiceDate <= period.endDate
+      const periodSales = periodSalesData.filter(
+        (inv) => new Date(inv.invoiceDate) >= new Date(period.startDate) && new Date(inv.invoiceDate) <= new Date(period.endDate)
       );
-      const periodCementPurchases = allCementPurchasesWithVat.filter(
+      const periodPurchases = periodPurchasesData.filter(
         (purchase) =>
-          purchase.createdAt >= period.startDate && purchase.createdAt <= period.endDate
+          new Date(purchase.createdAt) >= new Date(period.startDate) && new Date(purchase.createdAt) <= new Date(period.endDate)
       );
 
-      const outputVat = periodSalesInvoices.reduce(
+      const outputVat = periodSales.reduce(
         (sum, inv) => sum + (Number(inv.vatAmount) || 0),
         0
       );
-      const inputVat = periodCementPurchases.reduce(
+      const inputVat = periodPurchases.reduce(
         (sum, purchase) => sum + (Number(purchase.vatAmount) || 0),
         0
       );
@@ -236,6 +323,8 @@ export async function GET(request: NextRequest) {
           netVatPayable,
           salesInvoicesCount: allSalesInvoices.length,
           cementPurchasesCount: allCementPurchasesWithVat.length,
+          startDate: startDateParam || null,
+          endDate: endDateParam || null,
         },
         periods: enhancedPeriods,
         salesInvoices,

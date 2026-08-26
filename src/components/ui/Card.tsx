@@ -1,21 +1,92 @@
 'use client';
 
-import React, { ReactNode } from 'react';
+import * as React from 'react';
+import { cn } from '@/lib/utils';
 
-interface CardProps {
-  children: ReactNode;
-  className?: string;
+export interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
   padded?: boolean;
-  style?: React.CSSProperties;
 }
 
-interface CardSectionProps {
-  children: ReactNode;
-  className?: string;
-}
+const Card = React.forwardRef<HTMLDivElement, CardProps>(
+  ({ className, padded = false, children, ...props }, ref) => {
+    return (
+      <div
+        ref={ref}
+        className={cn(
+          'rounded-xl border border-border bg-card text-card-foreground shadow-sm transition-all',
+          padded && 'p-6',
+          className
+        )}
+        {...props}
+      >
+        {children}
+      </div>
+    );
+  }
+);
+Card.displayName = 'Card';
 
-interface StatCardProps {
-  icon: ReactNode;
+export const CardHeader = React.forwardRef<
+  HTMLDivElement,
+  React.HTMLAttributes<HTMLDivElement>
+>(({ className, ...props }, ref) => (
+  <div
+    ref={ref}
+    className={cn('flex flex-col space-y-1.5 p-6 border-b border-border/40', className)}
+    {...props}
+  />
+));
+CardHeader.displayName = 'CardHeader';
+
+export const CardTitle = React.forwardRef<
+  HTMLHeadingElement,
+  React.HTMLAttributes<HTMLHeadingElement>
+>(({ className, ...props }, ref) => (
+  <h3
+    ref={ref}
+    className={cn('font-semibold leading-none tracking-tight text-foreground text-lg', className)}
+    {...props}
+  />
+));
+CardTitle.displayName = 'CardTitle';
+
+export const CardDescription = React.forwardRef<
+  HTMLParagraphElement,
+  React.HTMLAttributes<HTMLParagraphElement>
+>(({ className, ...props }, ref) => (
+  <p
+    ref={ref}
+    className={cn('text-sm text-muted-foreground', className)}
+    {...props}
+  />
+));
+CardDescription.displayName = 'CardDescription';
+
+export const CardContent = React.forwardRef<
+  HTMLDivElement,
+  React.HTMLAttributes<HTMLDivElement>
+>(({ className, ...props }, ref) => (
+  <div ref={ref} className={cn('p-6', className)} {...props} />
+));
+CardContent.displayName = 'CardContent';
+
+// Legacy compatibility alias
+export const CardBody = CardContent;
+
+export const CardFooter = React.forwardRef<
+  HTMLDivElement,
+  React.HTMLAttributes<HTMLDivElement>
+>(({ className, ...props }, ref) => (
+  <div
+    ref={ref}
+    className={cn('flex items-center p-6 pt-0 border-t border-border/40 bg-muted/20 rounded-b-xl', className)}
+    {...props}
+  />
+));
+CardFooter.displayName = 'CardFooter';
+
+export interface StatCardProps {
+  icon: React.ReactNode;
   label: string;
   value: string | number;
   trend?: {
@@ -28,43 +99,8 @@ interface StatCardProps {
   tint?: string;
   color?: string;
   mono?: boolean;
-  // Legacy compat
   backgroundColor?: string;
   iconColor?: string;
-}
-
-export function CardHeader({ children, className = '' }: CardSectionProps) {
-  return (
-    <div
-      className={className}
-      style={{
-        padding: '20px 24px',
-        borderBottom: '1px solid var(--surface-2)',
-      }}
-    >
-      {children}
-    </div>
-  );
-}
-
-export function CardBody({ children, className = '' }: CardSectionProps) {
-  return <div className={className} style={{ padding: '20px 24px' }}>{children}</div>;
-}
-
-export function CardFooter({ children, className = '' }: CardSectionProps) {
-  return (
-    <div
-      className={className}
-      style={{
-        padding: '16px 24px',
-        borderTop: '1px solid var(--surface-2)',
-        background: 'var(--surface-1)',
-        borderRadius: '0 0 16px 16px',
-      }}
-    >
-      {children}
-    </div>
-  );
 }
 
 export function StatCard({
@@ -72,13 +108,12 @@ export function StatCard({
   label,
   value,
   trend,
-  tint = '#E5F0FF',
-  color = '#0B6DE5',
+  tint,
+  color,
   mono = true,
   backgroundColor,
   iconColor,
 }: StatCardProps) {
-  // Determine trend display
   let trendUp = false;
   let trendLabel = '';
   if (trend) {
@@ -92,93 +127,53 @@ export function StatCard({
   }
 
   return (
-    <div
-      style={{
-        background: 'var(--surface-0)',
-        borderRadius: 16,
-        border: '1px solid var(--border)',
-        boxShadow: 'var(--shadow-md)',
-        padding: 18,
-      }}
-    >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
-        <div style={{ minWidth: 0 }}>
-          <div style={{
-            fontFamily: 'var(--font-sans)',
-            fontSize: 11,
-            fontWeight: 600,
-            letterSpacing: '0.10em',
-            textTransform: 'uppercase',
-            color: 'var(--fg-2)',
-            marginBottom: 6,
-          }}>
-            {label}
-          </div>
-          <div style={{
-            fontFamily: mono ? 'var(--font-mono)' : 'var(--font-sans)',
-            fontSize: 28,
-            lineHeight: '32px',
-            fontWeight: 700,
-            letterSpacing: '-0.01em',
-            color: 'var(--fg-1)',
-          }}>
-            {value}
-          </div>
-          {trend && trendLabel && (
-            <div style={{
-              fontSize: 12,
-              color: trendUp ? '#248A3D' : '#D70015',
-              marginTop: 4,
-              fontWeight: 600,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4,
-            }}>
-              {trendUp ? '↑' : '↓'} {trendLabel}
-            </div>
-          )}
-        </div>
+    <Card className="p-5 flex flex-col justify-between hover:border-primary/40 transition-colors">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          {label}
+        </span>
         <div
+          className="p-2 rounded-lg flex items-center justify-center shrink-0"
           style={{
-            width: 40,
-            height: 40,
-            borderRadius: 12,
-            background: backgroundColor || tint,
-            color: iconColor || color,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            flexShrink: 0,
+            background: backgroundColor || tint || 'hsl(var(--primary) / 0.1)',
+            color: iconColor || color || 'hsl(var(--primary))',
           }}
         >
           {icon}
         </div>
       </div>
-    </div>
+      <div className="mt-3">
+        <div
+          className={cn(
+            'text-2xl font-bold tracking-tight text-foreground',
+            mono ? 'font-mono' : 'font-sans'
+          )}
+        >
+          {value}
+        </div>
+        {trend && trendLabel && (
+          <div
+            className={cn(
+              'flex items-center gap-1 text-xs font-medium mt-1.5',
+              trendUp ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
+            )}
+          >
+            <span>{trendUp ? '↑' : '↓'}</span>
+            <span>{trendLabel}</span>
+          </div>
+        )}
+      </div>
+    </Card>
   );
 }
 
-function Card({ children, className = '', padded = true, style: styleProp }: CardProps) {
-  return (
-    <div
-      className={className}
-      style={{
-        background: 'var(--surface-0)',
-        borderRadius: 16,
-        border: '1px solid var(--border)',
-        boxShadow: 'var(--shadow-md)',
-        padding: padded ? 24 : 0,
-        ...styleProp,
-      }}
-    >
-      {children}
-    </div>
-  );
-}
+(Card as any).Header = CardHeader;
+(Card as any).Title = CardTitle;
+(Card as any).Description = CardDescription;
+(Card as any).Content = CardContent;
+(Card as any).Body = CardBody;
+(Card as any).Footer = CardFooter;
+(Card as any).Stat = StatCard;
 
-Card.Header = CardHeader;
-Card.Body = CardBody;
-Card.Footer = CardFooter;
-Card.Stat = StatCard;
-
+export { Card };
 export default Card;

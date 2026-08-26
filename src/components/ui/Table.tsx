@@ -1,20 +1,146 @@
 'use client';
 
-import React, { ReactNode, useState } from 'react';
+import * as React from 'react';
+import { cn } from '@/lib/utils';
 import Button from './Button';
+
+// -------------------------------------------------------------
+// Shadcn Table Primitives
+// -------------------------------------------------------------
+
+export function TableContainer({
+  className,
+  ...props
+}: React.HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div
+      className={cn(
+        'relative w-full overflow-x-auto rounded-xl border border-border bg-card shadow-sm',
+        className
+      )}
+      {...props}
+    />
+  );
+}
+
+const TableRoot = React.forwardRef<
+  HTMLTableElement,
+  React.TableHTMLAttributes<HTMLTableElement>
+>(({ className, ...props }, ref) => (
+  <table
+    ref={ref}
+    className={cn('w-full caption-bottom text-sm text-left', className)}
+    {...props}
+  />
+));
+TableRoot.displayName = 'TableRoot';
+
+const TableHeader = React.forwardRef<
+  HTMLTableSectionElement,
+  React.HTMLAttributes<HTMLTableSectionElement>
+>(({ className, ...props }, ref) => (
+  <thead
+    ref={ref}
+    className={cn('bg-muted/50 border-b border-border text-xs uppercase tracking-wider text-muted-foreground font-semibold', className)}
+    {...props}
+  />
+));
+TableHeader.displayName = 'TableHeader';
+
+const TableBody = React.forwardRef<
+  HTMLTableSectionElement,
+  React.HTMLAttributes<HTMLTableSectionElement>
+>(({ className, ...props }, ref) => (
+  <tbody
+    ref={ref}
+    className={cn('divide-y divide-border/60 [&_tr:last-child]:border-0', className)}
+    {...props}
+  />
+));
+TableBody.displayName = 'TableBody';
+
+const TableFooter = React.forwardRef<
+  HTMLTableSectionElement,
+  React.HTMLAttributes<HTMLTableSectionElement>
+>(({ className, ...props }, ref) => (
+  <tfoot
+    ref={ref}
+    className={cn('border-t border-border bg-muted/50 font-medium [&>tr]:last:border-b-0', className)}
+    {...props}
+  />
+));
+TableFooter.displayName = 'TableFooter';
+
+const TableRow = React.forwardRef<
+  HTMLTableRowElement,
+  React.HTMLAttributes<HTMLTableRowElement>
+>(({ className, ...props }, ref) => (
+  <tr
+    ref={ref}
+    className={cn(
+      'border-b border-border/40 transition-colors hover:bg-muted/40 data-[state=selected]:bg-muted',
+      className
+    )}
+    {...props}
+  />
+));
+TableRow.displayName = 'TableRow';
+
+const TableHead = React.forwardRef<
+  HTMLTableCellElement,
+  React.ThHTMLAttributes<HTMLTableCellElement>
+>(({ className, ...props }, ref) => (
+  <th
+    ref={ref}
+    className={cn(
+      'h-11 px-4 text-left align-middle font-medium text-muted-foreground whitespace-nowrap',
+      className
+    )}
+    {...props}
+  />
+));
+TableHead.displayName = 'TableHead';
+
+const TableCell = React.forwardRef<
+  HTMLTableCellElement,
+  React.TdHTMLAttributes<HTMLTableCellElement>
+>(({ className, ...props }, ref) => (
+  <td
+    ref={ref}
+    className={cn('p-4 align-middle text-foreground whitespace-nowrap text-sm', className)}
+    {...props}
+  />
+));
+TableCell.displayName = 'TableCell';
+
+const TableCaption = React.forwardRef<
+  HTMLTableCaptionElement,
+  React.HTMLAttributes<HTMLTableCaptionElement>
+>(({ className, ...props }, ref) => (
+  <caption
+    ref={ref}
+    className={cn('mt-4 text-sm text-muted-foreground', className)}
+    {...props}
+  />
+));
+TableCaption.displayName = 'TableCaption';
+
+// -------------------------------------------------------------
+// High-Level Data Table Component (Backward-compatible with ERP)
+// -------------------------------------------------------------
 
 export interface ColumnDef<T> {
   header: string;
-  accessor: keyof T;
-  render?: (value: any, row: T) => ReactNode;
+  accessor: keyof T | string;
+  render?: (value: any, row: T) => React.ReactNode;
   sortable?: boolean;
   width?: string;
   hideOnMobile?: boolean;
 }
 
 interface TableProps<T> {
-  data: T[];
-  columns: ColumnDef<T>[];
+  data?: T[];
+  columns?: ColumnDef<T>[];
   isLoading?: boolean;
   emptyMessage?: string;
   onRowClick?: (row: T) => void;
@@ -22,6 +148,8 @@ interface TableProps<T> {
   totalPages?: number;
   currentPage?: number;
   onPageChange?: (page: number) => void;
+  children?: React.ReactNode;
+  className?: string;
 }
 
 type SortDirection = 'asc' | 'desc' | null;
@@ -34,10 +162,10 @@ interface SortConfig {
 const LoadingSkeleton = ({ rows = 5, cols = 4 }: { rows?: number; cols?: number }) => (
   <>
     {Array.from({ length: rows }).map((_, rowIdx) => (
-      <tr key={rowIdx} className="border-b border-[#F5F5F7]">
+      <tr key={rowIdx} className="border-b border-border/40">
         {Array.from({ length: cols }).map((_, colIdx) => (
-          <td key={colIdx} className="px-5 py-4">
-            <div className="h-4 bg-[#E8E8ED]/60 rounded animate-pulse"></div>
+          <td key={colIdx} className="p-4">
+            <div className="h-4 bg-muted animate-pulse rounded" />
           </td>
         ))}
       </tr>
@@ -45,7 +173,7 @@ const LoadingSkeleton = ({ rows = 5, cols = 4 }: { rows?: number; cols?: number 
   </>
 );
 
-function Table<T extends Record<string, any>>({
+function DataTable<T extends Record<string, any>>({
   data,
   columns,
   isLoading = false,
@@ -55,36 +183,39 @@ function Table<T extends Record<string, any>>({
   totalPages = 1,
   currentPage = 1,
   onPageChange,
-}: TableProps<T>) {
-  const [sortConfig, setSortConfig] = useState<SortConfig>({
+  children,
+  className,
+  ...props
+}: TableProps<T> & React.TableHTMLAttributes<HTMLTableElement>) {
+  // If used as primitive table without columns & data
+  if (!columns || !data) {
+    return (
+      <TableContainer className={className}>
+        <TableRoot {...props}>{children}</TableRoot>
+      </TableContainer>
+    );
+  }
+
+  const [sortConfig, setSortConfig] = React.useState<SortConfig>({
     key: null,
     direction: null,
   });
 
   const handleSort = (accessor: keyof T) => {
     let direction: SortDirection = 'asc';
-
-    if (
-      sortConfig.key === String(accessor) &&
-      sortConfig.direction === 'asc'
-    ) {
+    if (sortConfig.key === String(accessor) && sortConfig.direction === 'asc') {
       direction = 'desc';
-    } else if (
-      sortConfig.key === String(accessor) &&
-      sortConfig.direction === 'desc'
-    ) {
+    } else if (sortConfig.key === String(accessor) && sortConfig.direction === 'desc') {
       direction = null;
     }
-
     setSortConfig({
       key: direction ? String(accessor) : null,
       direction,
     });
   };
 
-  const getSortedData = () => {
+  const sortedData = React.useMemo(() => {
     let sorted = [...data];
-
     if (sortConfig.key && sortConfig.direction) {
       sorted.sort((a, b) => {
         let aValue = a[sortConfig.key as keyof T];
@@ -109,146 +240,90 @@ function Table<T extends Record<string, any>>({
         return 0;
       });
     }
-
     return sorted;
-  };
-
-  const sortedData = getSortedData();
-
-  const getSortIcon = (accessor: keyof T) => {
-    if (sortConfig.key !== String(accessor)) {
-      return '⇅';
-    }
-    return sortConfig.direction === 'asc' ? '↑' : '↓';
-  };
+  }, [data, sortConfig]);
 
   return (
-    <div className="overflow-x-auto rounded-2xl border border-[#E8E8ED]/60 -mx-3 sm:mx-0">
-      <table className="w-full text-sm text-left min-w-[480px] sm:min-w-0">
-        <thead className="bg-[#FAFAFA] border-b border-[#E8E8ED]">
+    <TableContainer className={className}>
+      <TableRoot>
+        <TableHeader>
           <tr>
             {columns.map((column) => (
-              <th
+              <TableHead
                 key={String(column.accessor)}
-                className={`px-5 py-4 font-semibold text-[#86868B] text-[12px] uppercase tracking-wider whitespace-nowrap ${
-                  column.hideOnMobile ? 'hidden md:table-cell' : ''
-                }`}
+                className={column.hideOnMobile ? 'hidden md:table-cell' : ''}
               >
                 {column.sortable ? (
                   <button
                     onClick={() => handleSort(column.accessor)}
-                    className="flex items-center gap-1.5 hover:text-[#007AFF] transition-colors"
+                    className="flex items-center gap-1.5 hover:text-foreground transition-colors cursor-pointer"
                   >
-                    {column.header}
-                    <span className="text-xs opacity-60">{getSortIcon(column.accessor)}</span>
+                    <span>{column.header}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {sortConfig.key === String(column.accessor)
+                        ? sortConfig.direction === 'asc'
+                          ? '↑'
+                          : '↓'
+                        : '⇅'}
+                    </span>
                   </button>
                 ) : (
                   column.header
                 )}
-              </th>
+              </TableHead>
             ))}
           </tr>
-        </thead>
-        <tbody>
+        </TableHeader>
+        <TableBody>
           {isLoading ? (
             <LoadingSkeleton rows={pageSize} cols={columns.length} />
           ) : sortedData.length === 0 ? (
             <tr>
               <td
                 colSpan={columns.length}
-                className="px-5 py-8 text-center text-[#86868B]"
+                className="p-8 text-center text-sm text-muted-foreground"
               >
                 {emptyMessage}
               </td>
             </tr>
           ) : (
             sortedData.map((row, rowIdx) => (
-              <tr
+              <TableRow
                 key={rowIdx}
                 onClick={() => onRowClick?.(row)}
-                className={`border-b border-[#F5F5F7] ${
-                  onRowClick ? 'cursor-pointer hover:bg-[#F5F5F7]/50 active:bg-[#F5F5F7]' : ''
-                } transition-colors`}
+                className={cn(onRowClick && 'cursor-pointer hover:bg-muted/50')}
               >
                 {columns.map((column) => (
-                  <td
+                  <TableCell
                     key={String(column.accessor)}
-                    className={`px-5 py-4 text-[#1D1D1F] text-[14px] ${
-                      column.hideOnMobile ? 'hidden md:table-cell' : ''
-                    }`}
+                    className={column.hideOnMobile ? 'hidden md:table-cell' : ''}
                   >
                     {column.render
                       ? column.render(row[column.accessor], row)
                       : row[column.accessor]}
-                  </td>
+                  </TableCell>
                 ))}
-              </tr>
+              </TableRow>
             ))
           )}
-        </tbody>
-      </table>
+        </TableBody>
+      </TableRoot>
 
       {totalPages > 1 && (
-        <div className="flex flex-col sm:flex-row items-center justify-between px-5 py-4 bg-white border-t border-[#E8E8ED] gap-3">
-          <div className="text-xs text-[#86868B]">
-            Page {currentPage} of {totalPages}
+        <div className="flex flex-col sm:flex-row items-center justify-between p-4 border-t border-border bg-card gap-3">
+          <div className="text-xs text-muted-foreground">
+            Page <span className="font-medium text-foreground">{currentPage}</span> of{' '}
+            <span className="font-medium text-foreground">{totalPages}</span>
           </div>
-          <div className="flex gap-2 flex-wrap justify-center">
+          <div className="flex items-center gap-1.5 flex-wrap justify-center">
             <Button
               size="sm"
               variant="outline"
               onClick={() => onPageChange?.(currentPage - 1)}
               disabled={currentPage === 1}
             >
-              Prev
+              Previous
             </Button>
-
-            {Array.from({ length: totalPages }).map((_, idx) => {
-              const pageNum = idx + 1;
-              const isCurrentPage = pageNum === currentPage;
-
-              if (totalPages > 5) {
-                if (
-                  pageNum === 1 ||
-                  pageNum === totalPages ||
-                  (pageNum >= currentPage - 1 && pageNum <= currentPage + 1)
-                ) {
-                  return (
-                    <Button
-                      key={pageNum}
-                      size="sm"
-                      variant={isCurrentPage ? 'primary' : 'outline'}
-                      onClick={() => onPageChange?.(pageNum)}
-                    >
-                      {pageNum}
-                    </Button>
-                  );
-                }
-                if (
-                  (pageNum === currentPage - 2 && currentPage > 3) ||
-                  (pageNum === currentPage + 2 && currentPage < totalPages - 2)
-                ) {
-                  return (
-                    <span key={pageNum} className="px-2 py-2 text-xs">
-                      ...
-                    </span>
-                  );
-                }
-                return null;
-              }
-
-              return (
-                <Button
-                  key={pageNum}
-                  size="sm"
-                  variant={isCurrentPage ? 'primary' : 'outline'}
-                  onClick={() => onPageChange?.(pageNum)}
-                >
-                  {pageNum}
-                </Button>
-              );
-            })}
-
             <Button
               size="sm"
               variant="outline"
@@ -260,8 +335,20 @@ function Table<T extends Record<string, any>>({
           </div>
         </div>
       )}
-    </div>
+    </TableContainer>
   );
 }
 
-export default Table;
+export {
+  DataTable as Table,
+  TableRoot,
+  TableHeader,
+  TableBody,
+  TableFooter,
+  TableHead,
+  TableRow,
+  TableCell,
+  TableCaption,
+};
+
+export default DataTable;

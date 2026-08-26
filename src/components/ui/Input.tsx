@@ -1,34 +1,31 @@
 'use client';
 
-import React, { InputHTMLAttributes, ReactNode } from 'react';
+import * as React from 'react';
+import { cn } from '@/lib/utils';
 
-interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
+export interface InputProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'size'> {
   label?: string;
   error?: string;
   helperText?: string;
-  icon?: ReactNode;
+  icon?: React.ReactNode;
   iconPosition?: 'left' | 'right';
+  size?: 'sm' | 'md' | 'lg' | number | string;
 }
 
-interface SelectProps extends React.SelectHTMLAttributes<HTMLSelectElement> {
+export interface SelectProps extends React.SelectHTMLAttributes<HTMLSelectElement> {
   label?: string;
   error?: string;
   helperText?: string;
-  options: Array<{ value: string | number; label: string }>;
+  options?: Array<{ value: string | number; label: string }>;
 }
 
-interface TextareaProps
+export interface TextareaProps
   extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {
   label?: string;
   error?: string;
   helperText?: string;
   maxLength?: number;
 }
-
-const baseInputStyles =
-  'w-full px-4 py-3 bg-white/80 border border-[#D2D2D7] rounded-xl focus:outline-none focus:ring-4 focus:ring-[rgba(0,122,255,0.25)] focus:border-[#007AFF] transition-all duration-200 disabled:bg-[#F5F5F7] disabled:cursor-not-allowed text-[#1D1D1F] placeholder:text-[#86868B]';
-
-const errorInputStyles = 'border-[#FF3B30] focus:ring-[rgba(255,59,48,0.25)] focus:border-[#FF3B30]';
 
 const Input = React.forwardRef<HTMLInputElement, InputProps>(
   (
@@ -38,6 +35,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
       helperText,
       icon,
       iconPosition = 'left',
+      size: _size,
       className = '',
       type = 'text',
       ...props
@@ -45,36 +43,40 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
     ref
   ) => {
     return (
-      <div className="w-full">
+      <div className="w-full space-y-1.5">
         {label && (
-          <label className="block text-[13px] font-medium text-[#86868B] uppercase tracking-wider mb-1.5">
+          <label className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             {label}
-            {props.required && <span className="text-[#FF3B30]">*</span>}
+            {props.required && <span className="text-destructive ml-1">*</span>}
           </label>
         )}
-        <div className="relative">
+        <div className="relative flex items-center">
           {icon && iconPosition === 'left' && (
-            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[#86868B]">
+            <span className="absolute left-3 text-muted-foreground pointer-events-none flex items-center">
               {icon}
             </span>
           )}
           <input
             ref={ref}
             type={type}
-            className={`${baseInputStyles} ${error ? errorInputStyles : ''} ${
-              icon && iconPosition === 'left' ? 'pl-10' : ''
-            } ${icon && iconPosition === 'right' ? 'pr-10' : ''} ${className}`}
+            className={cn(
+              'flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-xs transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 text-foreground',
+              icon && iconPosition === 'left' && 'pl-9',
+              icon && iconPosition === 'right' && 'pr-9',
+              error && 'border-destructive focus-visible:ring-destructive',
+              className
+            )}
             {...props}
           />
           {icon && iconPosition === 'right' && (
-            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[#86868B]">
+            <span className="absolute right-3 text-muted-foreground pointer-events-none flex items-center">
               {icon}
             </span>
           )}
         </div>
-        {error && <p className="mt-1.5 text-sm text-[#FF3B30]">{error}</p>}
+        {error && <p className="text-xs font-medium text-destructive">{error}</p>}
         {helperText && !error && (
-          <p className="mt-1.5 text-sm text-[#86868B]">{helperText}</p>
+          <p className="text-xs text-muted-foreground">{helperText}</p>
         )}
       </div>
     );
@@ -85,43 +87,47 @@ Input.displayName = 'Input';
 
 const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
   (
-    { label, error, helperText, options, className = '', ...props },
+    { label, error, helperText, options = [], className = '', children, ...props },
     ref
   ) => {
     return (
-      <div className="w-full">
+      <div className="w-full space-y-1.5">
         {label && (
-          <label className="block text-[13px] font-medium text-[#86868B] uppercase tracking-wider mb-1.5">
+          <label className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             {label}
-            {props.required && <span className="text-[#FF3B30]">*</span>}
+            {props.required && <span className="text-destructive ml-1">*</span>}
           </label>
         )}
-        <div className="relative">
+        <div className="relative flex items-center">
           <select
             ref={ref}
-            className={`${baseInputStyles} ${
-              error ? errorInputStyles : ''
-            } appearance-none pr-10 ${className}`}
+            className={cn(
+              'flex h-9 w-full appearance-none rounded-md border border-input bg-background px-3 py-1 pr-8 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 text-foreground cursor-pointer',
+              error && 'border-destructive focus-visible:ring-destructive',
+              className
+            )}
             {...props}
           >
-            {options.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
+            {children
+              ? children
+              : options.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
           </select>
           <svg
-            className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#86868B] pointer-events-none"
+            className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none"
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
           >
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
           </svg>
         </div>
-        {error && <p className="mt-1.5 text-sm text-[#FF3B30]">{error}</p>}
+        {error && <p className="text-xs font-medium text-destructive">{error}</p>}
         {helperText && !error && (
-          <p className="mt-1.5 text-sm text-[#86868B]">{helperText}</p>
+          <p className="text-xs text-muted-foreground">{helperText}</p>
         )}
       </div>
     );
@@ -145,29 +151,31 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
     const charCount = (props.value as string)?.length || 0;
 
     return (
-      <div className="w-full">
+      <div className="w-full space-y-1.5">
         {label && (
-          <label className="block text-[13px] font-medium text-[#86868B] uppercase tracking-wider mb-1.5">
+          <label className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             {label}
-            {props.required && <span className="text-[#FF3B30]">*</span>}
+            {props.required && <span className="text-destructive ml-1">*</span>}
           </label>
         )}
         <textarea
           ref={ref}
           maxLength={maxLength}
-          className={`${baseInputStyles} resize-vertical min-h-24 ${
-            error ? errorInputStyles : ''
-          } ${className}`}
+          className={cn(
+            'flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 text-foreground',
+            error && 'border-destructive focus-visible:ring-destructive',
+            className
+          )}
           {...props}
         />
         {maxLength && (
-          <p className="mt-1.5 text-xs text-[#86868B]">
+          <p className="text-xs text-muted-foreground text-right">
             {charCount} / {maxLength}
           </p>
         )}
-        {error && <p className="mt-1.5 text-sm text-[#FF3B30]">{error}</p>}
+        {error && <p className="text-xs font-medium text-destructive">{error}</p>}
         {helperText && !error && (
-          <p className="mt-1.5 text-sm text-[#86868B]">{helperText}</p>
+          <p className="text-xs text-muted-foreground">{helperText}</p>
         )}
       </div>
     );

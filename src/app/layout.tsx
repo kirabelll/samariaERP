@@ -1,18 +1,29 @@
 import type { Metadata, Viewport } from 'next';
-import { GeistSans } from 'geist/font/sans';
-import { GeistMono } from 'geist/font/mono';
+import { Inter, Manrope } from 'next/font/google';
 import './globals.css';
 import { SessionProvider } from '@/components/providers/SessionProvider';
 import { I18nProvider } from '@/components/providers/I18nProvider';
 import { ThemeProvider } from '@/components/providers/ThemeProvider';
 import ToastProvider from '@/components/ui/Toast';
 
+const inter = Inter({
+  subsets: ['latin'],
+  variable: '--font-inter',
+  display: 'swap',
+});
+
+const manrope = Manrope({
+  subsets: ['latin'],
+  variable: '--font-manrope',
+  display: 'swap',
+});
+
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
-  themeColor: '#F5F5F7',
+  themeColor: '#000000',
 };
 
 export const metadata: Metadata = {
@@ -38,8 +49,12 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={`${GeistSans.variable} ${GeistMono.variable}`} suppressHydrationWarning>
-      <body className="antialiased bg-[var(--surface-2)] text-[var(--fg-1)]">
+    <html
+      lang="en"
+      className={`${inter.variable} ${manrope.variable} ${inter.className}`}
+      suppressHydrationWarning
+    >
+      <body className="antialiased bg-background text-foreground font-sans min-h-svh w-full selection:bg-primary selection:text-primary-foreground">
         <ThemeProvider>
           <SessionProvider>
             <I18nProvider>

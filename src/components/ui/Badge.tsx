@@ -1,6 +1,8 @@
 'use client';
 
-import React, { ReactNode } from 'react';
+import * as React from 'react';
+import { cva, type VariantProps } from 'class-variance-authority';
+import { cn } from '@/lib/utils';
 
 export type BadgeStatus =
   | 'Active'
@@ -18,59 +20,78 @@ export type BadgeStatus =
   | 'In Custody'
   | 'Submitted'
   | 'In Transit'
-  | 'Deactivated';
+  | 'Deactivated'
+  | string;
 
-interface BadgeProps {
-  status: string;
-  children?: ReactNode;
-  variant?: 'pill' | 'badge';
-  className?: string;
+const badgeVariants = cva(
+  'inline-flex items-center justify-center rounded-full border px-2.5 py-0.5 text-xs font-semibold tracking-wide transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 w-fit whitespace-nowrap shrink-0 gap-1',
+  {
+    variants: {
+      variant: {
+        default: 'border-transparent bg-primary text-primary-foreground shadow-xs',
+        secondary: 'border-transparent bg-secondary text-secondary-foreground',
+        destructive: 'border-transparent bg-destructive/15 text-destructive border-destructive/20',
+        outline: 'text-foreground border-border',
+        success: 'border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
+        warning: 'border-amber-500/20 bg-amber-500/10 text-amber-600 dark:text-amber-400',
+        info: 'border-sky-500/20 bg-sky-500/10 text-sky-600 dark:text-sky-400',
+        error: 'border-destructive/20 bg-destructive/10 text-destructive',
+        danger: 'border-destructive/20 bg-destructive/10 text-destructive',
+        pill: 'border-transparent bg-secondary text-secondary-foreground',
+        badge: 'border-transparent bg-primary text-primary-foreground shadow-xs',
+      },
+    },
+    defaultVariants: {
+      variant: 'default',
+    },
+  }
+);
+
+export interface BadgeProps
+  extends React.HTMLAttributes<HTMLSpanElement>,
+    Omit<VariantProps<typeof badgeVariants>, 'variant'> {
+  variant?: 'default' | 'secondary' | 'destructive' | 'outline' | 'success' | 'warning' | 'info' | 'error' | 'danger' | 'pill' | 'badge' | string;
+  status?: BadgeStatus;
+  size?: 'sm' | 'md' | 'lg' | string;
 }
 
-const statusColors: Record<string, { bg: string; fg: string }> = {
-  Draft:        { bg: 'rgba(142,142,147,.10)', fg: '#636366' },
-  Pending:      { bg: 'rgba(255,149,0,.10)',   fg: '#C93400' },
-  'In Progress':{ bg: 'rgba(11,109,229,.10)',  fg: '#0055C4' },
-  InProgress:   { bg: 'rgba(11,109,229,.10)',  fg: '#0055C4' },
-  Submitted:    { bg: 'rgba(11,109,229,.10)',  fg: '#0055C4' },
-  'In Transit': { bg: 'rgba(11,109,229,.10)',  fg: '#0055C4' },
-  Approved:     { bg: 'rgba(52,199,89,.10)',   fg: '#248A3D' },
-  Delivered:    { bg: 'rgba(52,199,89,.10)',   fg: '#248A3D' },
-  Active:       { bg: 'rgba(52,199,89,.10)',   fg: '#248A3D' },
-  Settled:      { bg: 'rgba(52,199,89,.10)',   fg: '#248A3D' },
-  Lifted:       { bg: 'rgba(52,199,89,.10)',   fg: '#248A3D' },
-  Rejected:     { bg: 'rgba(255,59,48,.10)',   fg: '#D70015' },
-  Cancelled:    { bg: 'rgba(255,59,48,.10)',   fg: '#D70015' },
-  Expired:      { bg: 'rgba(255,59,48,.10)',   fg: '#D70015' },
-  Deactivated:  { bg: 'rgba(255,59,48,.10)',   fg: '#D70015' },
-  'Near Expiry':{ bg: 'rgba(255,149,0,.10)',   fg: '#C93400' },
-  'In Custody': { bg: 'rgba(255,204,0,.15)',   fg: '#8C6D00' },
-  Void:         { bg: 'rgba(142,142,147,.10)', fg: '#636366' },
+const statusVariants: Record<string, string> = {
+  Draft: 'border-muted-foreground/20 bg-muted text-muted-foreground',
+  Pending: 'border-amber-500/20 bg-amber-500/10 text-amber-600 dark:text-amber-400',
+  'In Progress': 'border-sky-500/20 bg-sky-500/10 text-sky-600 dark:text-sky-400',
+  InProgress: 'border-sky-500/20 bg-sky-500/10 text-sky-600 dark:text-sky-400',
+  Submitted: 'border-sky-500/20 bg-sky-500/10 text-sky-600 dark:text-sky-400',
+  'In Transit': 'border-sky-500/20 bg-sky-500/10 text-sky-600 dark:text-sky-400',
+  Approved: 'border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
+  Delivered: 'border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
+  Active: 'border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
+  Settled: 'border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
+  Lifted: 'border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
+  Rejected: 'border-destructive/20 bg-destructive/10 text-destructive',
+  Cancelled: 'border-destructive/20 bg-destructive/10 text-destructive',
+  Expired: 'border-destructive/20 bg-destructive/10 text-destructive',
+  Deactivated: 'border-destructive/20 bg-destructive/10 text-destructive',
+  'Near Expiry': 'border-amber-500/20 bg-amber-500/10 text-amber-600 dark:text-amber-400',
+  'In Custody': 'border-yellow-500/20 bg-yellow-500/15 text-yellow-700 dark:text-yellow-400',
+  Void: 'border-muted-foreground/20 bg-muted text-muted-foreground',
 };
 
-function Badge({ status, children, variant = 'badge' }: BadgeProps) {
-  const c = statusColors[status] || statusColors.Draft;
+function Badge({ className, variant, status, children, size: _size, ...props }: BadgeProps) {
+  const statusClass = status ? statusVariants[status] : undefined;
+
   return (
     <span
-      style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        padding: '4px 11px',
-        borderRadius: 999,
-        fontFamily: 'var(--font-sans)',
-        fontSize: '11px',
-        fontWeight: 600,
-        letterSpacing: '0.01em',
-        background: c.bg,
-        color: c.fg,
-        whiteSpace: 'nowrap',
-      }}
+      className={cn(
+        badgeVariants({ variant: (statusClass ? undefined : variant) as any }),
+        statusClass,
+        className
+      )}
+      {...props}
     >
       {children || status}
     </span>
   );
 }
 
-Badge.displayName = 'Badge';
-
+export { Badge, badgeVariants };
 export default Badge;

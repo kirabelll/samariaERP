@@ -1,29 +1,41 @@
 'use client';
 
-import React, { useState, ReactNode } from 'react';
-import { Sidebar } from './Sidebar';
-import { Header } from './Header';
+import * as React from 'react';
+import Cookies from 'js-cookie';
+import { cn } from '@/lib/utils';
+import { SidebarProvider } from '@/components/ui/sidebar';
+import { AppSidebar } from '@/components/layout/app-sidebar';
+import { Header } from '@/components/layout/Header';
 
 interface MainLayoutProps {
-  children: ReactNode;
+  children: React.ReactNode;
 }
 
 export function MainLayout({ children }: MainLayoutProps) {
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const defaultOpen = Cookies.get('sidebar_state') !== 'false';
 
   return (
-    <div className="flex h-screen overflow-hidden" style={{ background: 'var(--surface-2)' }}>
-      <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-
-      <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-        <Header onMenuClick={() => setSidebarOpen(!sidebarOpen)} />
-
+    <SidebarProvider defaultOpen={defaultOpen}>
+      <AppSidebar />
+      <div
+        id="content"
+        className={cn(
+          'ml-auto w-full max-w-full',
+          'peer-data-[state=collapsed]:w-[calc(100%-var(--sidebar-width-icon)-1rem)]',
+          'peer-data-[state=expanded]:w-[calc(100%-var(--sidebar-width))]',
+          'sm:transition-[width] sm:duration-200 sm:ease-linear',
+          'flex h-svh flex-col min-w-0'
+        )}
+      >
+        <Header />
         <main className="flex-1 overflow-y-auto overscroll-contain">
-          <div className="p-4 sm:p-6 md:p-8 lg:px-10 lg:py-8 max-w-[1280px] mx-auto">
+          <div className="p-4 sm:p-6 lg:p-8 max-w-[1440px] mx-auto w-full animate-fade-in">
             {children}
           </div>
         </main>
       </div>
-    </div>
+    </SidebarProvider>
   );
 }
+
+export default MainLayout;

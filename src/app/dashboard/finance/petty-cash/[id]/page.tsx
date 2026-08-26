@@ -945,7 +945,6 @@ export default function PettyCashDetailPage() {
             onChange={(e) => setEditFormData({ ...editFormData, cashierName: e.target.value })}
             required
           />
-
           <Input
             label="Amount (ETB)"
             name="amount"

@@ -203,80 +203,25 @@ export default function NewInvoicePage() {
         setLoadingLiftings(true);
         try {
           const params = new URLSearchParams();
-          if (partyType === 'Customer') {
-            params.append('customer', partyId);
-          } else if (partyType === 'Supplier') {
-            params.append('supplier', partyId);
-          }
+          if (partyType === 'Customer') params.append('customer', partyId);
           if (startDate) params.append('startDate', startDate);
           if (endDate) params.append('endDate', endDate);
-          params.append('limit', '500');
+          params.append('status', 'Delivered');
+          params.append('limit', '100');
 
           const res = await fetch(`/api/cement/liftings?${params.toString()}`);
           const data = await res.json();
-          let list: any[] = [];
-
-          if (data.success && Array.isArray(data.data)) {
-            list = data.data;
-          } else {
-            // Fallback: fetch without query filters and filter client-side
-            const allRes = await fetch('/api/cement/liftings?limit=500');
-            const allData = await allRes.json();
-            if (allData.success && Array.isArray(allData.data)) {
-              list = allData.data;
-            }
-          }
-
-          // Client-side filtering by Customer or Supplier
-          if (partyType === 'Customer' && partyId) {
-            list = list.filter(
-              (l: any) =>
-                l.customerId === partyId ||
-                l.customer?.id === partyId ||
-                (l.customer?.companyName &&
-                  selectedParty?.companyName &&
-                  l.customer.companyName.toLowerCase().includes(selectedParty.companyName.toLowerCase()))
-            );
-          } else if (partyType === 'Supplier' && partyId) {
-            list = list.filter(
-              (l: any) =>
-                l.factoryId === partyId ||
-                l.factory?.id === partyId ||
-                l.purchase?.factoryId === partyId ||
-                (l.factory?.name &&
-                  selectedParty?.companyName &&
-                  l.factory.name.toLowerCase().includes(selectedParty.companyName.toLowerCase()))
-            );
-          }
-
-          // Client-side filtering by Date Range (inclusive to end of day)
-          if (startDate || endDate) {
-            list = list.filter((l: any) => {
-              const dateVal = l.liftingDate || l.createdAt;
-              if (!dateVal) return true;
-              const time = new Date(dateVal).getTime();
-              if (startDate) {
-                const start = new Date(startDate).setHours(0, 0, 0, 0);
-                if (time < start) return false;
-              }
-              if (endDate) {
-                const end = new Date(endDate).setHours(23, 59, 59, 999);
-                if (time > end) return false;
-              }
-              return true;
+          if (data.success) {
+            const list = (data.data || []).filter((l: any) => l.status === 'Delivered' || l.status === 'Verified');
+            list.sort((a: any, b: any) => {
+              const podA = String(a.padNumber || a.podNumber || a.liftingNo || '');
+              const podB = String(b.padNumber || b.podNumber || b.liftingNo || '');
+              return podA.localeCompare(podB, undefined, { numeric: true, sensitivity: 'base' });
             });
+            setCementLiftings(list);
+            setSelectedLiftingIds([]);
+            setItems([]);
           }
-
-          // Sort naturally by POD / Pad / Lifting number
-          list.sort((a: any, b: any) => {
-            const podA = String(a.padNumber || a.podNumber || a.liftingNo || '');
-            const podB = String(b.padNumber || b.podNumber || b.liftingNo || '');
-            return podA.localeCompare(podB, undefined, { numeric: true, sensitivity: 'base' });
-          });
-
-          setCementLiftings(list);
-          setSelectedLiftingIds([]);
-          setItems([]);
         } catch (err) {
           console.error('Failed to fetch cement liftings:', err);
         } finally {
@@ -289,79 +234,23 @@ export default function NewInvoicePage() {
         setLoadingDispatches(true);
         try {
           const params = new URLSearchParams();
-          if (partyType === 'Customer') {
-            params.append('customerId', partyId);
-          } else if (partyType === 'Supplier') {
-            params.append('supplierId', partyId);
-          }
           if (startDate) params.append('startDate', startDate);
           if (endDate) params.append('endDate', endDate);
-          params.append('limit', '1000');
+          params.append('limit', '100');
 
           const res = await fetch(`/api/aggregate?${params.toString()}`);
           const data = await res.json();
-          let list: any[] = [];
-
-          if (data.success && Array.isArray(data.data || data.records)) {
-            list = data.data || data.records;
-          } else {
-            // Fallback: fetch all and filter client-side
-            const allRes = await fetch('/api/aggregate?limit=1000');
-            const allData = await allRes.json();
-            if (allData.success && Array.isArray(allData.data || allData.records)) {
-              list = allData.data || allData.records;
-            }
-          }
-
-          // Client-side filtering by Customer or Supplier
-          if (partyType === 'Customer' && partyId) {
-            list = list.filter(
-              (d: any) =>
-                d.customerId === partyId ||
-                d.customer?.id === partyId ||
-                (d.customer?.companyName &&
-                  selectedParty?.companyName &&
-                  d.customer.companyName.toLowerCase().includes(selectedParty.companyName.toLowerCase()))
-            );
-          } else if (partyType === 'Supplier' && partyId) {
-            list = list.filter(
-              (d: any) =>
-                d.supplierId === partyId ||
-                d.supplier?.id === partyId ||
-                (d.supplier?.companyName &&
-                  selectedParty?.companyName &&
-                  d.supplier.companyName.toLowerCase().includes(selectedParty.companyName.toLowerCase()))
-            );
-          }
-
-          // Client-side filtering by Date Range (inclusive to end of day)
-          if (startDate || endDate) {
-            list = list.filter((d: any) => {
-              const dateVal = d.dispatchDate || d.createdAt;
-              if (!dateVal) return true;
-              const time = new Date(dateVal).getTime();
-              if (startDate) {
-                const start = new Date(startDate).setHours(0, 0, 0, 0);
-                if (time < start) return false;
-              }
-              if (endDate) {
-                const end = new Date(endDate).setHours(23, 59, 59, 999);
-                if (time > end) return false;
-              }
-              return true;
+          if (data.success) {
+            const list = data.records || data.data || [];
+            list.sort((a: any, b: any) => {
+              const podA = String(a.padNumber || a.podNumber || a.dispatchNo || '');
+              const podB = String(b.padNumber || b.podNumber || b.dispatchNo || '');
+              return podA.localeCompare(podB, undefined, { numeric: true, sensitivity: 'base' });
             });
+            setAggregateDispatches(list);
+            setSelectedDispatchIds([]);
+            setItems([]);
           }
-
-          // Sort naturally by POD / Pad / Dispatch number
-          list.sort((a: any, b: any) => {
-            const podA = String(a.padNumber || a.podNumber || a.dispatchNo || '');
-            const podB = String(b.padNumber || b.podNumber || b.dispatchNo || '');
-            return podA.localeCompare(podB, undefined, { numeric: true, sensitivity: 'base' });
-          });
-
-          setAggregateDispatches(list);
-          setSelectedDispatchIds([]);
-          setItems([]);
         } catch (err) {
           console.error('Failed to fetch aggregate dispatches:', err);
         } finally {
@@ -370,7 +259,7 @@ export default function NewInvoicePage() {
       };
       fetchDispatches();
     }
-  }, [partyId, partyType, division, startDate, endDate, selectedParty?.companyName]);
+  }, [partyId, partyType, division, startDate, endDate]);
 
   // Checkbox Selection Logic for Aggregate Dispatches
   const toggleDispatchSelect = (id: string) => {
@@ -993,96 +882,33 @@ export default function NewInvoicePage() {
             </div>
           </div>
 
-          {/* Date Filter & Presets */}
-          <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-                Date Range Filter ({division === 'CEMENT' ? 'Cement Liftings' : 'Aggregate Dispatches'})
-              </span>
-              <div className="flex flex-wrap items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const now = new Date();
-                    const y = now.getFullYear();
-                    const m = now.getMonth();
-                    setStartDate(`${y}-${String(m + 1).padStart(2, '0')}-01`);
-                    setEndDate(new Date(y, m + 1, 0).toISOString().split('T')[0]);
-                  }}
-                  className="px-2.5 py-1 text-xs font-medium bg-white hover:bg-blue-50 text-slate-700 hover:text-blue-700 rounded-lg border border-slate-200 transition-colors shadow-xs"
-                >
-                  This Month
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const now = new Date();
-                    const lm = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-                    const y = lm.getFullYear();
-                    const m = lm.getMonth();
-                    setStartDate(`${y}-${String(m + 1).padStart(2, '0')}-01`);
-                    setEndDate(new Date(y, m + 1, 0).toISOString().split('T')[0]);
-                  }}
-                  className="px-2.5 py-1 text-xs font-medium bg-white hover:bg-blue-50 text-slate-700 hover:text-blue-700 rounded-lg border border-slate-200 transition-colors shadow-xs"
-                >
-                  Last Month
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const now = new Date();
-                    const y = now.getFullYear();
-                    const qm = Math.floor(now.getMonth() / 3) * 3;
-                    setStartDate(`${y}-${String(qm + 1).padStart(2, '0')}-01`);
-                    setEndDate(new Date(y, qm + 3, 0).toISOString().split('T')[0]);
-                  }}
-                  className="px-2.5 py-1 text-xs font-medium bg-white hover:bg-blue-50 text-slate-700 hover:text-blue-700 rounded-lg border border-slate-200 transition-colors shadow-xs"
-                >
-                  This Quarter
-                </button>
-                {(startDate || endDate) && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setStartDate('');
-                      setEndDate('');
-                    }}
-                    className="px-2.5 py-1 text-xs font-medium text-red-600 hover:bg-red-50 rounded-lg border border-red-200 transition-colors"
-                  >
-                    Clear Filter
-                  </button>
-                )}
-              </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Due Date</label>
+              <input
+                type="date"
+                value={dueDate}
+                onChange={(e) => setDueDate(e.target.value)}
+                className="block w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+              />
             </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Due Date</label>
-                <input
-                  type="date"
-                  value={dueDate}
-                  onChange={(e) => setDueDate(e.target.value)}
-                  className="block w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">From Date</label>
-                <input
-                  type="date"
-                  value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
-                  className="block w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">To Date</label>
-                <input
-                  type="date"
-                  value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
-                  className="block w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
-                />
-              </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Filter Dispatch (From Date)</label>
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="block w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Filter Dispatch (To Date)</label>
+              <input
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="block w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+              />
             </div>
           </div>
 

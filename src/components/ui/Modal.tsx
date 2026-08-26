@@ -1,21 +1,25 @@
 'use client';
 
-import React, { ReactNode, useEffect, useRef } from 'react';
+import * as React from 'react';
+import { X } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import Button from './Button';
 
-interface ModalProps {
+export interface ModalProps {
   isOpen: boolean;
   onClose: () => void;
   title?: string;
-  body?: ReactNode;
-  footer?: ReactNode;
-  size?: 'sm' | 'md' | 'lg' | 'xl';
+  description?: string;
+  body?: React.ReactNode;
+  footer?: React.ReactNode;
+  size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl' | 'full';
   closeOnBackdropClick?: boolean;
   closeOnEscapeKey?: boolean;
-  children?: ReactNode;
+  children?: React.ReactNode;
+  className?: string;
 }
- 
-interface ConfirmDialogProps {
+
+export interface ConfirmDialogProps {
   isOpen: boolean;
   onClose: () => void;
   onConfirm: () => void | Promise<void>;
@@ -26,36 +30,40 @@ interface ConfirmDialogProps {
   isDangerous?: boolean;
   isLoading?: boolean;
 }
- 
+
 const sizeClasses = {
   sm: 'max-w-sm',
   md: 'max-w-md',
   lg: 'max-w-lg',
   xl: 'max-w-xl',
+  '2xl': 'max-w-2xl',
+  full: 'max-w-4xl',
 };
- 
+
 function Modal({
   isOpen,
   onClose,
   title,
+  description,
   body,
   footer,
   size = 'md',
   closeOnBackdropClick = true,
   closeOnEscapeKey = true,
   children,
+  className,
 }: ModalProps) {
-  const modalRef = useRef<HTMLDivElement>(null);
- 
-  useEffect(() => {
+  const modalRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
     if (!isOpen) return;
- 
+
     const handleEscapeKey = (e: KeyboardEvent) => {
       if (closeOnEscapeKey && e.key === 'Escape') {
         onClose();
       }
     };
- 
+
     const handleBackdropClick = (e: MouseEvent) => {
       if (
         closeOnBackdropClick &&
@@ -65,50 +73,56 @@ function Modal({
         onClose();
       }
     };
- 
+
     document.addEventListener('keydown', handleEscapeKey);
     document.addEventListener('mousedown', handleBackdropClick);
     document.body.style.overflow = 'hidden';
- 
+
     return () => {
       document.removeEventListener('keydown', handleEscapeKey);
       document.removeEventListener('mousedown', handleBackdropClick);
       document.body.style.overflow = 'auto';
     };
   }, [isOpen, onClose, closeOnBackdropClick, closeOnEscapeKey]);
- 
+
   if (!isOpen) return null;
- 
+
   return (
     <div
       ref={modalRef}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-fade-in"
     >
-      <div className={`w-full ${sizeClasses[size]} bg-white rounded-2xl shadow-[0_20px_60px_rgba(0,0,0,0.15)] scale-in-95 animate-in`}>
+      <div
+        className={cn(
+          'w-full rounded-xl border border-border bg-card text-card-foreground shadow-lg duration-200 animate-in fade-in-0 zoom-in-95 overflow-hidden flex flex-col max-h-[90vh]',
+          sizeClasses[size] || sizeClasses.md,
+          className
+        )}
+      >
         {title && (
-          <div className="flex items-center justify-between px-6 py-5 border-b border-[#F5F5F7]">
-            <h2 className="text-lg font-semibold text-[#1D1D1F]">{title}</h2>
+          <div className="flex items-center justify-between p-5 border-b border-border">
+            <div className="space-y-1">
+              <h2 className="text-lg font-semibold tracking-tight text-foreground">{title}</h2>
+              {description && (
+                <p className="text-sm text-muted-foreground">{description}</p>
+              )}
+            </div>
             <button
               onClick={onClose}
-              className="ml-auto w-8 h-8 rounded-full bg-[#F5F5F7] hover:bg-[#E8E8ED] flex items-center justify-center transition-colors"
-              aria-label="Close modal"
+              className="rounded-md p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
+              aria-label="Close dialog"
             >
-              <svg className="w-5 h-5 text-[#86868B]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M6 18L18 6M6 6l12 12"
-                />
-              </svg>
+              <X className="w-4 h-4" />
             </button>
           </div>
         )}
- 
-        <div className="px-6 py-5">{body || children}</div>
+
+        <div className="p-6 overflow-y-auto flex-1 text-sm text-foreground">
+          {body || children}
+        </div>
 
         {footer && (
-          <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-[#F5F5F7] bg-[#FAFAFA]/50">
+          <div className="flex items-center justify-end gap-2.5 p-4 border-t border-border bg-muted/30">
             {footer}
           </div>
         )}
@@ -147,18 +161,18 @@ function ConfirmDialog({
       isOpen={isOpen}
       onClose={onClose}
       title={title}
-      body={<p className="text-[#86868B]">{message}</p>}
+      body={<p className="text-muted-foreground text-sm leading-relaxed">{message}</p>}
       footer={
         <>
           <Button
-            variant="secondary"
+            variant="outline"
             onClick={onClose}
             disabled={loading || isLoading}
           >
             {cancelText}
           </Button>
           <Button
-            variant={isDangerous ? 'danger' : 'primary'}
+            variant={isDangerous ? 'destructive' : 'default'}
             onClick={handleConfirm}
             isLoading={loading || isLoading}
           >

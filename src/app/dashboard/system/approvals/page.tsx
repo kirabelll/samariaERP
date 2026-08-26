@@ -134,7 +134,7 @@ export default function ApprovalsPage() {
     }
   };
 
-  const uniqueModules = [...new Set(data.map((d) => d.module))];
+  const uniqueModules = Array.from(new Set(data.map((d) => d.module)));
 
   return (
     <div className="space-y-6 p-6" style={{ background: '#F5F5F7' }}>

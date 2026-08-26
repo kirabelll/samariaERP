@@ -3,7 +3,6 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardBody, CardHeader, Button, Input, Select } from '@/components/ui';
-import { Search, Truck, X, CheckSquare, Square, Users } from 'lucide-react';
 
 interface EntityOption {
   id: string;
@@ -68,12 +67,7 @@ export default function NewVoucherPage() {
   const [sourceRefs, setSourceRefs] = useState<SourceRefOption[]>([]);
   const [loadingEntities, setLoadingEntities] = useState(false);
   const [loadingRefs, setLoadingRefs] = useState(false);
-  
-  // Multi-select for Transporters
-  const [selectedTransporterIds, setSelectedTransporterIds] = useState<Set<string>>(new Set());
-  const [transporterSearch, setTransporterSearch] = useState('');
-
-  // Multi-select for AGGREGATE/TRANSPORTER deliveries
+  // Multi-select for AGGREGATE deliveries
   const [selectedDeliveryIds, setSelectedDeliveryIds] = useState<Set<string>>(new Set());
 
   const [formData, setFormData] = useState<FormData>({
@@ -97,14 +91,13 @@ export default function NewVoucherPage() {
   useEffect(() => {
     const fetchAll = async () => {
       try {
-        setLoadingEntities(true);
         const [custRes, suppRes, empRes, transRes, bankRes, allCustRes] = await Promise.all([
-          fetch('/api/sales/agreements/customers').then((r) => r.json()).catch(() => ({ success: false })),
-          fetch('/api/suppliers?limit=1000').then((r) => r.json()).catch(() => ({ success: false })),
-          fetch('/api/employees?limit=1000').then((r) => r.json()).catch(() => ({ success: false })),
-          fetch('/api/transporters?limit=1000').then((r) => r.json()).catch(() => ({ success: false })),
-          fetch('/api/finance/bank?limit=100').then((r) => r.json()).catch(() => ({ success: false })),
-          fetch('/api/customers?limit=1000').then((r) => r.json()).catch(() => ({ success: false })),
+          fetch('/api/sales/agreements/customers').then(r => r.json()).catch(() => ({ success: false })),
+          fetch('/api/suppliers?limit=1000').then(r => r.json()).catch(() => ({ success: false })),
+          fetch('/api/employees?limit=1000').then(r => r.json()).catch(() => ({ success: false })),
+          fetch('/api/transporters?limit=1000').then(r => r.json()).catch(() => ({ success: false })),
+          fetch('/api/finance/bank?limit=100').then(r => r.json()).catch(() => ({ success: false })),
+          fetch('/api/customers?limit=1000').then(r => r.json()).catch(() => ({ success: false })),
         ]);
 
         const customerMap = new Map<string, EntityOption>();
@@ -150,132 +143,37 @@ export default function NewVoucherPage() {
           ]);
         }
         if (empRes.success) {
-          setEmployees(
-            (empRes.data || []).map((e: any) => ({
-              id: e.id,
-              name: e.fullName || e.name || `${e.firstName || ''} ${e.lastName || ''}`.trim(),
-              code: e.employeeId || e.code,
-            }))
-          );
+          setEmployees((empRes.data || []).map((e: any) => ({
+            id: e.id,
+            name: e.fullName || e.name || `${e.firstName || ''} ${e.lastName || ''}`.trim(),
+            code: e.employeeId || e.code,
+          })));
         }
         if (transRes.success) {
-          setTransporters(
-            (transRes.data || []).map((t: any) => ({
-              id: t.id,
-              name: t.companyName || t.name || '',
-              code: t.code,
-            }))
-          );
+          setTransporters((transRes.data || []).map((t: any) => ({
+            id: t.id,
+            name: t.companyName || t.name || '',
+            code: t.code,
+          })));
         }
         if (bankRes.success) {
           setBankAccounts(bankRes.data || []);
         }
       } catch (err) {
         console.error('Error loading entities:', err);
-      } finally {
-        setLoadingEntities(false);
       }
     };
     fetchAll();
   }, []);
-
+  
   const getPayeeOptions = (): EntityOption[] => {
     switch (formData.payeeType) {
-      case 'CUSTOMER':
-        return customers;
-      case 'SUPPLIER':
-        return suppliers;
-      case 'ONE_TIME_SUPPLIER':
-        return [{ id: 'ONE_TIME_SUPPLIER', name: '⚡ One-Time Supplier (Ad-Hoc / Manual)', code: 'ONE-TIME' }];
-      case 'EMPLOYEE':
-        return employees;
-      case 'TRANSPORTER':
-        return transporters;
-      default:
-        return [];
-    }
-  };
-
-  // Multi-select handlers for transporters
-  const handleTransporterToggle = (transporterId: string) => {
-    setSelectedTransporterIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(transporterId)) {
-        next.delete(transporterId);
-      } else {
-        next.add(transporterId);
-      }
-
-      const selected = transporters.filter((t) => next.has(t.id));
-      let names = '';
-      if (selected.length === 1) {
-        names = `${selected[0].name}${selected[0].code ? ` (${selected[0].code})` : ''}`;
-      } else if (selected.length > 1) {
-        names = selected.map((t) => t.name).join(', ');
-      }
-
-      const ids = Array.from(next).join(',');
-
-      setFormData((prevForm) => ({
-        ...prevForm,
-        payeeId: ids,
-        payeeName: names,
-      }));
-      return next;
-    });
-  };
-
-  const handleSelectAllTransporters = () => {
-    const filteredTransporters = transporters.filter(
-      (t) =>
-        t.name.toLowerCase().includes(transporterSearch.toLowerCase()) ||
-        (t.code && t.code.toLowerCase().includes(transporterSearch.toLowerCase()))
-    );
-
-    const isAllFilteredSelected =
-      filteredTransporters.length > 0 &&
-      filteredTransporters.every((t) => selectedTransporterIds.has(t.id));
-
-    if (isAllFilteredSelected) {
-      // Uncheck all filtered
-      setSelectedTransporterIds((prev) => {
-        const next = new Set(prev);
-        filteredTransporters.forEach((t) => next.delete(t.id));
-        const selected = transporters.filter((t) => next.has(t.id));
-        let names = '';
-        if (selected.length === 1) {
-          names = `${selected[0].name}${selected[0].code ? ` (${selected[0].code})` : ''}`;
-        } else if (selected.length > 1) {
-          names = selected.map((t) => t.name).join(', ');
-        }
-
-        setFormData((prevForm) => ({
-          ...prevForm,
-          payeeId: Array.from(next).join(','),
-          payeeName: names,
-        }));
-        return next;
-      });
-    } else {
-      // Check all filtered
-      setSelectedTransporterIds((prev) => {
-        const next = new Set(prev);
-        filteredTransporters.forEach((t) => next.add(t.id));
-        const selected = transporters.filter((t) => next.has(t.id));
-        let names = '';
-        if (selected.length === 1) {
-          names = `${selected[0].name}${selected[0].code ? ` (${selected[0].code})` : ''}`;
-        } else if (selected.length > 1) {
-          names = selected.map((t) => t.name).join(', ');
-        }
-
-        setFormData((prevForm) => ({
-          ...prevForm,
-          payeeId: Array.from(next).join(','),
-          payeeName: names,
-        }));
-        return next;
-      });
+      case 'CUSTOMER': return customers;
+      case 'SUPPLIER': return suppliers;
+      case 'ONE_TIME_SUPPLIER': return [{ id: 'ONE_TIME_SUPPLIER', name: '⚡ One-Time Supplier (Ad-Hoc / Manual)', code: 'ONE-TIME' }];
+      case 'EMPLOYEE': return employees;
+      case 'TRANSPORTER': return transporters;
+      default: return [];
     }
   };
 
@@ -314,8 +212,8 @@ export default function NewVoucherPage() {
 
             const poRefs: SourceRefOption[] = [];
             if (poRes.success && Array.isArray(poRes.data)) {
-              const approvedOnly = poRes.data.filter(
-                (po: any) => po.status === 'Approved' || po.status === 'Active' || po.status === 'Received'
+              const approvedOnly = poRes.data.filter((po: any) =>
+                po.status === 'Approved' || po.status === 'Active' || po.status === 'Received'
               );
               approvedOnly.forEach((po: any) => {
                 poRefs.push({
@@ -331,189 +229,73 @@ export default function NewVoucherPage() {
             refs = [...paymentRefs, ...poRefs];
             break;
           }
-          case 'TRANSPORTER':
           case 'AGGREGATE': {
-            const aggParams = new URLSearchParams({ limit: '1000' });
+            const aggParams = new URLSearchParams({ limit: '500' });
             if (formData.payeeType === 'CUSTOMER' && formData.payeeId && formData.payeeId !== 'ONE_TIME_SUPPLIER') {
               aggParams.set('customerId', formData.payeeId);
             } else if (formData.payeeType === 'SUPPLIER' && formData.payeeId && formData.payeeId !== 'ONE_TIME_SUPPLIER') {
               aggParams.set('supplierId', formData.payeeId);
             } else if (formData.payeeType === 'TRANSPORTER' && formData.payeeId && formData.payeeId !== 'ONE_TIME_SUPPLIER') {
-              if (!formData.payeeId.includes(',')) {
-                aggParams.set('transporterId', formData.payeeId);
-              }
+              aggParams.set('transporterId', formData.payeeId);
             }
 
-            let res = await fetch(`/api/aggregate?${aggParams.toString()}`);
-            let data = await res.json();
-            let deliveryList = data.success && Array.isArray(data.data) ? data.data : [];
+            const res = await fetch(`/api/aggregate?${aggParams.toString()}`);
+            const data = await res.json();
+            if (data.success) {
+              refs = (data.data || []).map((d: any) => {
+                let amount = 0;
+                let typeStr = 'Payable';
 
-            // Fallback: if filtered query returned empty, fetch all dispatches and filter client-side
-            if (deliveryList.length === 0 && (formData.payeeId || selectedTransporterIds.size > 0)) {
-              const allRes = await fetch('/api/aggregate?limit=1000');
-              const allData = await allRes.json();
-              if (allData.success && Array.isArray(allData.data)) {
-                deliveryList = allData.data;
-              }
+                if (formData.payeeType === 'CUSTOMER') {
+                  amount = Number(d.customerReceivable || 0);
+                  typeStr = 'Customer Receivable';
+                } else if (formData.payeeType === 'TRANSPORTER') {
+                  amount = Number(d.transporterPayable || d.netTruckPayment || d.grossTruckFee || 0);
+                  typeStr = 'Transporter Freight';
+                } else if (formData.payeeType === 'SUPPLIER' || formData.payeeType === 'ONE_TIME_SUPPLIER') {
+                  amount = Number(d.supplierPayable || 0);
+                  typeStr = 'Supplier Material';
+                } else {
+                  amount = Number(d.supplierPayable || d.netTruckPayment || 0);
+                  typeStr = 'Payable';
+                }
+
+                const podStr = d.padNumber ? `POD: ${d.padNumber}` : 'POD: N/A';
+                const partyStr = d.customer?.companyName || d.supplier?.companyName || d.transporter?.companyName || '';
+
+                return {
+                  id: d.id,
+                  dispatchNo: d.dispatchNo,
+                  padNumber: d.padNumber || 'N/A',
+                  label: `${d.dispatchNo} — ${podStr}${partyStr ? ` — ${partyStr}` : ''} — ETB ${amount.toLocaleString('en-US', { minimumFractionDigits: 2 })} (${typeStr})`,
+                  ref: d.dispatchNo,
+                  amount: Math.round(amount * 100) / 100,
+                  supplierPayable: Number(d.supplierPayable || 0),
+                  transporterPayable: Number(d.transporterPayable || d.netTruckPayment || 0),
+                  customerReceivable: Number(d.customerReceivable || 0),
+                };
+              });
             }
-
-            // Filter for Customer if selected
-            if (formData.payeeType === 'CUSTOMER' && formData.payeeId) {
-              const custMatches = deliveryList.filter(
-                (d: any) =>
-                  d.customerId === formData.payeeId ||
-                  d.customer?.id === formData.payeeId ||
-                  (d.customer?.companyName &&
-                    formData.payeeName &&
-                    d.customer.companyName.toLowerCase().includes(formData.payeeName.toLowerCase()))
-              );
-              if (custMatches.length > 0) {
-                deliveryList = custMatches;
-              }
-            }
-
-            // Filter for Supplier if selected
-            if (
-              (formData.payeeType === 'SUPPLIER' || formData.payeeType === 'ONE_TIME_SUPPLIER') &&
-              formData.payeeId &&
-              formData.payeeId !== 'ONE_TIME_SUPPLIER'
-            ) {
-              const suppMatches = deliveryList.filter(
-                (d: any) =>
-                  d.supplierId === formData.payeeId ||
-                  d.supplier?.id === formData.payeeId ||
-                  (d.supplier?.companyName &&
-                    formData.payeeName &&
-                    d.supplier.companyName.toLowerCase().includes(formData.payeeName.toLowerCase()))
-              );
-              if (suppMatches.length > 0) {
-                deliveryList = suppMatches;
-              }
-            }
-
-            // Filter for Transporter if selected
-            if (formData.payeeType === 'TRANSPORTER' && selectedTransporterIds.size > 0) {
-              deliveryList = deliveryList.filter(
-                (d: any) =>
-                  selectedTransporterIds.has(d.transporterId) ||
-                  (d.transporter && selectedTransporterIds.has(d.transporter.id))
-              );
-            }
-
-            refs = deliveryList.map((d: any) => {
-              let amount = 0;
-              let typeStr = 'Payable';
-
-              if (formData.payeeType === 'CUSTOMER') {
-                amount = Number(d.customerReceivable || 0);
-                typeStr = 'Customer Receivable';
-              } else if (formData.payeeType === 'TRANSPORTER') {
-                amount = Number(d.transporterPayable || d.netTruckPayment || d.grossTruckFee || 0);
-                typeStr = 'Transporter Freight';
-              } else if (formData.payeeType === 'SUPPLIER' || formData.payeeType === 'ONE_TIME_SUPPLIER') {
-                amount = Number(d.supplierPayable || 0);
-                typeStr = 'Supplier Material';
-              } else {
-                amount = Number(d.supplierPayable || d.netTruckPayment || 0);
-                typeStr = 'Payable';
-              }
-
-              const podStr = d.padNumber ? `POD: ${d.padNumber}` : 'POD: N/A';
-              const partyStr =
-                d.customer?.companyName ||
-                d.supplier?.companyName ||
-                d.transporter?.companyName ||
-                d.transporter?.name ||
-                '';
-
-              return {
-                id: d.id,
-                dispatchNo: d.dispatchNo,
-                padNumber: d.padNumber || 'N/A',
-                label: `${d.dispatchNo} — ${podStr}${partyStr ? ` — ${partyStr}` : ''} — ETB ${amount.toLocaleString('en-US', { minimumFractionDigits: 2 })} (${typeStr})`,
-                ref: d.dispatchNo,
-                amount: Math.round(amount * 100) / 100,
-                supplierPayable: Number(d.supplierPayable || 0),
-                transporterPayable: Number(d.transporterPayable || d.netTruckPayment || 0),
-                customerReceivable: Number(d.customerReceivable || 0),
-              };
-            });
             break;
           }
           case 'CEMENT': {
-            const [purchasesRes, liftingsRes] = await Promise.all([
-              fetch('/api/cement/purchases?limit=200').then((r) => r.json()).catch(() => ({ success: false })),
-              fetch('/api/cement/liftings?limit=200').then((r) => r.json()).catch(() => ({ success: false })),
-            ]);
-
-            const cementRefs: SourceRefOption[] = [];
-
-            // Customer cement liftings
-            if (liftingsRes.success && Array.isArray(liftingsRes.data)) {
-              let liftingList = liftingsRes.data;
-              if (formData.payeeType === 'CUSTOMER' && formData.payeeId) {
-                const custLiftings = liftingList.filter(
-                  (l: any) =>
-                    l.customerId === formData.payeeId ||
-                    l.customer?.id === formData.payeeId ||
-                    (l.customer?.companyName &&
-                      formData.payeeName &&
-                      l.customer.companyName.toLowerCase().includes(formData.payeeName.toLowerCase()))
-                );
-                if (custLiftings.length > 0) {
-                  liftingList = custLiftings;
-                }
-              }
-
-              liftingList.forEach((l: any) => {
-                const total = Number(l.totalAmount || 0);
-                cementRefs.push({
-                  id: l.id,
-                  dispatchNo: l.liftingNo,
-                  padNumber: l.couponNo || l.padNumber || 'N/A',
-                  label: `Cement Lifting: ${l.liftingNo} — ${l.customer?.companyName || l.factory?.name || 'Customer'} — ${l.cementType || 'Cement'} — ETB ${total.toLocaleString('en-US', { minimumFractionDigits: 2 })} (${l.status || 'Active'})`,
-                  ref: l.liftingNo,
-                  amount: total,
-                  totalAmount: total,
-                  status: l.status || 'Active',
-                });
-              });
-            }
-
-            // Supplier/Factory cement purchases
-            if (purchasesRes.success && Array.isArray(purchasesRes.data)) {
-              let purchaseList = purchasesRes.data;
-              if (
-                (formData.payeeType === 'SUPPLIER' || formData.payeeType === 'ONE_TIME_SUPPLIER') &&
-                formData.payeeId &&
-                formData.payeeId !== 'ONE_TIME_SUPPLIER'
-              ) {
-                const suppPurchases = purchaseList.filter(
-                  (p: any) =>
-                    p.factoryId === formData.payeeId ||
-                    p.factory?.id === formData.payeeId ||
-                    (p.factory?.name &&
-                      formData.payeeName &&
-                      p.factory.name.toLowerCase().includes(formData.payeeName.toLowerCase()))
-                );
-                if (suppPurchases.length > 0) {
-                  purchaseList = suppPurchases;
-                }
-              }
-
-              purchaseList.forEach((p: any) => {
+            const res = await fetch('/api/cement/purchases?limit=100&paymentStatus=Unpaid,Partial');
+            const data = await res.json();
+            if (data.success) {
+              const approvedOnly = (data.data || []).filter((p: any) =>
+                p.status === 'Active' || p.status === 'Approved' || p.status === 'Checked'
+              );
+              refs = approvedOnly.map((p: any) => {
                 const total = Number(p.totalAmount) || 0;
                 const paid = Number(p.paidAmount) || 0;
                 const remaining = Math.max(0, total - paid);
                 const isPartial = p.paymentStatus === 'Partial' || (paid > 0 && remaining > 0);
-                const statusStr = isPartial ? 'Partial' : remaining <= 0 ? 'Paid' : 'Unpaid';
+                const statusStr = isPartial ? 'Partial' : (remaining <= 0 ? 'Paid' : 'Unpaid');
                 const badge = isPartial ? '🟡 Partial Payment' : statusStr === 'Paid' ? '🟢 Paid' : '🔴 Unpaid';
 
-                cementRefs.push({
+                return {
                   id: p.id,
-                  dispatchNo: p.purchaseNo,
-                  padNumber: p.orderNo || 'N/A',
-                  label: `Cement Purchase: ${p.purchaseNo} — ${p.factory?.name || 'Factory'} — Total: ETB ${total.toLocaleString('en-US', { minimumFractionDigits: 2 })} | Paid: ETB ${paid.toLocaleString('en-US', { minimumFractionDigits: 2 })} | Rem: ETB ${remaining.toLocaleString('en-US', { minimumFractionDigits: 2 })} (${badge})`,
+                  label: `${p.purchaseNo} — ${p.factory?.name || 'Unknown'} — Total: ETB ${total.toLocaleString('en-US')} | Paid: ETB ${paid.toLocaleString('en-US')} | Rem: ETB ${remaining.toLocaleString('en-US')} (${badge})`,
                   ref: p.purchaseNo,
                   amount: remaining > 0 ? remaining : total,
                   totalAmount: total,
@@ -521,19 +303,18 @@ export default function NewVoucherPage() {
                   remainingAmount: remaining,
                   isPartial,
                   status: statusStr,
-                });
+                };
               });
             }
-
-            refs = cementRefs;
             break;
           }
           case 'PAYROLL': {
             const res = await fetch('/api/hr/payroll?limit=50');
             const data = await res.json();
             if (data.success) {
-              const approvedOnly = (data.data || []).filter(
-                (pr: any) => pr.status === 'Approved' || pr.status === 'Active' || pr.status === 'Finalized'
+              // Only show Approved payroll
+              const approvedOnly = (data.data || []).filter((pr: any) =>
+                pr.status === 'Approved' || pr.status === 'Active' || pr.status === 'Finalized'
               );
               refs = approvedOnly.map((pr: any) => ({
                 id: pr.id,
@@ -548,8 +329,9 @@ export default function NewVoucherPage() {
             const res = await fetch('/api/medical/purchase-requests?limit=100');
             const data = await res.json();
             if (data.success) {
-              const approvedOnly = (data.data || []).filter(
-                (r: any) => r.status === 'Approved' || r.status === 'Active'
+              // Only show Approved medical requests
+              const approvedOnly = (data.data || []).filter((r: any) =>
+                r.status === 'Approved' || r.status === 'Active'
               );
               refs = approvedOnly.map((r: any) => ({
                 id: r.id,
@@ -561,15 +343,18 @@ export default function NewVoucherPage() {
             break;
           }
           case 'SALES': {
+            // Fetch sales invoices using server-side filters
             const invoiceParams = new URLSearchParams({ limit: '200' });
             if (formData.payeeId && formData.payeeId !== 'ONE_TIME_SUPPLIER') {
               invoiceParams.set('customerId', formData.payeeId);
             }
 
+            // Try fetching unpaid/partial invoices first
             let invRes = await fetch(`/api/sales/invoices?${invoiceParams.toString()}&status=Unpaid,Partial`);
             let invData = await invRes.json();
-            let invoiceList = invData.success && Array.isArray(invData.data) ? invData.data : [];
+            let invoiceList = (invData.success && Array.isArray(invData.data)) ? invData.data : [];
 
+            // Fallback: if no Unpaid/Partial invoices found, fetch all invoices for customer/system
             if (invoiceList.length === 0) {
               invRes = await fetch(`/api/sales/invoices?${invoiceParams.toString()}`);
               invData = await invRes.json();
@@ -581,21 +366,10 @@ export default function NewVoucherPage() {
             refs = invoiceList.map((inv: any) => {
               const totalAmount = Number(inv.totalAmount || 0);
               const paidAmount = Number(inv.paidAmount || 0);
-              const remainingAmount =
-                inv.remainingAmount !== undefined
-                  ? Number(inv.remainingAmount)
-                  : Math.max(0, totalAmount - paidAmount);
+              const remainingAmount = inv.remainingAmount !== undefined ? Number(inv.remainingAmount) : Math.max(0, totalAmount - paidAmount);
               const isPartial = inv.isPartial || (paidAmount > 0 && remainingAmount > 0);
-              const statusStr = isPartial
-                ? 'Partial'
-                : paidAmount >= totalAmount && totalAmount > 0
-                ? 'Paid'
-                : inv.status || 'Unpaid';
-              const dateStr = inv.dueDate
-                ? `Due: ${new Date(inv.dueDate).toLocaleDateString()}`
-                : inv.createdAt
-                ? new Date(inv.createdAt).toLocaleDateString()
-                : 'N/A';
+              const statusStr = isPartial ? 'Partial' : (paidAmount >= totalAmount && totalAmount > 0 ? 'Paid' : (inv.status || 'Unpaid'));
+              const dateStr = inv.dueDate ? `Due: ${new Date(inv.dueDate).toLocaleDateString()}` : (inv.createdAt ? new Date(inv.createdAt).toLocaleDateString() : 'N/A');
 
               const statusBadge = isPartial ? '🟡 Partial Payment' : statusStr === 'Paid' ? '🟢 Paid' : '🔴 Unpaid';
               let amountText = `Total: ETB ${totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
@@ -617,7 +391,25 @@ export default function NewVoucherPage() {
             });
             break;
           }
+          case 'TRANSPORTER': {
+            const res = await fetch('/api/aggregate?limit=100');
+            const data = await res.json();
+            if (data.success) {
+              // Only show Delivered/Completed dispatches for transporter payment
+              const approvedOnly = (data.data || []).filter((d: any) =>
+                d.status === 'Approved' || d.status === 'Delivered' || d.status === 'Completed' || d.status === 'Active'
+              );
+              refs = approvedOnly.map((d: any) => ({
+                id: d.id,
+                label: `${d.dispatchNo} — Truck: ${d.driverName || 'N/A'} (${d.status || 'Active'})`,
+                ref: d.dispatchNo,
+                amount: d.netTruckPayment,
+              }));
+            }
+            break;
+          }
           default: {
+            // ASSOCIATION, VAT — no specific refs
             break;
           }
         }
@@ -632,12 +424,10 @@ export default function NewVoucherPage() {
     };
 
     fetchRefs();
-  }, [formData.sourceModule, formData.payeeId, selectedTransporterIds]);
+  }, [formData.sourceModule, formData.payeeId]);
 
-  // When payee type changes, reset payee selection and transporter multi-select state
+  // When payee type changes, reset payee selection
   useEffect(() => {
-    setSelectedTransporterIds(new Set());
-    setTransporterSearch('');
     setFormData((prev) => ({
       ...prev,
       payeeId: formData.payeeType === 'ONE_TIME_SUPPLIER' ? 'ONE_TIME_SUPPLIER' : '',
@@ -659,13 +449,13 @@ export default function NewVoucherPage() {
   useEffect(() => {
     if (!formData.payeeType) return;
     const moduleMap: Record<string, string> = {
-      SUPPLIER: 'PURCHASE',
-      ONE_TIME_SUPPLIER: 'PURCHASE',
-      CUSTOMER: 'SALES',
-      TRANSPORTER: 'TRANSPORTER',
-      EMPLOYEE: 'PAYROLL',
-      ASSOCIATION: 'ASSOCIATION',
-      GOVERNMENT: 'VAT',
+      'SUPPLIER': 'PURCHASE',
+      'ONE_TIME_SUPPLIER': 'PURCHASE',
+      'CUSTOMER': 'SALES',
+      'TRANSPORTER': 'TRANSPORTER',
+      'EMPLOYEE': 'PAYROLL',
+      'ASSOCIATION': 'ASSOCIATION',
+      'GOVERNMENT': 'VAT',
     };
     const suggested = moduleMap[formData.payeeType];
     if (suggested) {
@@ -673,6 +463,7 @@ export default function NewVoucherPage() {
         ...prev,
         sourceModule: suggested,
         payeeId: formData.payeeType === 'ONE_TIME_SUPPLIER' ? 'ONE_TIME_SUPPLIER' : prev.payeeId,
+        // Auto-set RECEIPT when customer is selected (collecting money from them)
         ...(formData.payeeType === 'CUSTOMER' ? { voucherType: 'RECEIPT' } : {}),
       }));
     }
@@ -695,8 +486,7 @@ export default function NewVoucherPage() {
       setFormData((prev) => ({
         ...prev,
         payeeId: 'ONE_TIME_SUPPLIER',
-        payeeName:
-          prev.payeeName && prev.payeeName !== '⚡ One-Time Supplier (Ad-Hoc / Manual)' ? prev.payeeName : '',
+        payeeName: prev.payeeName && prev.payeeName !== '⚡ One-Time Supplier (Ad-Hoc / Manual)' ? prev.payeeName : '',
         sourceModule: prev.sourceModule || 'PURCHASE',
       }));
     } else {
@@ -722,34 +512,30 @@ export default function NewVoucherPage() {
     }
 
     setFormData((prev) => {
+      // Auto-extract supplier/party name from reference label if available
       const labelParts = selected.label ? selected.label.split(' — ') : [];
-      const extractedParty =
-        selected.supplierName || (labelParts.length > 1 ? labelParts[1].split(' (')[0].trim() : '');
+      const extractedParty = selected.supplierName || (labelParts.length > 1 ? labelParts[1].split(' (')[0].trim() : '');
 
-      const targetAmount =
-        selected.amount !== undefined && selected.amount !== null && selected.amount > 0
-          ? String(selected.amount)
-          : prev.amount;
+      const targetAmount = selected.amount !== undefined && selected.amount !== null && selected.amount > 0
+        ? String(selected.amount)
+        : prev.amount;
 
       return {
         ...prev,
         sourceId: selected.id,
         sourceReference: selected.ref || '',
         amount: targetAmount,
-        payeeName:
-          (prev.payeeId === 'ONE_TIME_SUPPLIER' || !prev.payeeName) && extractedParty
-            ? extractedParty
-            : prev.payeeName,
+        payeeName: (prev.payeeId === 'ONE_TIME_SUPPLIER' || !prev.payeeName) && extractedParty
+          ? extractedParty
+          : prev.payeeName,
         paymentMethod: selected.paymentMethod || prev.paymentMethod,
         bankName: selected.bankName || prev.bankName,
-        description:
-          prev.description ||
-          (selected.ref ? `Voucher settlement for ref: ${selected.ref}` : prev.description),
+        description: prev.description || (selected.ref ? `Voucher settlement for purchasing payment/order ref: ${selected.ref}` : prev.description),
       };
     });
   };
 
-  // Toggle delivery selection (multi-select)
+  // Toggle aggregate delivery selection (multi-select)
   const handleDeliveryToggle = (deliveryId: string) => {
     setSelectedDeliveryIds((prev) => {
       const next = new Set(prev);
@@ -758,13 +544,14 @@ export default function NewVoucherPage() {
       } else {
         next.add(deliveryId);
       }
+      // Update form: comma-separated IDs, refs, and sum of amounts
       const selectedRefs = sourceRefs.filter((r) => next.has(r.id));
       const totalAmount = selectedRefs.reduce((sum, r) => sum + (r.amount || 0), 0);
-      setFormData((prevForm) => ({
-        ...prevForm,
+      setFormData((prev) => ({
+        ...prev,
         sourceId: Array.from(next).join(','),
         sourceReference: selectedRefs.map((r) => r.ref).join(', '),
-        amount: totalAmount > 0 ? String(Math.round(totalAmount * 100) / 100) : prevForm.amount,
+        amount: totalAmount > 0 ? String(Math.round(totalAmount * 100) / 100) : prev.amount,
       }));
       return next;
     });
@@ -772,9 +559,11 @@ export default function NewVoucherPage() {
 
   const handleSelectAllDeliveries = () => {
     if (selectedDeliveryIds.size === sourceRefs.length) {
+      // Deselect all
       setSelectedDeliveryIds(new Set());
       setFormData((prev) => ({ ...prev, sourceId: '', sourceReference: '', amount: '' }));
     } else {
+      // Select all
       const allIds = new Set(sourceRefs.map((r) => r.id));
       const totalAmount = sourceRefs.reduce((sum, r) => sum + (r.amount || 0), 0);
       setSelectedDeliveryIds(allIds);
@@ -808,11 +597,7 @@ export default function NewVoucherPage() {
         throw new Error('Please select a payee type');
       }
       if (!formData.payeeName) {
-        throw new Error(
-          formData.payeeType === 'TRANSPORTER'
-            ? 'Please select at least one transporter'
-            : 'Please select or enter a payee name'
-        );
+        throw new Error('Please select or enter a payee name');
       }
       if (!formData.amount || parseFloat(formData.amount) <= 0) {
         throw new Error('Please enter a valid amount');
@@ -830,7 +615,7 @@ export default function NewVoucherPage() {
         sourceId: formData.sourceId || null,
         sourceRef: formData.sourceReference || null,
         payeeType: formData.payeeType === 'ONE_TIME_SUPPLIER' ? 'SUPPLIER' : formData.payeeType,
-        payeeId: formData.payeeId === 'ONE_TIME_SUPPLIER' ? null : formData.payeeId || null,
+        payeeId: formData.payeeId === 'ONE_TIME_SUPPLIER' ? null : (formData.payeeId || null),
         payeeName: formData.payeeName,
         amount: parseFloat(formData.amount),
         paymentMethod: formData.paymentMethod,
@@ -838,11 +623,7 @@ export default function NewVoucherPage() {
         bankName: formData.bankName || null,
         checkNo: formData.checkNo || null,
         refNo: formData.referenceNo || null,
-        description:
-          formData.description ||
-          (formData.payeeId === 'ONE_TIME_SUPPLIER'
-            ? `One-Time Supplier payment to ${formData.payeeName}`
-            : null),
+        description: formData.description || (formData.payeeId === 'ONE_TIME_SUPPLIER' ? `One-Time Supplier payment to ${formData.payeeName}` : null),
       };
 
       const response = await fetch('/api/finance/vouchers', {
@@ -871,13 +652,18 @@ export default function NewVoucherPage() {
     <div className="space-y-4 sm:space-y-6 max-w-4xl">
       <div className="flex items-center justify-between">
         <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-[#1D1D1F]">Create New Payment Voucher</h1>
-        <Button variant="secondary" onClick={() => router.push('/dashboard/finance/vouchers')}>
+        <Button
+          variant="secondary"
+          onClick={() => router.push('/dashboard/finance/vouchers')}
+        >
           Cancel
         </Button>
       </div>
 
       {error && (
-        <div className="bg-[#FF3B30]/10 border border-[#FF3B30] rounded-2xl p-4 text-[#D70015]">{error}</div>
+        <div className="bg-[#FF3B30]/10 border border-[#FF3B30] rounded-2xl p-4 text-[#D70015]">
+          {error}
+        </div>
       )}
 
       <form onSubmit={handleSubmit} className="space-y-6">
@@ -911,7 +697,7 @@ export default function NewVoucherPage() {
                   { value: 'CUSTOMER', label: 'Customer' },
                   { value: 'SUPPLIER', label: 'Supplier' },
                   { value: 'ONE_TIME_SUPPLIER', label: 'One-Time Supplier' },
-                  { value: 'TRANSPORTER', label: 'Transporter (Multi-Select Available)' },
+                  { value: 'TRANSPORTER', label: 'Transporter' },
                   { value: 'EMPLOYEE', label: 'Employee' },
                   { value: 'ASSOCIATION', label: 'Association' },
                   { value: 'GOVERNMENT', label: 'Government / Tax' },
@@ -926,213 +712,43 @@ export default function NewVoucherPage() {
         {formData.payeeType && (
           <Card>
             <CardHeader>
-              <div className="flex items-center justify-between">
-                <h2 className="text-lg font-semibold text-[#1D1D1F]">
-                  Select{' '}
-                  {formData.payeeType === 'CUSTOMER'
-                    ? 'Customer'
-                    : formData.payeeType === 'SUPPLIER'
-                    ? 'Supplier'
-                    : formData.payeeType === 'ONE_TIME_SUPPLIER'
-                    ? 'One-Time Supplier'
-                    : formData.payeeType === 'TRANSPORTER'
-                    ? 'Transporter(s)'
-                    : formData.payeeType === 'EMPLOYEE'
-                    ? 'Employee'
-                    : 'Payee'}
-                </h2>
-                {formData.payeeType === 'TRANSPORTER' && (
-                  <span className="text-xs font-semibold text-blue-600 bg-blue-50 px-2.5 py-1 rounded-full border border-blue-200 flex items-center gap-1">
-                    <CheckSquare className="w-3.5 h-3.5" /> Checkbox Multi-Select
-                  </span>
-                )}
-              </div>
+              <h2 className="text-lg font-semibold text-[#1D1D1F]">
+                Select {formData.payeeType === 'CUSTOMER' ? 'Customer' :
+                  formData.payeeType === 'SUPPLIER' ? 'Supplier' :
+                  formData.payeeType === 'ONE_TIME_SUPPLIER' ? 'One-Time Supplier' :
+                  formData.payeeType === 'TRANSPORTER' ? 'Transporter' :
+                  formData.payeeType === 'EMPLOYEE' ? 'Employee' :
+                  'Payee'}
+              </h2>
             </CardHeader>
             <CardBody className="space-y-4">
-              {formData.payeeType === 'TRANSPORTER' ? (
-                /* Transporter Multi-Select Checkbox UI */
-                <div className="space-y-3">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                    <label className="block text-[13px] font-medium text-[#86868B] uppercase tracking-wider">
-                      Select Transporters ({selectedTransporterIds.size} of {transporters.length} selected) *
-                    </label>
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={handleSelectAllTransporters}
-                        className="text-xs font-semibold text-blue-600 hover:text-blue-800 transition-colors"
-                      >
-                        {transporters.length > 0 &&
-                        transporters
-                          .filter(
-                            (t) =>
-                              t.name.toLowerCase().includes(transporterSearch.toLowerCase()) ||
-                              (t.code && t.code.toLowerCase().includes(transporterSearch.toLowerCase()))
-                          )
-                          .every((t) => selectedTransporterIds.has(t.id))
-                          ? 'Deselect All'
-                          : 'Select All'}
-                      </button>
-                      {selectedTransporterIds.size > 0 && (
-                        <>
-                          <span className="text-gray-300">|</span>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setSelectedTransporterIds(new Set());
-                              setFormData((prev) => ({ ...prev, payeeId: '', payeeName: '' }));
-                            }}
-                            className="text-xs font-semibold text-red-600 hover:text-red-800 transition-colors"
-                          >
-                            Clear Selection
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Search Bar */}
-                  <div className="relative">
-                    <input
-                      type="text"
-                      placeholder="Search transporters by name or code..."
-                      value={transporterSearch}
-                      onChange={(e) => setTransporterSearch(e.target.value)}
-                      className="w-full pl-9 pr-8 py-2.5 bg-white/80 border border-[#D2D2D7] rounded-xl focus:outline-none focus:ring-4 focus:ring-[rgba(0,122,255,0.25)] focus:border-[#007AFF] transition-all text-sm text-[#1D1D1F]"
-                    />
-                    <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                    {transporterSearch && (
-                      <button
-                        type="button"
-                        onClick={() => setTransporterSearch('')}
-                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-                    )}
-                  </div>
-
-                  {/* Transporters Multi-Select Checklist */}
-                  <div className="border border-[#D2D2D7] rounded-xl overflow-hidden bg-white/80 shadow-inner">
-                    <div className="max-h-64 overflow-y-auto divide-y divide-gray-100">
-                      {transporters
-                        .filter(
-                          (t) =>
-                            t.name.toLowerCase().includes(transporterSearch.toLowerCase()) ||
-                            (t.code && t.code.toLowerCase().includes(transporterSearch.toLowerCase()))
-                        )
-                        .map((transporter) => {
-                          const isChecked = selectedTransporterIds.has(transporter.id);
-                          return (
-                            <label
-                              key={transporter.id}
-                              className={`flex items-center gap-3 px-4 py-3 cursor-pointer transition-colors ${
-                                isChecked ? 'bg-blue-50/80' : 'hover:bg-gray-50'
-                              }`}
-                            >
-                              <input
-                                type="checkbox"
-                                checked={isChecked}
-                                onChange={() => handleTransporterToggle(transporter.id)}
-                                className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
-                              />
-                              <div className="flex-1 min-w-0 flex items-center justify-between gap-2">
-                                <div className="flex items-center gap-2">
-                                  <Truck className={`w-4 h-4 ${isChecked ? 'text-blue-600' : 'text-gray-400'}`} />
-                                  <span
-                                    className={`text-sm font-medium ${
-                                      isChecked ? 'text-blue-900 font-semibold' : 'text-gray-900'
-                                    }`}
-                                  >
-                                    {transporter.name}
-                                  </span>
-                                </div>
-                                {transporter.code && (
-                                  <span className="px-2 py-0.5 bg-gray-100 text-gray-700 text-xs font-semibold rounded-md border border-gray-200">
-                                    {transporter.code}
-                                  </span>
-                                )}
-                              </div>
-                            </label>
-                          );
-                        })}
-                      {transporters.filter(
-                        (t) =>
-                          t.name.toLowerCase().includes(transporterSearch.toLowerCase()) ||
-                          (t.code && t.code.toLowerCase().includes(transporterSearch.toLowerCase()))
-                      ).length === 0 && (
-                        <div className="px-4 py-6 text-center text-sm text-gray-500">
-                          {loadingEntities ? 'Loading transporters...' : `No transporters matching "${transporterSearch}"`}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Selected Transporters Tags */}
-                  {selectedTransporterIds.size > 0 && (
-                    <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                      <span className="text-xs text-gray-500 font-medium mr-1">Selected:</span>
-                      {transporters
-                        .filter((t) => selectedTransporterIds.has(t.id))
-                        .map((t) => (
-                          <span
-                            key={t.id}
-                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800 border border-blue-200 shadow-xs"
-                          >
-                            <span>{t.name}</span>
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleTransporterToggle(t.id);
-                              }}
-                              className="hover:text-blue-950 p-0.5 rounded-full hover:bg-blue-200 transition-colors"
-                              title="Remove"
-                            >
-                              <X className="w-3 h-3" />
-                            </button>
-                          </span>
-                        ))}
-                    </div>
-                  )}
+              {payeeOptions.length > 0 ? (
+                <div>
+                  <label className="block text-[13px] font-medium text-[#86868B] uppercase tracking-wider mb-1.5">
+                    {formData.payeeType === 'CUSTOMER' ? 'Customer' :
+                     formData.payeeType === 'SUPPLIER' ? 'Supplier' :
+                     formData.payeeType === 'ONE_TIME_SUPPLIER' ? 'One-Time Supplier' :
+                     formData.payeeType === 'TRANSPORTER' ? 'Transporter' :
+                     formData.payeeType === 'EMPLOYEE' ? 'Employee' : 'Payee'} *
+                  </label>
+                  <select
+                    value={formData.payeeId}
+                    onChange={handlePayeeSelect}
+                    className="w-full px-4 py-3 bg-white/80 border border-[#D2D2D7] rounded-xl focus:outline-none focus:ring-4 focus:ring-[rgba(0,122,255,0.25)] focus:border-[#007AFF] transition-all duration-200 text-[#1D1D1F]"
+                    required
+                  >
+                    <option value="">-- Select --</option>
+                    {payeeOptions.map((opt) => (
+                      <option key={opt.id} value={opt.id}>
+                        {opt.name}{opt.code && opt.id !== 'ONE_TIME_SUPPLIER' ? ` (${opt.code})` : ''}
+                      </option>
+                    ))}
+                  </select>
                 </div>
-              ) : (
-                /* Standard dropdown for other payee types */
-                payeeOptions.length > 0 && (
-                  <div>
-                    <label className="block text-[13px] font-medium text-[#86868B] uppercase tracking-wider mb-1.5">
-                      {formData.payeeType === 'CUSTOMER'
-                        ? 'Customer'
-                        : formData.payeeType === 'SUPPLIER'
-                        ? 'Supplier'
-                        : formData.payeeType === 'ONE_TIME_SUPPLIER'
-                        ? 'One-Time Supplier'
-                        : formData.payeeType === 'EMPLOYEE'
-                        ? 'Employee'
-                        : 'Payee'}{' '}
-                      *
-                    </label>
-                    <select
-                      value={formData.payeeId}
-                      onChange={handlePayeeSelect}
-                      className="w-full px-4 py-3 bg-white/80 border border-[#D2D2D7] rounded-xl focus:outline-none focus:ring-4 focus:ring-[rgba(0,122,255,0.25)] focus:border-[#007AFF] transition-all duration-200 text-[#1D1D1F]"
-                      required
-                    >
-                      <option value="">-- Select --</option>
-                      {payeeOptions.map((opt) => (
-                        <option key={opt.id} value={opt.id}>
-                          {opt.name}
-                          {opt.code && opt.id !== 'ONE_TIME_SUPPLIER' ? ` (${opt.code})` : ''}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )
-              )}
+              ) : null}
 
               {/* Show manual Payee Name input if ONE_TIME_SUPPLIER is selected or if no dropdown options exist */}
-              {(formData.payeeId === 'ONE_TIME_SUPPLIER' ||
-                (formData.payeeType !== 'TRANSPORTER' && payeeOptions.length === 0)) && (
+              {(formData.payeeId === 'ONE_TIME_SUPPLIER' || payeeOptions.length === 0) && (
                 <div>
                   <Input
                     label="One-Time Payee / Supplier Name *"
@@ -1149,15 +765,13 @@ export default function NewVoucherPage() {
                 </div>
               )}
 
-              {formData.payeeName &&
-                formData.payeeId !== 'ONE_TIME_SUPPLIER' &&
-                formData.payeeType !== 'TRANSPORTER' && (
-                  <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-3">
-                    <span className="text-sm text-green-800">
-                      Selected: <strong>{formData.payeeName}</strong>
-                    </span>
-                  </div>
-                )}
+              {formData.payeeName && formData.payeeId !== 'ONE_TIME_SUPPLIER' && (
+                <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-3">
+                  <span className="text-sm text-green-800">
+                    Selected: <strong>{formData.payeeName}</strong>
+                  </span>
+                </div>
+              )}
             </CardBody>
           </Card>
         )}
@@ -1180,130 +794,95 @@ export default function NewVoucherPage() {
                   { value: 'SALES', label: 'Sales Invoices (Customer)' },
                   { value: 'PURCHASE', label: 'Purchase Orders' },
                   { value: 'AGGREGATE', label: 'Aggregate Dispatches' },
-                  { value: 'TRANSPORTER', label: 'Transporter Freight Dispatches' },
                   { value: 'CEMENT', label: 'Cement Purchases' },
                   { value: 'PAYROLL', label: 'Payroll' },
                   { value: 'MEDICAL', label: 'Medical' },
+                  { value: 'TRANSPORTER', label: 'Transporter Settlements' },
                   { value: 'ASSOCIATION', label: 'Association' },
                   { value: 'VAT', label: 'VAT / Tax' },
                 ]}
               />
 
-              {formData.sourceModule &&
-                sourceRefs.length > 0 &&
-                (formData.sourceModule === 'AGGREGATE' ||
-                  formData.sourceModule === 'TRANSPORTER' ||
-                  formData.sourceModule === 'CEMENT') && (
-                  <div>
-                    <label className="block text-[13px] font-medium text-[#86868B] uppercase tracking-wider mb-1.5">
-                      {formData.sourceModule === 'CEMENT'
-                        ? 'Select Cement Records to Settle'
-                        : 'Select Deliveries to Settle'}{' '}
-                      ({selectedDeliveryIds.size} selected)
-                    </label>
-                    <div className="border border-[#D2D2D7] rounded-xl overflow-hidden bg-white/80">
-                      <div className="px-4 py-2 bg-gray-50 border-b border-[#D2D2D7] flex items-center justify-between">
-                        <label className="flex items-center gap-2 cursor-pointer text-sm">
+              {formData.sourceModule && sourceRefs.length > 0 && formData.sourceModule === 'AGGREGATE' && (
+                <div>
+                  <label className="block text-[13px] font-medium text-[#86868B] uppercase tracking-wider mb-1.5">
+                    Select Deliveries to Settle ({selectedDeliveryIds.size} selected)
+                  </label>
+                  <div className="border border-[#D2D2D7] rounded-xl overflow-hidden bg-white/80">
+                    <div className="px-4 py-2 bg-gray-50 border-b border-[#D2D2D7] flex items-center justify-between">
+                      <label className="flex items-center gap-2 cursor-pointer text-sm">
+                        <input
+                          type="checkbox"
+                          checked={selectedDeliveryIds.size === sourceRefs.length && sourceRefs.length > 0}
+                          onChange={handleSelectAllDeliveries}
+                          className="w-4 h-4 rounded"
+                        />
+                        <span className="font-medium">Select All</span>
+                      </label>
+                      {selectedDeliveryIds.size > 0 && (
+                        <span className="text-sm text-blue-600 font-medium">
+                          Total: ETB {sourceRefs.filter((r) => selectedDeliveryIds.has(r.id)).reduce((s, r) => s + (r.amount || 0), 0).toLocaleString('en-US', { maximumFractionDigits: 2 })}
+                        </span>
+                      )}
+                    </div>
+                    <div className="max-h-60 overflow-y-auto">
+                      {sourceRefs.map((ref) => (
+                        <label key={ref.id} className="flex items-center gap-3 px-4 py-3 hover:bg-blue-50 cursor-pointer border-b border-gray-100 last:border-0">
                           <input
                             type="checkbox"
-                            checked={selectedDeliveryIds.size === sourceRefs.length && sourceRefs.length > 0}
-                            onChange={handleSelectAllDeliveries}
-                            className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"
+                            checked={selectedDeliveryIds.has(ref.id)}
+                            onChange={() => handleDeliveryToggle(ref.id)}
+                            className="w-4 h-4 rounded"
                           />
-                          <span className="font-medium">
-                            {formData.sourceModule === 'CEMENT' ? 'Select All Records' : 'Select All Deliveries'}
-                          </span>
-                        </label>
-                        {selectedDeliveryIds.size > 0 && (
-                          <span className="text-sm text-blue-600 font-medium">
-                            Total: ETB{' '}
-                            {sourceRefs
-                              .filter((r) => selectedDeliveryIds.has(r.id))
-                              .reduce((s, r) => s + (r.amount || 0), 0)
-                              .toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                          </span>
-                        )}
-                      </div>
-                      <div className="max-h-60 overflow-y-auto">
-                        {sourceRefs.map((ref) => (
-                          <label
-                            key={ref.id}
-                            className="flex items-center gap-3 px-4 py-3 hover:bg-blue-50 cursor-pointer border-b border-gray-100 last:border-0"
-                          >
-                            <input
-                              type="checkbox"
-                              checked={selectedDeliveryIds.has(ref.id)}
-                              onChange={() => handleDeliveryToggle(ref.id)}
-                              className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"
-                            />
-                            <div className="flex-1 text-sm">
-                              <div className="flex items-center gap-2">
-                                <span className="font-semibold text-slate-900">
-                                  {formData.sourceModule === 'CEMENT'
-                                    ? ref.ref || ref.dispatchNo
-                                    : `Dispatch: ${ref.dispatchNo || ref.ref}`}
-                                </span>
-                                {ref.padNumber && ref.padNumber !== 'N/A' && (
-                                  <span className="px-2 py-0.5 bg-blue-50 text-blue-700 text-xs font-semibold rounded-md border border-blue-200">
-                                    {formData.sourceModule === 'CEMENT' ? `Order/Coupon: ${ref.padNumber}` : `POD: ${ref.padNumber}`}
-                                  </span>
-                                )}
-                              </div>
-                              <p className="text-xs text-slate-500 mt-0.5">{ref.label}</p>
-                            </div>
-                            <div className="text-right">
-                              <span className="text-sm font-bold text-slate-900">
-                                ETB{' '}
-                                {(ref.amount || 0).toLocaleString('en-US', {
-                                  minimumFractionDigits: 2,
-                                  maximumFractionDigits: 2,
-                                })}
+                          <div className="flex-1 text-sm">
+                            <div className="flex items-center gap-2">
+                              <span className="font-semibold text-slate-900">
+                                Dispatch: {ref.dispatchNo || ref.ref}
                               </span>
-                              <p className="text-[11px] font-medium text-slate-500">
-                                {formData.sourceModule === 'CEMENT'
-                                  ? 'Cement Settlement'
-                                  : formData.payeeType === 'CUSTOMER'
-                                  ? 'Customer Receivable'
-                                  : formData.payeeType === 'TRANSPORTER'
-                                  ? 'Transporter Freight'
-                                  : formData.payeeType === 'SUPPLIER'
-                                  ? 'Supplier Material'
-                                  : 'Payable'}
-                              </p>
+                              <span className="px-2 py-0.5 bg-blue-50 text-blue-700 text-xs font-semibold rounded-md border border-blue-200">
+                                POD: {ref.padNumber || 'N/A'}
+                              </span>
                             </div>
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-                    {loadingRefs && <p className="text-xs text-slate-500 mt-1">Loading references...</p>}
-                  </div>
-                )}
-
-              {formData.sourceModule &&
-                sourceRefs.length > 0 &&
-                formData.sourceModule !== 'AGGREGATE' &&
-                formData.sourceModule !== 'TRANSPORTER' &&
-                formData.sourceModule !== 'CEMENT' && (
-                  <div>
-                    <label className="block text-[13px] font-medium text-[#86868B] uppercase tracking-wider mb-1.5">
-                      Source Document
-                    </label>
-                    <select
-                      value={formData.sourceId}
-                      onChange={handleSourceSelect}
-                      className="w-full px-4 py-3 bg-white/80 border border-[#D2D2D7] rounded-xl focus:outline-none focus:ring-4 focus:ring-[rgba(0,122,255,0.25)] focus:border-[#007AFF] transition-all duration-200 text-[#1D1D1F]"
-                    >
-                      <option value="">-- Select Source Document --</option>
-                      {sourceRefs.map((ref) => (
-                        <option key={ref.id} value={ref.id}>
-                          {ref.label}
-                          {ref.amount ? ` — ETB ${ref.amount.toLocaleString('en-US')}` : ''}
-                        </option>
+                            <p className="text-xs text-slate-500 mt-0.5">{ref.label}</p>
+                          </div>
+                          <div className="text-right">
+                            <span className="text-sm font-bold text-slate-900">
+                              ETB {(ref.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </span>
+                            <p className="text-[11px] font-medium text-slate-500">
+                              {formData.payeeType === 'CUSTOMER' ? 'Customer Receivable' :
+                               formData.payeeType === 'TRANSPORTER' ? 'Transporter Freight' :
+                               formData.payeeType === 'SUPPLIER' ? 'Supplier Material' : 'Payable'}
+                            </p>
+                          </div>
+                        </label>
                       ))}
-                    </select>
-                    {loadingRefs && <p className="text-xs text-slate-500 mt-1">Loading references...</p>}
+                    </div>
                   </div>
-                )}
+                  {loadingRefs && <p className="text-xs text-slate-500 mt-1">Loading references...</p>}
+                </div>
+              )}
+
+              {formData.sourceModule && sourceRefs.length > 0 && formData.sourceModule !== 'AGGREGATE' && (
+                <div>
+                  <label className="block text-[13px] font-medium text-[#86868B] uppercase tracking-wider mb-1.5">
+                    Source Document
+                  </label>
+                  <select
+                    value={formData.sourceId}
+                    onChange={handleSourceSelect}
+                    className="w-full px-4 py-3 bg-white/80 border border-[#D2D2D7] rounded-xl focus:outline-none focus:ring-4 focus:ring-[rgba(0,122,255,0.25)] focus:border-[#007AFF] transition-all duration-200 text-[#1D1D1F]"
+                  >
+                    <option value="">-- Select Source Document --</option>
+                    {sourceRefs.map((ref) => (
+                      <option key={ref.id} value={ref.id}>
+                        {ref.label}{ref.amount ? ` — ETB ${ref.amount.toLocaleString('en-US')}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  {loadingRefs && <p className="text-xs text-slate-500 mt-1">Loading references...</p>}
+                </div>
+              )}
 
               {formData.sourceModule && sourceRefs.length === 0 && !loadingRefs && (
                 <div>
@@ -1319,81 +898,50 @@ export default function NewVoucherPage() {
                 </div>
               )}
 
-              {formData.sourceReference &&
-                (() => {
-                  const selected = sourceRefs.find(
-                    (r) => r.id === formData.sourceId || r.ref === formData.sourceReference
-                  );
-                  const isPartial =
-                    selected?.isPartial ||
-                    selected?.status === 'Partial' ||
-                    (selected?.paidAmount &&
-                      selected.paidAmount > 0 &&
-                      selected.remainingAmount &&
-                      selected.remainingAmount > 0);
+              {formData.sourceReference && (() => {
+                const selected = sourceRefs.find((r) => r.id === formData.sourceId || r.ref === formData.sourceReference);
+                const isPartial = selected?.isPartial || selected?.status === 'Partial' || (selected?.paidAmount && selected.paidAmount > 0 && selected.remainingAmount && selected.remainingAmount > 0);
 
-                  return (
-                    <div
-                      className={`p-4 rounded-xl border ${
-                        isPartial
-                          ? 'bg-amber-50 border-amber-300 text-amber-900'
-                          : 'bg-blue-50 border-blue-200 text-blue-900'
-                      } space-y-1.5`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="font-semibold text-sm">Selected Ref: {formData.sourceReference}</span>
-                        {isPartial ? (
-                          <span className="px-2.5 py-0.5 text-xs font-bold rounded-full bg-amber-200 text-amber-900 border border-amber-400">
-                            🟡 Partial Payment
-                          </span>
-                        ) : selected?.status === 'Paid' ? (
-                          <span className="px-2.5 py-0.5 text-xs font-bold rounded-full bg-green-200 text-green-900 border border-green-400">
-                            🟢 Paid
-                          </span>
-                        ) : (
-                          <span className="px-2.5 py-0.5 text-xs font-bold rounded-full bg-blue-200 text-blue-900 border border-blue-300">
-                            🔴 Unpaid / Full Payment
-                          </span>
-                        )}
-                      </div>
-
-                      {selected &&
-                        (selected.totalAmount !== undefined ||
-                          selected.paidAmount !== undefined ||
-                          selected.remainingAmount !== undefined) && (
-                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs pt-1 border-t border-current/10">
-                            <div>
-                              <span className="text-slate-500 block">Total Amount:</span>
-                              <span className="font-bold">
-                                ETB{' '}
-                                {(selected.totalAmount || 0).toLocaleString('en-US', {
-                                  minimumFractionDigits: 2,
-                                })}
-                              </span>
-                            </div>
-                            <div>
-                              <span className="text-slate-500 block">Previously Paid:</span>
-                              <span className="font-bold text-emerald-700">
-                                ETB{' '}
-                                {(selected.paidAmount || 0).toLocaleString('en-US', {
-                                  minimumFractionDigits: 2,
-                                })}
-                              </span>
-                            </div>
-                            <div>
-                              <span className="text-slate-500 block">Remaining Balance:</span>
-                              <span className="font-bold text-amber-800">
-                                ETB{' '}
-                                {(selected.remainingAmount || selected.amount || 0).toLocaleString('en-US', {
-                                  minimumFractionDigits: 2,
-                                })}
-                              </span>
-                            </div>
-                          </div>
-                        )}
+                return (
+                  <div className={`p-4 rounded-xl border ${isPartial ? 'bg-amber-50 border-amber-300 text-amber-900' : 'bg-blue-50 border-blue-200 text-blue-900'} space-y-1.5`}>
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-sm">
+                        Selected Ref: {formData.sourceReference}
+                      </span>
+                      {isPartial ? (
+                        <span className="px-2.5 py-0.5 text-xs font-bold rounded-full bg-amber-200 text-amber-900 border border-amber-400">
+                          🟡 Partial Payment
+                        </span>
+                      ) : selected?.status === 'Paid' ? (
+                        <span className="px-2.5 py-0.5 text-xs font-bold rounded-full bg-green-200 text-green-900 border border-green-400">
+                          🟢 Paid
+                        </span>
+                      ) : (
+                        <span className="px-2.5 py-0.5 text-xs font-bold rounded-full bg-blue-200 text-blue-900 border border-blue-300">
+                          🔴 Unpaid / Full Payment
+                        </span>
+                      )}
                     </div>
-                  );
-                })()}
+
+                    {selected && (selected.totalAmount !== undefined || selected.paidAmount !== undefined || selected.remainingAmount !== undefined) && (
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs pt-1 border-t border-current/10">
+                        <div>
+                          <span className="text-slate-500 block">Total Amount:</span>
+                          <span className="font-bold">ETB {(selected.totalAmount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-500 block">Previously Paid:</span>
+                          <span className="font-bold text-emerald-700">ETB {(selected.paidAmount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-500 block">Remaining Balance:</span>
+                          <span className="font-bold text-amber-800">ETB {(selected.remainingAmount || selected.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
             </CardBody>
           </Card>
         )}
@@ -1420,12 +968,7 @@ export default function NewVoucherPage() {
                   {formData.payeeId === 'ONE_TIME_SUPPLIER' && (
                     <p className="text-xs text-blue-600 mt-1 font-medium flex items-center gap-1">
                       <span>✓ Amount fetched from your manual entry:</span>
-                      <strong>
-                        ETB{' '}
-                        {formData.amount
-                          ? parseFloat(formData.amount).toLocaleString('en-US', { minimumFractionDigits: 2 })
-                          : '0.00'}
-                      </strong>
+                      <strong>ETB {formData.amount ? parseFloat(formData.amount).toLocaleString('en-US', { minimumFractionDigits: 2 }) : '0.00'}</strong>
                     </p>
                   )}
                 </div>
@@ -1568,38 +1111,41 @@ export default function NewVoucherPage() {
                 </div>
                 <div className="bg-slate-50 rounded-xl p-3">
                   <p className="text-xs text-slate-500 uppercase">Payee</p>
-                  <p className="text-sm font-semibold text-slate-900 mt-1 truncate" title={formData.payeeName}>
-                    {formData.payeeName}
-                  </p>
+                  <p className="text-sm font-semibold text-slate-900 mt-1 truncate">{formData.payeeName}</p>
                 </div>
                 <div className="bg-blue-50 rounded-xl p-3">
                   <p className="text-xs text-blue-600 uppercase">Amount</p>
                   <p className="text-lg font-bold text-blue-900 mt-1">
-                    ETB{' '}
-                    {parseFloat(formData.amount || '0').toLocaleString('en-US', {
-                      minimumFractionDigits: 2,
-                    })}
+                    ETB {parseFloat(formData.amount || '0').toLocaleString('en-US', { minimumFractionDigits: 2 })}
                   </p>
                 </div>
                 <div className="bg-slate-50 rounded-xl p-3">
                   <p className="text-xs text-slate-500 uppercase">Method</p>
-                  <p className="text-sm font-semibold text-slate-900 mt-1 capitalize">
-                    {formData.paymentMethod.replace('_', ' ')}
-                  </p>
+                  <p className="text-sm font-semibold text-slate-900 mt-1 capitalize">{formData.paymentMethod.replace('_', ' ')}</p>
                 </div>
               </div>
             </CardBody>
           </Card>
         )}
 
-        {/* Action Buttons */}
+        {/* Action Buttons — always visible */}
         <Card>
           <CardBody>
             <div className="flex gap-3 justify-end">
-              <Button variant="secondary" size="lg" onClick={() => router.push('/dashboard/finance/vouchers')}>
+              <Button
+                variant="secondary"
+                size="lg"
+                onClick={() => router.push('/dashboard/finance/vouchers')}
+              >
                 Cancel
               </Button>
-              <Button variant="primary" size="lg" type="submit" disabled={loading} isLoading={loading}>
+              <Button
+                variant="primary"
+                size="lg"
+                type="submit"
+                disabled={loading}
+                isLoading={loading}
+              >
                 Create Voucher
               </Button>
             </div>

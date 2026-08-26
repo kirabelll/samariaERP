@@ -1,77 +1,181 @@
 'use client';
 
-import React, { ReactNode, useState } from 'react';
+import * as React from 'react';
+import { cn } from '@/lib/utils';
 
-interface TabItem {
-  id: string;
-  label: string;
-  content: ReactNode;
-  disabled?: boolean;
+// -------------------------------------------------------------
+// Shadcn Context & Primitives
+// -------------------------------------------------------------
+
+interface TabsContextValue {
+  value: string;
+  onValueChange: (val: string) => void;
 }
 
-interface TabsProps {
-  tabs: TabItem[];
+const TabsContext = React.createContext<TabsContextValue | null>(null);
+
+export interface TabsRootProps
+  extends Omit<React.HTMLAttributes<HTMLDivElement>, 'onChange'> {
+  value?: string;
+  defaultValue?: string;
+  onValueChange?: (value: string) => void;
+  orientation?: 'horizontal' | 'vertical';
+  tabs?: Array<{
+    id: string;
+    label: string;
+    content: React.ReactNode;
+    disabled?: boolean;
+  }>;
   defaultTabId?: string;
   onChange?: (tabId: string) => void;
   variant?: 'default' | 'card' | 'pills';
 }
 
-function Tabs({
+export function TabsRoot({
+  value: propValue,
+  defaultValue,
+  onValueChange,
+  className,
+  children,
   tabs,
   defaultTabId,
   onChange,
-  variant = 'default',
-}: TabsProps) {
-  const [activeTabId, setActiveTabId] = useState(
-    defaultTabId || tabs[0]?.id || ''
+  variant,
+  ...props
+}: TabsRootProps) {
+  // Support for legacy array format
+  if (tabs && tabs.length > 0) {
+    return (
+      <LegacyTabsWrapper
+        tabs={tabs}
+        defaultTabId={defaultTabId}
+        onChange={onChange}
+        variant={variant}
+        className={className}
+      />
+    );
+  }
+
+  const [stateValue, setStateValue] = React.useState(defaultValue || '');
+  const activeValue = propValue !== undefined ? propValue : stateValue;
+
+  const handleValueChange = React.useCallback(
+    (newVal: string) => {
+      if (propValue === undefined) {
+        setStateValue(newVal);
+      }
+      onValueChange?.(newVal);
+    },
+    [propValue, onValueChange]
   );
 
-  const handleTabChange = (tabId: string) => {
-    setActiveTabId(tabId);
-    onChange?.(tabId);
-  };
+  return (
+    <TabsContext.Provider value={{ value: activeValue, onValueChange: handleValueChange }}>
+      <div className={cn('flex flex-col gap-4', className)} {...props}>
+        {children}
+      </div>
+    </TabsContext.Provider>
+  );
+}
 
-  const activeTab = tabs.find((tab) => tab.id === activeTabId);
+export function TabsList({
+  className,
+  ...props
+}: React.HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div
+      className={cn(
+        'inline-flex h-9 items-center justify-start rounded-lg bg-muted p-1 text-muted-foreground w-fit gap-1',
+        className
+      )}
+      {...props}
+    />
+  );
+}
 
-  const tabButtonBaseStyles =
-    'px-4 py-2 font-medium transition-all duration-200 focus:outline-none focus:ring-4 focus:ring-[rgba(0,122,255,0.25)] disabled:opacity-50 disabled:cursor-not-allowed';
+export function TabsTrigger({
+  value,
+  disabled,
+  className,
+  children,
+  ...props
+}: React.ButtonHTMLAttributes<HTMLButtonElement> & { value: string }) {
+  const context = React.useContext(TabsContext);
+  if (!context) throw new Error('TabsTrigger must be used within Tabs');
 
-  const variantTabStyles = {
-    default: {
-      container: 'border-b border-[#E8E8ED]',
-      tabButton: (isActive: boolean) =>
-        isActive
-          ? 'text-[#007AFF] border-b-2 border-[#007AFF] -mb-px'
-          : 'text-[#86868B] hover:text-[#1D1D1F]',
-      tabsList: 'flex gap-1',
-    },
-    card: {
-      container: 'gap-4',
-      tabButton: (isActive: boolean) =>
-        isActive
-          ? 'bg-white text-[#1D1D1F] border border-[#D2D2D7] shadow-sm'
-          : 'bg-[#F5F5F7] text-[#86868B] border border-transparent hover:bg-[#EBEBF0]',
-      tabsList: 'flex gap-2 p-1 bg-[#F5F5F7] rounded-xl',
-    },
-    pills: {
-      container: 'gap-2',
-      tabButton: (isActive: boolean) =>
-        isActive
-          ? 'bg-[#007AFF] text-white'
-          : 'bg-[#F5F5F7] text-[#1D1D1F] hover:bg-[#EBEBF0]',
-      tabsList: 'flex gap-2',
-    },
-  };
-
-  const variantConfig = variantTabStyles[variant];
+  const isActive = context.value === value;
 
   return (
-    <div className={`flex flex-col ${variantConfig.container}`}>
-      <div
-        role="tablist"
-        className={variantConfig.tabsList}
-        aria-label="Tabs"
-      >
+    <button
+      type="button"
+      role="tab"
+      aria-selected={isActive}
+      disabled={disabled}
+      onClick={() => context.onValueChange(value)}
+      className={cn(
+        'inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 cursor-pointer',
+        isActive
+          ? 'bg-background text-foreground shadow-xs font-semibold'
+          : 'hover:text-foreground text-muted-foreground',
+        className
+      )}
+      {...props}
+    >
+      {children}
+    </button>
+  );
+}
+
+export function TabsContent({
+  value,
+  className,
+  children,
+  ...props
+}: React.HTMLAttributes<HTMLDivElement> & { value: string }) {
+  const context = React.useContext(TabsContext);
+  if (!context) throw new Error('TabsContent must be used within Tabs');
+
+  if (context.value !== value) return null;
+
+  return (
+    <div
+      role="tabpanel"
+      className={cn('mt-2 ring-offset-background focus-visible:outline-none focus-visible:ring-2', className)}
+      {...props}
+    >
+      {children}
+    </div>
+  );
+}
+
+// -------------------------------------------------------------
+// Legacy Tabs Component wrapper for ERP backward compatibility
+// -------------------------------------------------------------
+
+function LegacyTabsWrapper({
+  tabs,
+  defaultTabId,
+  onChange,
+  className,
+}: {
+  tabs: Array<{ id: string; label: string; content: React.ReactNode; disabled?: boolean }>;
+  defaultTabId?: string;
+  onChange?: (tabId: string) => void;
+  variant?: string;
+  className?: string;
+}) {
+  const [activeTabId, setActiveTabId] = React.useState(defaultTabId || tabs[0]?.id || '');
+
+  const handleTabChange = (id: string) => {
+    setActiveTabId(id);
+    onChange?.(id);
+  };
+
+  const activeTab = tabs.find((t) => t.id === activeTabId);
+
+  return (
+    <div className={cn('flex flex-col gap-4', className)}>
+      <div className="inline-flex h-9 items-center justify-start rounded-lg bg-muted p-1 text-muted-foreground w-fit gap-1">
         {tabs.map((tab) => {
           const isActive = tab.id === activeTabId;
           return (
@@ -79,14 +183,15 @@ function Tabs({
               key={tab.id}
               role="tab"
               aria-selected={isActive}
-              aria-controls={`tabpanel-${tab.id}`}
-              onClick={() => handleTabChange(tab.id)}
               disabled={tab.disabled}
-              className={`${tabButtonBaseStyles} ${variantConfig.tabButton(
+              onClick={() => handleTabChange(tab.id)}
+              className={cn(
+                'inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium transition-all cursor-pointer',
                 isActive
-              )} ${variant === 'card' ? 'rounded-lg' : ''} ${
-                variant === 'pills' ? 'rounded-full' : ''
-              }`}
+                  ? 'bg-background text-foreground shadow-xs font-semibold'
+                  : 'hover:text-foreground text-muted-foreground',
+                tab.disabled && 'opacity-50 pointer-events-none'
+              )}
             >
               {tab.label}
             </button>
@@ -94,20 +199,10 @@ function Tabs({
         })}
       </div>
 
-      {activeTab && (
-        <div
-          role="tabpanel"
-          id={`tabpanel-${activeTabId}`}
-          aria-labelledby={`tab-${activeTabId}`}
-          className="mt-4"
-        >
-          {activeTab.content}
-        </div>
-      )}
+      {activeTab && <div className="mt-2">{activeTab.content}</div>}
     </div>
   );
 }
 
-Tabs.displayName = 'Tabs';
-
-export default Tabs;
+export { TabsRoot as Tabs };
+export default TabsRoot;

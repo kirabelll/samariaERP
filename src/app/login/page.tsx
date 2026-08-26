@@ -1,28 +1,46 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import * as React from 'react';
 import { signIn } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
+import { useTheme } from 'next-themes';
+import {
+  Eye,
+  EyeOff,
+  Building2,
+  Lock,
+  User,
+  ArrowRight,
+  Globe,
+  Sun,
+  Moon,
+  Check,
+  AlertCircle,
+  Loader2,
+} from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
-import { Eye, EyeOff, Zap } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/Button';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/Card';
+
 export default function LoginPage() {
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [error, setError] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [time, setTime] = useState<Date | null>(null);
-  const [sessionId] = useState(() => typeof window !== 'undefined' ? Math.floor(Math.random() * 9000 + 1000) : 1000);
-  const [mounted, setMounted] = useState(false);
+  const [username, setUsername] = React.useState('');
+  const [password, setPassword] = React.useState('');
+  const [showPassword, setShowPassword] = React.useState(false);
+  const [error, setError] = React.useState('');
+  const [isLoading, setIsLoading] = React.useState(false);
+  const [isLangOpen, setIsLangOpen] = React.useState(false);
+
   const router = useRouter();
   const { locale, setLocale } = useI18n();
-
-  useEffect(() => {
-    setMounted(true);
-    setTime(new Date());
-    const t = setInterval(() => setTime(new Date()), 1000);
-    return () => clearInterval(t);
-  }, []);
+  const { theme, setTheme } = useTheme();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -37,285 +55,202 @@ export default function LoginPage() {
       });
 
       if (result?.error) {
-        setError(result.error || 'Invalid credentials');
+        setError(result.error || 'Invalid username or password');
         setIsLoading(false);
       } else if (result?.ok) {
         router.push('/dashboard');
       }
-    } catch (err) {
-      setError('An error occurred. Please try again.');
+    } catch (err: any) {
+      setError(err?.message || 'An error occurred during authentication.');
       setIsLoading(false);
     }
   };
 
   return (
-    <div
-      data-theme="dark"
-      style={{
-        position: 'relative',
-        minHeight: '100vh',
-        width: '100%',
-        background: 'radial-gradient(ellipse 800px 600px at 20% 30%, rgba(20,246,191,0.12), transparent 60%), radial-gradient(ellipse 600px 500px at 80% 70%, rgba(11,109,229,0.15), transparent 60%), #0B0B0D',
-        color: '#F5F5F7',
-        overflow: 'hidden',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: 24,
-        fontFamily: 'var(--font-sans)',
-      }}
-    >
-      {/* Grid overlay */}
-      <div style={{
-        position: 'absolute', inset: 0,
-        backgroundImage: 'repeating-linear-gradient(0deg, rgba(255,255,255,0.035) 0 1px, transparent 1px 48px), repeating-linear-gradient(90deg, rgba(255,255,255,0.035) 0 1px, transparent 1px 48px)',
-        pointerEvents: 'none',
-        maskImage: 'radial-gradient(ellipse at center, black 30%, transparent 80%)',
-        WebkitMaskImage: 'radial-gradient(ellipse at center, black 30%, transparent 80%)',
-      }} />
+    <div className="relative min-h-svh w-full flex items-center justify-center bg-background text-foreground font-sans p-4 sm:p-8 selection:bg-primary selection:text-primary-foreground">
+      {/* Top right quick settings */}
+      <div className="absolute top-4 right-4 z-50 flex items-center gap-2">
+        {/* Language selector */}
+        <div className="relative">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setIsLangOpen(!isLangOpen)}
+            className="h-8 gap-1 px-2.5 text-xs font-semibold uppercase text-muted-foreground hover:text-foreground"
+          >
+            <Globe className="h-3.5 w-3.5" />
+            <span>{locale}</span>
+          </Button>
 
-      {/* Scanline */}
-      <div style={{
-        position: 'absolute', inset: 0, pointerEvents: 'none',
-        backgroundImage: 'repeating-linear-gradient(0deg, rgba(11,109,229,0.03) 0 1px, transparent 1px 3px)',
-      }} />
+          {isLangOpen && (
+            <div className="absolute right-0 mt-1.5 w-32 rounded-lg border border-border bg-card p-1 shadow-lg z-50 animate-in fade-in-0 zoom-in-95">
+              <button
+                type="button"
+                onClick={() => {
+                  setLocale('en');
+                  setIsLangOpen(false);
+                }}
+                className={cn(
+                  'flex w-full items-center justify-between px-2.5 py-1.5 text-xs rounded-md transition-colors text-left cursor-pointer',
+                  locale === 'en'
+                    ? 'bg-accent text-accent-foreground font-semibold'
+                    : 'hover:bg-muted text-foreground'
+                )}
+              >
+                <span>English</span>
+                {locale === 'en' && <Check className="h-3.5 w-3.5" />}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setLocale('am');
+                  setIsLangOpen(false);
+                }}
+                className={cn(
+                  'flex w-full items-center justify-between px-2.5 py-1.5 text-xs rounded-md transition-colors text-left cursor-pointer',
+                  locale === 'am'
+                    ? 'bg-accent text-accent-foreground font-semibold'
+                    : 'hover:bg-muted text-foreground'
+                )}
+              >
+                <span>አማርኛ</span>
+                {locale === 'am' && <Check className="h-3.5 w-3.5" />}
+              </button>
+            </div>
+          )}
+        </div>
 
-      {/* Accent beam */}
-      <div style={{
-        position: 'absolute', top: 0, left: '50%', transform: 'translateX(-50%)',
-        width: 1, height: '60vh',
-        background: 'linear-gradient(180deg, transparent, rgba(11,109,229,0.5), transparent)',
-        pointerEvents: 'none',
-      }} />
-
-      {/* Top status bar */}
-      <div style={{
-        position: 'absolute', top: 0, left: 0, right: 0, padding: '14px 24px',
-        display: 'flex', alignItems: 'center', gap: 18,
-        fontFamily: 'var(--font-mono)', fontSize: 11, fontWeight: 500,
-        letterSpacing: '0.08em', color: '#AEAEB2',
-        borderBottom: '1px solid rgba(255,255,255,0.05)',
-      }}>
-        <span style={{ color: '#F5F5F7' }}>SAMARIA / ERP</span>
-        <span>v1.0.0</span>
-        <span>&middot;</span>
-        <span>NODE AA-01</span>
-        <span style={{ flex: 1 }} />
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-          <span style={{
-            width: 6, height: 6, borderRadius: 999,
-            background: '#34C759',
-            boxShadow: '0 0 8px #34C759',
-            animation: 'pulse-dot 2s infinite',
-          }} />
-          SYSTEMS ONLINE
-        </span>
-        <span>&middot;</span>
-        <span>
-          {time ? time.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }) : '--:--:--'} UTC+3
-        </span>
+        {/* Theme Switcher */}
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+          className="h-8 w-8 text-muted-foreground hover:text-foreground"
+        >
+          {theme === 'dark' ? (
+            <Sun className="h-4 w-4 text-amber-400" />
+          ) : (
+            <Moon className="h-4 w-4 text-slate-700" />
+          )}
+        </Button>
       </div>
 
-      {/* Login card */}
-      <form
-        onSubmit={handleSubmit}
-        style={{
-          position: 'relative', zIndex: 2, width: '100%', maxWidth: 440,
-          background: 'rgba(20,20,23,0.75)',
-          backdropFilter: 'blur(24px) saturate(180%)',
-          WebkitBackdropFilter: 'blur(24px) saturate(180%)',
-          border: '1px solid rgba(255,255,255,0.08)',
-          borderRadius: 20, padding: '40px 36px',
-          boxShadow: '0 0 0 1px rgba(11,109,229,0.15), 0 20px 80px rgba(0,0,0,0.6), 0 0 60px rgba(11,109,229,0.12)',
-          animation: 'scale-in 400ms cubic-bezier(.16,1,.3,1)',
-        }}
-      >
-        {/* Corner ticks */}
-        {[
-          { top: -1, left: -1, borderTop: '1px solid #14F6BF', borderLeft: '1px solid #14F6BF' },
-          { top: -1, right: -1, borderTop: '1px solid #14F6BF', borderRight: '1px solid #14F6BF' },
-          { bottom: -1, left: -1, borderBottom: '1px solid #0B6DE5', borderLeft: '1px solid #0B6DE5' },
-          { bottom: -1, right: -1, borderBottom: '1px solid #0B6DE5', borderRight: '1px solid #0B6DE5' },
-        ].map((s, i) => (
-          <div key={i} style={{ position: 'absolute', width: 14, height: 14, ...s } as any} />
-        ))}
-
-        {/* Brand */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 28 }}>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src="/logo.png"
-            alt="Samaria"
-            width={56}
-            height={56}
-            style={{
-              filter: 'drop-shadow(0 0 16px rgba(20,246,191,0.45)) drop-shadow(0 0 24px rgba(11,109,229,0.35))',
-            }}
-          />
-          <div>
-            <div style={{ fontSize: 20, fontWeight: 700, letterSpacing: '0.08em' }}>SAMARIA</div>
-            <div style={{
-              fontFamily: 'var(--font-mono)', fontSize: 10, fontWeight: 600,
-              letterSpacing: '0.22em', color: '#AEAEB2', marginTop: 2,
-            }}>
-              ENTERPRISE &middot; RESOURCE &middot; PLANNING
-            </div>
+      {/* Centered Auth Layout (matches frontend SignIn) */}
+      <div className="mx-auto flex w-full flex-col justify-center space-y-4 sm:w-[420px]">
+        {/* Brand Header */}
+        <div className="mb-2 flex items-center justify-center gap-2.5">
+          <div className="flex size-9 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-md">
+            <Building2 className="h-5 w-5" />
           </div>
+          <h1 className="text-xl font-bold tracking-tight">SAMARIA ERP</h1>
         </div>
 
-        {/* Divider */}
-        <div style={{
-          height: 1,
-          background: 'linear-gradient(90deg, transparent, rgba(20,246,191,0.5), rgba(11,109,229,0.5), transparent)',
-          margin: '0 -36px 28px',
-        }} />
+        {/* Centered Auth Card */}
+        <Card className="border border-border shadow-lg bg-card">
+          <CardHeader className="space-y-1 pb-4 text-left">
+            <CardTitle className="text-xl font-bold tracking-tight">Login</CardTitle>
+            <CardDescription className="text-xs text-muted-foreground">
+              Enter your username and password below to log into your account
+            </CardDescription>
+          </CardHeader>
 
-        <div style={{ fontSize: 20, fontWeight: 700, letterSpacing: '-0.02em', marginBottom: 6 }}>
-          Authorized access
-        </div>
-        <div style={{ fontSize: 13, color: '#AEAEB2', marginBottom: 28 }}>
-          Internal staff credentials required.
-        </div>
+          <CardContent>
+            {error && (
+              <div className="mb-4 flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-xs font-medium text-destructive animate-in fade-in-0">
+                <AlertCircle className="h-4 w-4 shrink-0" />
+                <span>{error}</span>
+              </div>
+            )}
 
-        {/* Error */}
-        {error && (
-          <div style={{
-            background: 'rgba(255,59,48,0.1)',
-            border: '1px solid rgba(255,59,48,0.3)',
-            borderRadius: 12, padding: '12px 16px', marginBottom: 18,
-            fontSize: 13, color: '#FF3B30', fontWeight: 500,
-          }}>
-            {error}
-          </div>
-        )}
+            <form onSubmit={handleSubmit} className="space-y-3.5">
+              {/* Username Input */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-foreground uppercase tracking-wider">
+                  Username
+                </label>
+                <div className="relative flex items-center">
+                  <span className="absolute left-3 text-muted-foreground pointer-events-none">
+                    <User className="h-4 w-4" />
+                  </span>
+                  <input
+                    type="text"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    placeholder="Enter your username"
+                    disabled={isLoading}
+                    required
+                    autoComplete="username"
+                    className="flex h-9 w-full rounded-md border border-input bg-background pl-9 pr-3 py-1 text-sm shadow-xs transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50 text-foreground"
+                  />
+                </div>
+              </div>
 
-        {/* Username */}
-        <div style={{ marginBottom: 18 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-            <span style={{ fontFamily: 'var(--font-sans)', fontSize: 11, fontWeight: 500, letterSpacing: '0.1em', textTransform: 'uppercase', color: '#AEAEB2' }}>
-              USERNAME
-            </span>
-            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, fontWeight: 500, letterSpacing: '0.1em', color: '#3A3A3C' }}>
-              [01]
-            </span>
-          </div>
-          <input
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            placeholder="Enter username"
-            disabled={isLoading}
-            required
-            style={{
-              width: '100%', padding: '14px 16px', borderRadius: 12,
-              background: 'rgba(0,0,0,0.4)', color: '#F5F5F7',
-              border: '1px solid rgba(255,255,255,0.08)',
-              fontFamily: 'var(--font-mono)', fontSize: 15, fontWeight: 500,
-              outline: 'none', transition: 'all 200ms',
-            }}
-            onFocus={(e) => {
-              e.currentTarget.style.border = '1px solid #0B6DE5';
-              e.currentTarget.style.boxShadow = '0 0 0 4px rgba(11,109,229,0.2)';
-            }}
-            onBlur={(e) => {
-              e.currentTarget.style.border = '1px solid rgba(255,255,255,0.08)';
-              e.currentTarget.style.boxShadow = 'none';
-            }}
-          />
-        </div>
+              {/* Password Input */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-foreground uppercase tracking-wider">
+                    Password
+                  </label>
+                  <span className="text-[11px] text-muted-foreground font-mono">
+                    TLS 1.3
+                  </span>
+                </div>
+                <div className="relative flex items-center">
+                  <span className="absolute left-3 text-muted-foreground pointer-events-none">
+                    <Lock className="h-4 w-4" />
+                  </span>
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••"
+                    disabled={isLoading}
+                    required
+                    autoComplete="current-password"
+                    className="flex h-9 w-full rounded-md border border-input bg-background pl-9 pr-9 py-1 text-sm shadow-xs transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50 text-foreground font-mono"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-2.5 text-muted-foreground hover:text-foreground transition-colors p-1 rounded-sm cursor-pointer"
+                    tabIndex={-1}
+                  >
+                    {showPassword ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
+                  </button>
+                </div>
+              </div>
 
-        {/* Password */}
-        <div style={{ marginBottom: 24 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-            <span style={{ fontFamily: 'var(--font-sans)', fontSize: 11, fontWeight: 500, letterSpacing: '0.1em', textTransform: 'uppercase', color: '#AEAEB2' }}>
-              PASSWORD
-            </span>
-            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, fontWeight: 500, letterSpacing: '0.1em', color: '#3A3A3C' }}>
-              [02]
-            </span>
-          </div>
-          <div style={{ position: 'relative' }}>
-            <input
-              type={showPassword ? 'text' : 'password'}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Enter password"
-              disabled={isLoading}
-              required
-              style={{
-                width: '100%', padding: '14px 48px 14px 16px', borderRadius: 12,
-                background: 'rgba(0,0,0,0.4)', color: '#F5F5F7',
-                border: '1px solid rgba(255,255,255,0.08)',
-                fontFamily: 'var(--font-mono)', fontSize: 15, fontWeight: 500,
-                outline: 'none', transition: 'all 200ms', letterSpacing: '0.15em',
-              }}
-              onFocus={(e) => {
-                e.currentTarget.style.border = '1px solid #0B6DE5';
-                e.currentTarget.style.boxShadow = '0 0 0 4px rgba(11,109,229,0.2)';
-              }}
-              onBlur={(e) => {
-                e.currentTarget.style.border = '1px solid rgba(255,255,255,0.08)';
-                e.currentTarget.style.boxShadow = 'none';
-              }}
-            />
-            <button
-              type="button"
-              onClick={() => setShowPassword(!showPassword)}
-              style={{
-                position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)',
-                background: 'transparent', border: 0, color: '#86868B',
-                cursor: 'pointer', padding: 6,
-              }}
-            >
-              {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-            </button>
-          </div>
-        </div>
+              {/* Submit Button */}
+              <Button
+                type="submit"
+                disabled={isLoading}
+                className="w-full mt-12 font-semibold shadow-sm"
+              >
+                {isLoading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Signing in...
+                  </>
+                ) : (
+                  <>
+                    Sign In
+                    <ArrowRight className="ml-2 h-4 w-4" />
+                  </>
+                )}
+              </Button>
+            </form>
+          </CardContent>
 
-        {/* Submit */}
-        <button
-          type="submit"
-          disabled={isLoading}
-          style={{
-            width: '100%', padding: 14, borderRadius: 12, border: 0,
-            background: isLoading ? '#0055C4' : 'linear-gradient(135deg, #14F6BF, #17BEC4 45%, #0B6DE5)',
-            color: '#fff',
-            fontFamily: 'var(--font-sans)', fontSize: 15, fontWeight: 600,
-            letterSpacing: '0.02em',
-            cursor: isLoading ? 'wait' : 'pointer',
-            boxShadow: '0 0 0 1px rgba(20,246,191,0.4), 0 8px 24px rgba(11,109,229,0.35), 0 0 40px rgba(20,246,191,0.2)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
-            transition: 'all 200ms',
-          }}
-        >
-          {isLoading ? 'AUTHENTICATING…' : (
-            <>AUTHENTICATE <Zap className="w-4 h-4" /></>
-          )}
-        </button>
-
-        {/* Footer */}
-        <div style={{
-          marginTop: 20, display: 'flex', justifyContent: 'space-between',
-          fontFamily: 'var(--font-mono)', fontSize: 10, fontWeight: 500,
-          letterSpacing: '0.1em', color: '#3A3A3C',
-        }}>
-          <span>ENCRYPTED &middot; TLS 1.3</span>
-          <span>SESSION {mounted ? sessionId : '----'}</span>
-        </div>
-      </form>
-
-      {/* Bottom telemetry */}
-      <div style={{
-        position: 'absolute', bottom: 0, left: 0, right: 0, padding: '14px 24px',
-        display: 'flex', alignItems: 'center', gap: 24,
-        fontFamily: 'var(--font-mono)', fontSize: 10, fontWeight: 500,
-        letterSpacing: '0.12em', color: '#3A3A3C',
-        borderTop: '1px solid rgba(255,255,255,0.05)',
-      }}>
-        <span>CPU &middot; 12%</span>
-        <span>MEM &middot; 2.4 / 16 GB</span>
-        <span>DB &middot; PGLITE OK</span>
-        <span style={{ flex: 1 }} />
-        <span>&copy; 2026 &middot; SAMARIA TRADING ONE MEMBER PLC</span>
+          <CardFooter className="pt-0">
+            <p className="text-center text-[11px] text-muted-foreground w-full">
+              Protected by Samaria Trading Security Access Policy.
+            </p>
+          </CardFooter>
+        </Card>
       </div>
     </div>
   );

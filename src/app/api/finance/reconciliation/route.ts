@@ -3,11 +3,57 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
 
+/**
+ * Auto-populate reconciliation items from posted payment vouchers.
+ * Creates ReconciliationItem for each voucher in the period that hasn't been reconciled yet.
+ */
+async function autopopulateReconciliationItems(
+  reconciliationId: string,
+  bankAccountId: string,
+  periodFrom: Date,
+  periodTo: Date
+) {
+  try {
+    // Query all posted payment vouchers for the period with matching bank account
+    const vouchers = await prisma.paymentVoucher.findMany({
+      where: {
+        bankAccountId,
+        status: 'Posted',
+        postedAt: {
+          gte: periodFrom,
+          lte: periodTo,
+        },
+      },
+    });
+
+    // Create ReconciliationItem for each voucher
+    const items = await Promise.all(
+      vouchers.map((voucher) =>
+        prisma.reconciliationItem.create({
+          data: {
+            reconciliationId,
+            description: voucher.description || `${voucher.voucherType} - ${voucher.voucherNo}`,
+            bookAmount: voucher.amount,
+            bankAmount: 0,
+            status: 'Unreconciled',
+            transactionId: voucher.id,
+          },
+        })
+      )
+    );
+
+    return { success: true, itemsCreated: items.length, items };
+  } catch (error: any) {
+    console.warn(`Auto-populate reconciliation items failed:`, error.message);
+    return { success: false, reason: error.message };
+  }
+}
+
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
     const page = parseInt(searchParams.get('page') || '1');
-    const limit = parseInt(searchParams.get('limit') || '50');
+    const limit = parseInt(searchParams.get('limit') || '20');
     const bankAccountId = searchParams.get('bankAccountId') || '';
     const status = searchParams.get('status') || '';
 
@@ -65,54 +111,48 @@ export async function POST(request: NextRequest) {
       closingBalance,
       bankStatement,
       difference,
-      status,
-      items,
-      reconciledBy,
     } = body;
 
     // Validate required fields
     if (!bankAccountId || !periodFrom || !periodTo) {
       return NextResponse.json(
-        { success: false, error: 'Missing required fields: bankAccountId, periodFrom, periodTo' },
+        { success: false, error: 'Missing required fields' },
         { status: 400 }
       );
     }
 
+    // Generate reconNo
+    const count = await prisma.bankReconciliation.count();
+    const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    const reconNo = `REC-${dateStr}-${String(count + 1).padStart(4, '0')}`;
+
     const periodFromDate = new Date(periodFrom);
     const periodToDate = new Date(periodTo);
-    const diff = Number(difference ?? ((closingBalance || 0) - (bankStatement || 0)));
-
-    const reconciliationStatus = status || (Math.abs(diff) < 0.01 ? 'Reconciled' : 'Draft');
 
     const reconciliation = await prisma.bankReconciliation.create({
       data: {
         bankAccountId,
         periodFrom: periodFromDate,
         periodTo: periodToDate,
-        openingBalance: Number(openingBalance) || 0,
-        closingBalance: Number(closingBalance) || 0,
-        bankStatement: Number(bankStatement) || 0,
-        difference: Math.round(diff * 100) / 100,
-        status: reconciliationStatus,
-        reconciledBy: reconciledBy || null,
-        reconciledAt: reconciliationStatus === 'Reconciled' ? new Date() : null,
+        openingBalance: openingBalance || 0,
+        closingBalance: closingBalance || 0,
+        bankStatement: bankStatement || 0,
+        difference: difference || 0,
+        status: 'Draft',
+      },
+      include: {
+        bankAccount: true,
+        items: true,
       },
     });
 
-    // Save items if provided
-    if (Array.isArray(items) && items.length > 0) {
-      await prisma.reconciliationItem.createMany({
-        data: items.map((item: any) => ({
-          reconciliationId: reconciliation.id,
-          description: item.description || '',
-          bookAmount: Number(item.bookAmount) || 0,
-          bankAmount: Number(item.bankAmount) || 0,
-          difference: Number(item.difference) || 0,
-          status: item.status || 'Matched',
-          transactionId: item.transactionId || null,
-        })),
-      });
-    }
+    // Auto-populate reconciliation items from posted vouchers
+    const autopopulateResult = await autopopulateReconciliationItems(
+      reconciliation.id,
+      bankAccountId,
+      periodFromDate,
+      periodToDate
+    );
 
     // Re-fetch reconciliation with populated items
     const reconciliationWithItems = await prisma.bankReconciliation.findUnique({
@@ -126,6 +166,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       data: reconciliationWithItems,
+      autopopulate: autopopulateResult,
     });
   } catch (error: any) {
     console.error('Error creating bank reconciliation:', error);

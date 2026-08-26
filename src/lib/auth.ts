@@ -88,9 +88,15 @@ export const authOptions: NextAuthOptions = {
       }
       return session;
     },
+    async redirect({ url, baseUrl }) {
+      if (url.startsWith("/")) return `${baseUrl}${url}`;
+      else if (new URL(url).origin === baseUrl) return url;
+      return `${baseUrl}/login`;
+    },
   },
   pages: {
     signIn: "/login",
+    signOut: "/login",
     error: "/login",
   },
   secret: process.env.NEXTAUTH_SECRET,

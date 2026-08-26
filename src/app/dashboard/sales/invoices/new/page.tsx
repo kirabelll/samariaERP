@@ -203,16 +203,39 @@ export default function NewInvoicePage() {
         setLoadingLiftings(true);
         try {
           const params = new URLSearchParams();
-          if (partyType === 'Customer') params.append('customer', partyId);
+          if (partyType === 'Customer') {
+            params.append('customer', partyId);
+          } else if (partyType === 'Supplier') {
+            params.append('supplier', partyId);
+          }
           if (startDate) params.append('startDate', startDate);
           if (endDate) params.append('endDate', endDate);
           params.append('status', 'Delivered');
-          params.append('limit', '100');
+          params.append('limit', '500');
 
           const res = await fetch(`/api/cement/liftings?${params.toString()}`);
           const data = await res.json();
           if (data.success) {
-            const list = (data.data || []).filter((l: any) => l.status === 'Delivered' || l.status === 'Verified');
+            let list = (data.data || []).filter((l: any) => l.status === 'Delivered' || l.status === 'Verified');
+            
+            // Client-side fallback filtering by Customer or Supplier
+            if (partyType === 'Customer' && partyId) {
+              list = list.filter((l: any) => l.customerId === partyId || l.customer?.id === partyId);
+            } else if (partyType === 'Supplier' && partyId) {
+              list = list.filter(
+                (l: any) =>
+                  l.factoryId === partyId ||
+                  l.factory?.id === partyId ||
+                  l.purchase?.factoryId === partyId ||
+                  (l.factory?.name &&
+                    selectedParty?.companyName &&
+                    l.factory.name.toLowerCase().includes(selectedParty.companyName.toLowerCase())) ||
+                  (l.purchase?.factory?.name &&
+                    selectedParty?.companyName &&
+                    l.purchase.factory.name.toLowerCase().includes(selectedParty.companyName.toLowerCase()))
+              );
+            }
+
             list.sort((a: any, b: any) => {
               const podA = String(a.padNumber || a.podNumber || a.liftingNo || '');
               const podB = String(b.padNumber || b.podNumber || b.liftingNo || '');
@@ -234,14 +257,34 @@ export default function NewInvoicePage() {
         setLoadingDispatches(true);
         try {
           const params = new URLSearchParams();
+          if (partyType === 'Customer') {
+            params.append('customerId', partyId);
+          } else if (partyType === 'Supplier') {
+            params.append('supplierId', partyId);
+          }
           if (startDate) params.append('startDate', startDate);
           if (endDate) params.append('endDate', endDate);
-          params.append('limit', '100');
+          params.append('limit', '500');
 
           const res = await fetch(`/api/aggregate?${params.toString()}`);
           const data = await res.json();
           if (data.success) {
-            const list = data.records || data.data || [];
+            let list = data.records || data.data || [];
+
+            // Client-side filtering by Customer or Supplier
+            if (partyType === 'Customer' && partyId) {
+              list = list.filter((d: any) => d.customerId === partyId || d.customer?.id === partyId);
+            } else if (partyType === 'Supplier' && partyId) {
+              list = list.filter(
+                (d: any) =>
+                  d.supplierId === partyId ||
+                  d.supplier?.id === partyId ||
+                  (d.supplier?.companyName &&
+                    selectedParty?.companyName &&
+                    d.supplier.companyName.toLowerCase().includes(selectedParty.companyName.toLowerCase()))
+              );
+            }
+
             list.sort((a: any, b: any) => {
               const podA = String(a.padNumber || a.podNumber || a.dispatchNo || '');
               const podB = String(b.padNumber || b.podNumber || b.dispatchNo || '');
@@ -259,7 +302,7 @@ export default function NewInvoicePage() {
       };
       fetchDispatches();
     }
-  }, [partyId, partyType, division, startDate, endDate]);
+  }, [partyId, partyType, division, startDate, endDate, selectedParty?.companyName]);
 
   // Checkbox Selection Logic for Aggregate Dispatches
   const toggleDispatchSelect = (id: string) => {

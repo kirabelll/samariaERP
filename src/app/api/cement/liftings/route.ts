@@ -12,6 +12,7 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '10');
     const search = searchParams.get('search') || '';
     const customer = searchParams.get('customer') || '';
+    const supplier = searchParams.get('supplier') || searchParams.get('supplierId') || searchParams.get('factoryId') || '';
     const status = searchParams.get('status') || '';
     const startDate = searchParams.get('startDate') || '';
     const endDate = searchParams.get('endDate') || '';
@@ -26,6 +27,13 @@ export async function GET(request: NextRequest) {
     }
     if (customer) {
       whereClause.customerId = customer;
+    }
+    if (supplier) {
+      whereClause.OR = [
+        ...(whereClause.OR || []),
+        { factoryId: supplier },
+        { purchase: { factoryId: supplier } },
+      ];
     }
     if (status) {
       whereClause.status = status;

@@ -7,12 +7,17 @@ export const dynamic = 'force-dynamic';
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
+    const view = searchParams.get('view') || '';
     const page = parseInt(searchParams.get('page') || '1');
-    const limit = parseInt(searchParams.get('limit') || '10');
+    const limit = parseInt(searchParams.get('limit') || '100');
     const search = searchParams.get('search') || '';
     const accountType = searchParams.get('accountType') || '';
 
-    const skip = (page - 1) * limit;
+    // Fetch company name setting if available
+    const companySetting = await prisma.systemSetting.findUnique({
+      where: { key: 'company_name' },
+    });
+    const companyName = companySetting?.value || 'Samaria Trading PLC';
 
     const whereClause: any = {};
     if (search) {
@@ -25,24 +30,182 @@ export async function GET(request: NextRequest) {
       whereClause.accountType = accountType;
     }
 
-    const [data, total] = await Promise.all([
-      prisma.chartOfAccount.findMany({
-        where: whereClause,
-        skip,
-        take: limit,
-        orderBy: { accountCode: 'asc' },
-      }),
-      prisma.chartOfAccount.count({ where: whereClause }),
-    ]);
+    // Always fetch all accounts to calculate complete tree and rollups
+    const allAccounts = await prisma.chartOfAccount.findMany({
+      orderBy: { accountCode: 'asc' },
+    });
+
+    // Aggregate debit/credit sums from journal entries
+    const journalSums = await prisma.journalEntry.groupBy({
+      by: ['accountId'],
+      _sum: {
+        debit: true,
+        credit: true,
+      },
+      _count: {
+        id: true,
+      },
+    });
+
+    const sumMap: Record<string, { debit: number; credit: number; count: number }> = {};
+    for (const j of journalSums) {
+      sumMap[j.accountId] = {
+        debit: Number(j._sum.debit) || 0,
+        credit: Number(j._sum.credit) || 0,
+        count: j._count.id || 0,
+      };
+    }
+
+    // Map accounts with initial direct transaction balances
+    interface AccountWithBalance {
+      id: string;
+      accountCode: string;
+      accountName: string;
+      accountType: string;
+      parentId: string | null;
+      isActive: boolean;
+      totalDebit: number;
+      totalCredit: number;
+      balance: number;
+      balanceType: 'Dr' | 'Cr';
+      signedBalance: number;
+      transactionCount: number;
+      isGroup: boolean;
+      children?: AccountWithBalance[];
+    }
+
+    // Build child map to determine which accounts are groups
+    const parentIdSet = new Set<string>();
+    for (const a of allAccounts) {
+      if (a.parentId) parentIdSet.add(a.parentId);
+    }
+
+    const accountsMap: Record<string, AccountWithBalance> = {};
+    for (const a of allAccounts) {
+      const sum = sumMap[a.id] || { debit: 0, credit: 0, count: 0 };
+      const isGroup = parentIdSet.has(a.id);
+
+      // Normal balance calculation:
+      // Asset & Expense: Normal Debit (Debit - Credit)
+      // Liability, Equity, Revenue: Normal Credit (Credit - Debit)
+      let signedBalance = 0;
+      let balanceType: 'Dr' | 'Cr' = 'Dr';
+
+      if (a.accountType === 'Asset' || a.accountType === 'Expense') {
+        signedBalance = sum.debit - sum.credit;
+        balanceType = signedBalance >= 0 ? 'Dr' : 'Cr';
+      } else {
+        signedBalance = sum.credit - sum.debit;
+        balanceType = signedBalance >= 0 ? 'Cr' : 'Dr';
+      }
+
+      accountsMap[a.id] = {
+        id: a.id,
+        accountCode: a.accountCode,
+        accountName: a.accountName,
+        accountType: a.accountType,
+        parentId: a.parentId,
+        isActive: a.isActive,
+        totalDebit: sum.debit,
+        totalCredit: sum.credit,
+        balance: Math.abs(signedBalance),
+        balanceType,
+        signedBalance,
+        transactionCount: sum.count,
+        isGroup,
+        children: [],
+      };
+    }
+
+    // Build hierarchy and rollup balances recursively
+    const rootNodes: AccountWithBalance[] = [];
+    const directChildrenMap: Record<string, AccountWithBalance[]> = {};
+
+    for (const a of allAccounts) {
+      const node = accountsMap[a.id];
+      if (node.parentId && accountsMap[node.parentId]) {
+        if (!directChildrenMap[node.parentId]) {
+          directChildrenMap[node.parentId] = [];
+        }
+        directChildrenMap[node.parentId].push(node);
+      } else {
+        rootNodes.push(node);
+      }
+    }
+
+    // Recursive rollup of balances
+    const rollupNode = (node: AccountWithBalance): { totalDebit: number; totalCredit: number; count: number } => {
+      const children = directChildrenMap[node.id] || [];
+      node.children = children;
+
+      let subDebit = node.totalDebit;
+      let subCredit = node.totalCredit;
+      let subCount = node.transactionCount;
+
+      for (const child of children) {
+        const childRollup = rollupNode(child);
+        subDebit += childRollup.totalDebit;
+        subCredit += childRollup.totalCredit;
+        subCount += childRollup.count;
+      }
+
+      if (node.isGroup) {
+        node.totalDebit = subDebit;
+        node.totalCredit = subCredit;
+        node.transactionCount = subCount;
+
+        if (node.accountType === 'Asset' || node.accountType === 'Expense') {
+          const net = subDebit - subCredit;
+          node.signedBalance = net;
+          node.balance = Math.abs(net);
+          node.balanceType = net >= 0 ? 'Dr' : 'Cr';
+        } else {
+          const net = subCredit - subDebit;
+          node.signedBalance = net;
+          node.balance = Math.abs(net);
+          node.balanceType = net >= 0 ? 'Cr' : 'Dr';
+        }
+      }
+
+      return { totalDebit: subDebit, totalCredit: subCredit, count: subCount };
+    };
+
+    for (const root of rootNodes) {
+      rollupNode(root);
+    }
+
+    // Format flat list
+    const enrichedList = Object.values(accountsMap);
+
+    // Apply filtering for flat list / pagination
+    let filteredList = enrichedList;
+    if (search) {
+      const lowerSearch = search.toLowerCase();
+      filteredList = filteredList.filter(
+        (a) =>
+          a.accountCode.toLowerCase().includes(lowerSearch) ||
+          a.accountName.toLowerCase().includes(lowerSearch)
+      );
+    }
+    if (accountType) {
+      filteredList = filteredList.filter((a) => a.accountType === accountType);
+    }
+
+    const total = filteredList.length;
+    const skip = (page - 1) * limit;
+    const paginatedData = limit >= 1000 ? filteredList : filteredList.slice(skip, skip + limit);
 
     return NextResponse.json({
       success: true,
-      data,
+      companyName,
+      data: paginatedData,
+      allAccounts: enrichedList,
+      tree: rootNodes,
       pagination: {
         total,
         page,
         limit,
-        pages: Math.ceil(total / limit),
+        pages: Math.ceil(total / limit) || 1,
       },
     });
   } catch (error: any) {

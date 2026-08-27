@@ -340,6 +340,10 @@ export const sidebarData: SidebarData = {
               url: '/dashboard/finance/accounts',
             },
             {
+              title: 'General Ledger',
+              url: '/dashboard/finance/general-ledger',
+            },
+            {
               title: 'Journal Entries',
               url: '/dashboard/finance/journal',
             },

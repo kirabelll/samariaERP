@@ -13,7 +13,10 @@ export async function GET(
       include: {
         supplier: {
           select: {
+            id: true,
             companyName: true,
+            withholding: true,
+            withholdRate: true,
           },
         },
         purchaseOrder: true,

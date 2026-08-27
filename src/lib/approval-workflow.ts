@@ -1,4 +1,5 @@
 import { prisma } from './prisma';
+import { Role } from '@prisma/client';
 import { notify } from './telegram';
 import { updateVoucherLinkedDocument } from './voucher-sync';
 
@@ -9,14 +10,14 @@ import { updateVoucherLinkedDocument } from './voucher-sync';
 // Level 2: Finance Manager (FINANCE)
 // Level 3: General Manager (ADMIN)
 
-const LEVEL_ROLES: Record<number, { title: string; roles: string[] }> = {
+const LEVEL_ROLES: Record<number, { title: string; roles: Role[] }> = {
   1: { title: 'Department Head', roles: ['MANAGER'] },
   2: { title: 'Finance Manager', roles: ['FINANCE', 'MANAGER'] },
   3: { title: 'General Manager', roles: ['ADMIN'] },
 };
 
 // Module → which roles can approve at each level (overrides)
-const MODULE_LEVEL_ROLES: Record<string, Record<number, string[]>> = {
+const MODULE_LEVEL_ROLES: Record<string, Record<number, Role[]>> = {
   LeaveRequest:       { 1: ['MANAGER', 'HR'], 2: ['HR'], 3: ['ADMIN'] },
   EmployeeAdvance:    { 1: ['MANAGER', 'HR'], 2: ['FINANCE'], 3: ['ADMIN'] },
   PayrollPeriod:      { 1: ['HR'], 2: ['FINANCE'], 3: ['ADMIN'] },
@@ -103,8 +104,35 @@ export interface RequestApprovalOptions {
 }
 
 export async function requestApproval(options: RequestApprovalOptions) {
-  const { module, recordId, recordRef, amount, description, requesterId } = options;
+  let { module, recordId, recordRef, amount, description, requesterId } = options;
   const requiredLevels = getRequiredLevels(amount);
+
+  // Safely resolve requesterId to a valid active user to avoid foreign key violations
+  if (!requesterId) {
+    const fallbackUser = await prisma.user.findFirst({
+      where: { status: 'ACTIVE' },
+      select: { id: true },
+    });
+    if (fallbackUser) {
+      requesterId = fallbackUser.id;
+    }
+  } else {
+    const exists = await prisma.user.findUnique({ where: { id: requesterId }, select: { id: true } });
+    if (!exists) {
+      const fallbackUser = await prisma.user.findFirst({
+        where: { status: 'ACTIVE' },
+        select: { id: true },
+      });
+      if (fallbackUser) {
+        requesterId = fallbackUser.id;
+      }
+    }
+  }
+
+  if (!requesterId) {
+    console.warn(`Cannot create approval for ${module} ${recordRef}: no valid active user found.`);
+    return null;
+  }
 
   // Create Level 1 approval
   const approval = await prisma.approval.create({

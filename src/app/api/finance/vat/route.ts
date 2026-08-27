@@ -104,9 +104,33 @@ export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
     const periodId = searchParams.get('periodId');
+    const startDateParam = searchParams.get('startDate') || searchParams.get('from');
+    const endDateParam = searchParams.get('endDate') || searchParams.get('to');
 
     // Auto-create VAT periods if needed
     const periods = await ensureVatPeriodsExist();
+
+    let effectiveStartDate: Date | null = null;
+    let effectiveEndDate: Date | null = null;
+
+    if (periodId) {
+      const period = periods.find((p) => p.id === periodId);
+      if (period) {
+        effectiveStartDate = new Date(period.startDate);
+        effectiveEndDate = new Date(period.endDate);
+      }
+    } else if (startDateParam || endDateParam) {
+      if (startDateParam) {
+        const start = new Date(startDateParam);
+        start.setHours(0, 0, 0, 0);
+        effectiveStartDate = start;
+      }
+      if (endDateParam) {
+        const end = new Date(endDateParam);
+        end.setHours(23, 59, 59, 999);
+        effectiveEndDate = end;
+      }
+    }
 
     // Calculate summary totals across ALL periods from invoices and cement purchases
     const allSalesInvoices = await prisma.salesInvoice.findMany({
@@ -125,78 +149,88 @@ export async function GET(request: NextRequest) {
       },
     });
 
+    // Filtered lists for summary calculation
+    let filteredSalesInvoices = allSalesInvoices;
+    let filteredCementPurchases = allCementPurchasesWithVat;
+
+    if (effectiveStartDate || effectiveEndDate) {
+      filteredSalesInvoices = allSalesInvoices.filter((inv) => {
+        const d = new Date(inv.invoiceDate);
+        if (effectiveStartDate && d < effectiveStartDate) return false;
+        if (effectiveEndDate && d > effectiveEndDate) return false;
+        return true;
+      });
+
+      filteredCementPurchases = allCementPurchasesWithVat.filter((purchase) => {
+        const d = new Date(purchase.createdAt);
+        if (effectiveStartDate && d < effectiveStartDate) return false;
+        if (effectiveEndDate && d > effectiveEndDate) return false;
+        return true;
+      });
+    }
+
     // Calculate totals - use Number() to safely handle potential null/undefined
-    const totalOutputVat = allSalesInvoices.reduce(
+    const totalOutputVat = filteredSalesInvoices.reduce(
       (sum, inv) => sum + (Number(inv.vatAmount) || 0),
       0
     );
-    const totalInputVat = allCementPurchasesWithVat.reduce(
+    const totalInputVat = filteredCementPurchases.reduce(
       (sum, purchase) => sum + (Number(purchase.vatAmount) || 0),
       0
     );
     const netVatPayable = totalOutputVat - totalInputVat;
 
-    // If a specific period is requested, get its invoice details and calculate its VAT
+    // Detailed invoices & purchases for the active period or date range
     let salesInvoices: any[] = [];
     let cementPurchases: any[] = [];
-    let periodSummary = { outputVat: 0, inputVat: 0, netVat: 0 };
+    let periodSummary = { outputVat: totalOutputVat, inputVat: totalInputVat, netVat: netVatPayable };
 
-    if (periodId) {
-      const period = periods.find((p) => p.id === periodId);
-      if (period) {
-        // Get sales invoices for the period
-        salesInvoices = await prisma.salesInvoice.findMany({
-          where: {
-            invoiceDate: {
-              gte: period.startDate,
-              lte: period.endDate,
-            },
-            status: { not: 'Cancelled' },
-          },
-          include: {
-            customer: { select: { companyName: true } },
-          },
-          orderBy: { invoiceDate: 'desc' },
-          take: 50,
-        });
+    if (effectiveStartDate || effectiveEndDate) {
+      // Get sales invoices for the date range
+      salesInvoices = await prisma.salesInvoice.findMany({
+        where: {
+          status: { not: 'Cancelled' },
+          ...(effectiveStartDate || effectiveEndDate
+            ? {
+                invoiceDate: {
+                  ...(effectiveStartDate ? { gte: effectiveStartDate } : {}),
+                  ...(effectiveEndDate ? { lte: effectiveEndDate } : {}),
+                },
+              }
+            : {}),
+        },
+        include: {
+          customer: { select: { companyName: true } },
+        },
+        orderBy: { invoiceDate: 'desc' },
+        take: 100,
+      });
 
-        // Map customer companyName to name for frontend compatibility
-        salesInvoices = salesInvoices.map((inv: any) => ({
-          ...inv,
-          customer: inv.customer ? { name: inv.customer.companyName } : null,
-        }));
+      // Map customer companyName to name for frontend compatibility
+      salesInvoices = salesInvoices.map((inv: any) => ({
+        ...inv,
+        customer: inv.customer ? { name: inv.customer.companyName } : null,
+      }));
 
-        // Get cement purchases with VAT for input VAT in this period
-        cementPurchases = await prisma.cementPurchase.findMany({
-          where: {
-            createdAt: {
-              gte: period.startDate,
-              lte: period.endDate,
-            },
-            vatAmount: { gt: 0 },
-          },
-          include: {
-            factory: { select: { name: true } },
-          },
-          orderBy: { createdAt: 'desc' },
-          take: 50,
-        });
-
-        // Calculate VAT for this specific period
-        const periodOutputVat = salesInvoices.reduce(
-          (sum: number, inv: any) => sum + (Number(inv.vatAmount) || 0),
-          0
-        );
-        const periodInputVat = cementPurchases.reduce(
-          (sum: number, purchase: any) => sum + (Number(purchase.vatAmount) || 0),
-          0
-        );
-        periodSummary = {
-          outputVat: periodOutputVat,
-          inputVat: periodInputVat,
-          netVat: periodOutputVat - periodInputVat,
-        };
-      }
+      // Get cement purchases with VAT for input VAT in this period / range
+      cementPurchases = await prisma.cementPurchase.findMany({
+        where: {
+          vatAmount: { gt: 0 },
+          ...(effectiveStartDate || effectiveEndDate
+            ? {
+                createdAt: {
+                  ...(effectiveStartDate ? { gte: effectiveStartDate } : {}),
+                  ...(effectiveEndDate ? { lte: effectiveEndDate } : {}),
+                },
+              }
+            : {}),
+        },
+        include: {
+          factory: { select: { name: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 100,
+      });
     }
 
     // Enhance periods with calculated VAT amounts from actual transaction data
@@ -234,13 +268,13 @@ export async function GET(request: NextRequest) {
           totalOutputVat,
           totalInputVat,
           netVatPayable,
-          salesInvoicesCount: allSalesInvoices.length,
-          cementPurchasesCount: allCementPurchasesWithVat.length,
+          salesInvoicesCount: filteredSalesInvoices.length,
+          cementPurchasesCount: filteredCementPurchases.length,
         },
         periods: enhancedPeriods,
         salesInvoices,
         cementPurchases,
-        periodSummary: periodId ? periodSummary : null,
+        periodSummary: (periodId || startDateParam || endDateParam) ? periodSummary : null,
       },
     });
   } catch (error: any) {

@@ -12,17 +12,82 @@ interface SupplierPayment {
   supplierId: string;
   supplier: {
     companyName: string;
+    withholding?: boolean;
+    withholdRate?: number;
   };
   purchaseOrderId?: string | null;
   purchaseOrder?: {
-    orderNo: string;
+    orderNo?: string;
+    poNo?: string;
   } | null;
   amount: number;
   paymentMethod: string;
   bankName?: string | null;
+  refNo?: string | null;
+  description?: string | null;
   status: string;
   paymentDate: string;
   createdAt: string;
+}
+
+interface TaxBreakdown {
+  subtotal: number;
+  vatRate?: number;
+  vatAmount?: number;
+  grossTotal: number;
+  withholdRate?: number;
+  withholdAmount?: number;
+  netPayable: number;
+  hasVat: boolean;
+  hasWithholding: boolean;
+}
+
+function extractTaxBreakdown(description?: string | null, totalAmount: number = 0, supplier?: { withholding?: boolean; withholdRate?: number }): TaxBreakdown {
+  if (!description) {
+    return {
+      subtotal: totalAmount,
+      grossTotal: totalAmount,
+      netPayable: totalAmount,
+      hasVat: false,
+      hasWithholding: !!supplier?.withholding,
+      withholdRate: supplier?.withholdRate || 3,
+    };
+  }
+
+  const parseNum = (str?: string) => (str ? parseFloat(str.replace(/,/g, '')) : 0);
+
+  const subtotalMatch = description.match(/Subtotal(?:\s*\(excl\.\s*VAT\))?:\s*ETB\s*([\d,]+(?:\.\d+)?)/i);
+  const vatMatch = description.match(/VAT\s*(?:\((\d+)%\))?:\s*\+?\s*ETB\s*([\d,]+(?:\.\d+)?)/i);
+  const grossMatch = description.match(/Gross(?: Total)?:\s*ETB\s*([\d,]+(?:\.\d+)?)/i);
+  const whtMatch = description.match(/Withholding\s*(?:\((\d+)%\))?:\s*-?\s*ETB\s*([\d,]+(?:\.\d+)?)/i);
+  const netMatch = description.match(/Net Payable:\s*ETB\s*([\d,]+(?:\.\d+)?)/i);
+
+  const parsedSubtotal = subtotalMatch ? parseNum(subtotalMatch[1]) : 0;
+  const vatRate = vatMatch && vatMatch[1] ? parseFloat(vatMatch[1]) : 15;
+  const vatAmount = vatMatch ? parseNum(vatMatch[2]) : 0;
+  const parsedGross = grossMatch ? parseNum(grossMatch[1]) : 0;
+  const withholdRate = whtMatch && whtMatch[1] ? parseFloat(whtMatch[1]) : (supplier?.withholdRate || 3);
+  const withholdAmount = whtMatch ? parseNum(whtMatch[2]) : 0;
+  const parsedNet = netMatch ? parseNum(netMatch[1]) : 0;
+
+  const hasVat = vatAmount > 0 || vatMatch !== null;
+  const hasWithholding = withholdAmount > 0 || whtMatch !== null || !!supplier?.withholding;
+
+  const subtotal = parsedSubtotal > 0 ? parsedSubtotal : totalAmount;
+  const grossTotal = parsedGross > 0 ? parsedGross : subtotal + vatAmount;
+  const netPayable = parsedNet > 0 ? parsedNet : totalAmount;
+
+  return {
+    subtotal,
+    vatRate: hasVat ? vatRate : undefined,
+    vatAmount: hasVat ? vatAmount : undefined,
+    grossTotal,
+    withholdRate: hasWithholding ? withholdRate : undefined,
+    withholdAmount: hasWithholding ? withholdAmount : undefined,
+    netPayable,
+    hasVat,
+    hasWithholding,
+  };
 }
 
 interface PageProps {
@@ -183,6 +248,8 @@ export default function PaymentDetailPage({ params }: PageProps) {
     );
   }
 
+  const taxBreakdown = payment ? extractTaxBreakdown(payment.description, payment.amount, payment.supplier) : null;
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -211,7 +278,7 @@ export default function PaymentDetailPage({ params }: PageProps) {
             <CardBody>
               <h2 className="text-lg font-semibold text-slate-900 mb-4">Payment Information</h2>
               <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
                   <div>
                     <p className="text-sm text-slate-600 mb-1">Payment Number</p>
                     <p className="text-base font-semibold text-slate-900">{payment.paymentNo}</p>
@@ -223,8 +290,8 @@ export default function PaymentDetailPage({ params }: PageProps) {
                     </p>
                   </div>
                   <div>
-                    <p className="text-sm text-slate-600 mb-1">Amount</p>
-                    <p className="text-lg font-bold text-slate-900">
+                    <p className="text-sm text-slate-600 mb-1">Net Paid Amount</p>
+                    <p className="text-lg font-bold text-blue-600">
                       {formatCurrency(payment.amount)}
                     </p>
                   </div>
@@ -232,20 +299,95 @@ export default function PaymentDetailPage({ params }: PageProps) {
                     <p className="text-sm text-slate-600 mb-1">Status</p>
                     <Badge status={getStatusColor(payment.status)}>{payment.status}</Badge>
                   </div>
+                  {payment.refNo && (
+                    <div>
+                      <p className="text-sm text-slate-600 mb-1">Reference No</p>
+                      <p className="text-base font-semibold text-slate-900">{payment.refNo}</p>
+                    </div>
+                  )}
                 </div>
               </div>
             </CardBody>
           </Card>
 
+          {/* VAT & Withholding Breakdown Card */}
+          {taxBreakdown && (
+            <Card>
+              <CardBody>
+                <h2 className="text-lg font-semibold text-slate-900 mb-4">VAT & Withholding Breakdown</h2>
+                <div className="space-y-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-slate-600">Subtotal (excl. VAT):</span>
+                    <span className="font-medium text-slate-900">
+                      {formatCurrency(taxBreakdown.subtotal)}
+                    </span>
+                  </div>
+
+                  {taxBreakdown.hasVat && taxBreakdown.vatAmount !== undefined ? (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-slate-600">VAT ({taxBreakdown.vatRate || 15}%):</span>
+                      <span className="font-medium text-blue-600">
+                        + {formatCurrency(taxBreakdown.vatAmount)}
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="flex justify-between text-sm text-slate-400">
+                      <span>VAT (0% - Not Applied):</span>
+                      <span>+ ETB 0.00</span>
+                    </div>
+                  )}
+
+                  <div className="flex justify-between text-sm border-t border-slate-200 pt-2">
+                    <span className="text-slate-900 font-medium">Gross Total:</span>
+                    <span className="font-semibold text-slate-900">
+                      {formatCurrency(taxBreakdown.grossTotal)}
+                    </span>
+                  </div>
+
+                  {taxBreakdown.hasWithholding && taxBreakdown.withholdAmount !== undefined ? (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-red-600">Withholding Tax ({taxBreakdown.withholdRate || 3}% of subtotal):</span>
+                      <span className="font-medium text-red-600">
+                        - {formatCurrency(taxBreakdown.withholdAmount)}
+                      </span>
+                    </div>
+                  ) : null}
+
+                  <div className="border-t border-slate-900 pt-3 flex justify-between items-baseline">
+                    <span className="text-base font-bold text-slate-900">Net Paid Amount:</span>
+                    <span className="text-2xl font-bold text-[#007AFF]">
+                      {formatCurrency(payment.amount)}
+                    </span>
+                  </div>
+
+                  {taxBreakdown.hasVat && (taxBreakdown.vatAmount || 0) > 0 && (
+                    <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mt-3">
+                      <p className="text-xs text-amber-800 font-medium">VAT Note</p>
+                      <p className="text-xs text-amber-700 mt-0.5">
+                        This purchasing payment VAT of {formatCurrency(taxBreakdown.vatAmount || 0)} is recorded as Input VAT for the current tax filing period.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </CardBody>
+            </Card>
+          )}
+
           {/* Supplier Details */}
           <Card>
             <CardBody>
               <h2 className="text-lg font-semibold text-slate-900 mb-4">Supplier Details</h2>
-              <div className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <p className="text-sm text-slate-600 mb-1">Supplier Name</p>
                   <p className="text-base font-semibold text-slate-900">
                     {payment.supplier.companyName}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm text-slate-600 mb-1">Withholding Registered</p>
+                  <p className="text-base font-semibold text-slate-900">
+                    {payment.supplier.withholding ? `Yes (${payment.supplier.withholdRate || 3}%)` : 'No'}
                   </p>
                 </div>
               </div>
@@ -284,17 +426,27 @@ export default function PaymentDetailPage({ params }: PageProps) {
                   <div>
                     <p className="text-sm text-slate-600 mb-1">PO Number</p>
                     <p className="text-base font-semibold text-slate-900">
-                      {payment.purchaseOrder.orderNo}
+                      {payment.purchaseOrder.poNo || payment.purchaseOrder.orderNo}
                     </p>
                   </div>
                 </div>
               </CardBody>
             </Card>
           )}
+
+          {/* Description & Notes */}
+          {payment.description && (
+            <Card>
+              <CardBody>
+                <h2 className="text-lg font-semibold text-slate-900 mb-2">Notes & Remarks</h2>
+                <p className="text-sm text-slate-700 whitespace-pre-wrap">{payment.description}</p>
+              </CardBody>
+            </Card>
+          )}
         </div>
 
-        {/* Sidebar Actions */}
-        <div>
+        {/* Sidebar Actions & Summary */}
+        <div className="space-y-6">
           <Card>
             <CardBody>
               <h3 className="text-lg font-semibold text-slate-900 mb-4">Actions</h3>
@@ -331,25 +483,43 @@ export default function PaymentDetailPage({ params }: PageProps) {
           </Card>
 
           {/* Summary Card */}
-          <Card className="mt-4">
-            <CardBody>
-              <h3 className="text-lg font-semibold text-slate-900 mb-4">Summary</h3>
-              <div className="space-y-3 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-slate-600">Amount:</span>
-                  <span className="font-semibold text-slate-900">
-                    {formatCurrency(payment.amount)}
-                  </span>
+          {taxBreakdown && (
+            <Card>
+              <CardBody>
+                <h3 className="text-lg font-semibold text-slate-900 mb-4">Payment Summary</h3>
+                <div className="space-y-3 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-slate-600">Subtotal (excl. VAT):</span>
+                    <span className="font-semibold text-slate-900">
+                      {formatCurrency(taxBreakdown.subtotal)}
+                    </span>
+                  </div>
+                  {taxBreakdown.hasVat && taxBreakdown.vatAmount ? (
+                    <div className="flex justify-between text-blue-600">
+                      <span>VAT ({taxBreakdown.vatRate || 15}%):</span>
+                      <span className="font-medium">
+                        + {formatCurrency(taxBreakdown.vatAmount)}
+                      </span>
+                    </div>
+                  ) : null}
+                  {taxBreakdown.hasWithholding && taxBreakdown.withholdAmount ? (
+                    <div className="flex justify-between text-red-600">
+                      <span>Withholding ({taxBreakdown.withholdRate || 3}%):</span>
+                      <span className="font-medium">
+                        - {formatCurrency(taxBreakdown.withholdAmount)}
+                      </span>
+                    </div>
+                  ) : null}
+                  <div className="flex justify-between pt-3 border-t border-slate-200">
+                    <span className="font-semibold text-slate-900">Net Paid:</span>
+                    <span className="font-bold text-lg text-blue-600">
+                      {formatCurrency(payment.amount)}
+                    </span>
+                  </div>
                 </div>
-                <div className="flex justify-between pt-3 border-t border-slate-200">
-                  <span className="font-semibold text-slate-900">Total:</span>
-                  <span className="font-bold text-lg text-slate-900">
-                    {formatCurrency(payment.amount)}
-                  </span>
-                </div>
-              </div>
-            </CardBody>
-          </Card>
+              </CardBody>
+            </Card>
+          )}
         </div>
       </div>
     </div>

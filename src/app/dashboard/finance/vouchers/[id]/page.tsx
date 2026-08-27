@@ -35,6 +35,65 @@ interface VoucherData {
   createdAt: string;
 }
 
+interface TaxBreakdown {
+  subtotal: number;
+  vatRate?: number;
+  vatAmount?: number;
+  grossTotal: number;
+  withholdRate?: number;
+  withholdAmount?: number;
+  netPayable: number;
+  hasVat: boolean;
+  hasWithholding: boolean;
+}
+
+function extractTaxBreakdown(description?: string | null, totalAmount: number = 0): TaxBreakdown {
+  if (!description) {
+    return {
+      subtotal: totalAmount,
+      grossTotal: totalAmount,
+      netPayable: totalAmount,
+      hasVat: false,
+      hasWithholding: false,
+    };
+  }
+
+  const parseNum = (str?: string) => (str ? parseFloat(str.replace(/,/g, '')) : 0);
+
+  const subtotalMatch = description.match(/Subtotal(?:\s*\(excl\.\s*VAT\))?:\s*ETB\s*([\d,]+(?:\.\d+)?)/i);
+  const vatMatch = description.match(/VAT\s*(?:\((\d+)%\))?:\s*\+?\s*ETB\s*([\d,]+(?:\.\d+)?)/i);
+  const grossMatch = description.match(/Gross(?: Total)?:\s*ETB\s*([\d,]+(?:\.\d+)?)/i);
+  const whtMatch = description.match(/Withholding\s*(?:\((\d+)%\))?:\s*-?\s*ETB\s*([\d,]+(?:\.\d+)?)/i);
+  const netMatch = description.match(/Net Payable:\s*ETB\s*([\d,]+(?:\.\d+)?)/i);
+
+  const parsedSubtotal = subtotalMatch ? parseNum(subtotalMatch[1]) : 0;
+  const vatRate = vatMatch && vatMatch[1] ? parseFloat(vatMatch[1]) : 15;
+  const vatAmount = vatMatch ? parseNum(vatMatch[2]) : 0;
+  const parsedGross = grossMatch ? parseNum(grossMatch[1]) : 0;
+  const withholdRate = whtMatch && whtMatch[1] ? parseFloat(whtMatch[1]) : 3;
+  const withholdAmount = whtMatch ? parseNum(whtMatch[2]) : 0;
+  const parsedNet = netMatch ? parseNum(netMatch[1]) : 0;
+
+  const hasVat = vatAmount > 0 || vatMatch !== null;
+  const hasWithholding = withholdAmount > 0 || whtMatch !== null;
+
+  const subtotal = parsedSubtotal > 0 ? parsedSubtotal : totalAmount;
+  const grossTotal = parsedGross > 0 ? parsedGross : subtotal + vatAmount;
+  const netPayable = parsedNet > 0 ? parsedNet : totalAmount;
+
+  return {
+    subtotal,
+    vatRate: hasVat ? vatRate : undefined,
+    vatAmount: hasVat ? vatAmount : undefined,
+    grossTotal,
+    withholdRate: hasWithholding ? withholdRate : undefined,
+    withholdAmount: hasWithholding ? withholdAmount : undefined,
+    netPayable,
+    hasVat,
+    hasWithholding,
+  };
+}
+
 export default function VoucherDetailPage() {
   const router = useRouter();
   const params = useParams();
@@ -205,9 +264,26 @@ export default function VoucherDetailPage() {
         </div>
 
         <div class="amount-box">
-          <div class="label">Amount</div>
+          <div class="label">Net Payable / Settled Amount</div>
           <div class="value">ETB ${voucher.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
         </div>
+
+        ${(() => {
+          const printTax = extractTaxBreakdown(voucher.description, voucher.amount);
+          if (printTax.hasVat || printTax.hasWithholding) {
+            return `
+              <table style="margin: 15px 0;">
+                <tr style="background:#f9f9f9;"><th colspan="2" style="text-align:left;">VAT & Withholding Breakdown</th></tr>
+                <tr><td>Subtotal (excl. VAT)</td><td style="text-align:right;">ETB ${printTax.subtotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td></tr>
+                ${printTax.hasVat ? `<tr><td>VAT (${printTax.vatRate || 15}%)</td><td style="text-align:right;color:#0055D4;">+ ETB ${(printTax.vatAmount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td></tr>` : ''}
+                <tr><td>Gross Total</td><td style="text-align:right;font-weight:bold;">ETB ${printTax.grossTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td></tr>
+                ${printTax.hasWithholding ? `<tr><td>Withholding Tax (${printTax.withholdRate || 3}%)</td><td style="text-align:right;color:#D70015;">- ETB ${(printTax.withholdAmount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td></tr>` : ''}
+                <tr style="background:#f0f4ff;font-weight:bold;"><td>Net Payable</td><td style="text-align:right;color:#0055D4;">ETB ${voucher.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td></tr>
+              </table>
+            `;
+          }
+          return '';
+        })()}
 
         ${voucher.description ? `<div class="field"><label>Description / Purpose</label><span>${voucher.description}</span></div>` : ''}
 
@@ -391,7 +467,7 @@ export default function VoucherDetailPage() {
         <CardBody>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
-              <p className="text-xs font-semibold text-blue-600 uppercase tracking-wide">Amount</p>
+              <p className="text-xs font-semibold text-blue-600 uppercase tracking-wide">Net Paid Amount</p>
               <p className="text-2xl font-bold text-blue-900 mt-1">{formatCurrency(voucher.amount)}</p>
             </div>
             <div>
@@ -413,6 +489,74 @@ export default function VoucherDetailPage() {
           </div>
         </CardBody>
       </Card>
+
+      {/* VAT & Withholding Breakdown Card */}
+      {(() => {
+        const taxBreakdown = extractTaxBreakdown(voucher.description, voucher.amount);
+        return (
+          <Card>
+            <CardHeader>
+              <h2 className="text-lg font-semibold text-[#1D1D1F]">3. VAT & Withholding Breakdown</h2>
+            </CardHeader>
+            <CardBody>
+              <div className="max-w-md ml-auto space-y-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
+                <div className="flex justify-between text-sm">
+                  <span className="text-slate-600">Subtotal (excl. VAT):</span>
+                  <span className="font-medium text-slate-900">
+                    {formatCurrency(taxBreakdown.subtotal)}
+                  </span>
+                </div>
+
+                {taxBreakdown.hasVat && taxBreakdown.vatAmount !== undefined ? (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-slate-600">VAT ({taxBreakdown.vatRate || 15}%):</span>
+                    <span className="font-medium text-blue-600">
+                      + {formatCurrency(taxBreakdown.vatAmount)}
+                    </span>
+                  </div>
+                ) : (
+                  <div className="flex justify-between text-sm text-slate-400">
+                    <span>VAT (0% - Not Applied):</span>
+                    <span>+ ETB 0.00</span>
+                  </div>
+                )}
+
+                <div className="flex justify-between text-sm border-t border-slate-200 pt-2">
+                  <span className="text-slate-900 font-medium">Gross Total:</span>
+                  <span className="font-semibold text-slate-900">
+                    {formatCurrency(taxBreakdown.grossTotal)}
+                  </span>
+                </div>
+
+                {taxBreakdown.hasWithholding && taxBreakdown.withholdAmount !== undefined ? (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-red-600">Withholding Tax ({taxBreakdown.withholdRate || 3}% of subtotal):</span>
+                    <span className="font-medium text-red-600">
+                      - {formatCurrency(taxBreakdown.withholdAmount)}
+                    </span>
+                  </div>
+                ) : null}
+
+                <div className="border-t border-slate-900 pt-3 flex justify-between items-baseline">
+                  <span className="text-base font-bold text-slate-900">Net Payable / Settled:</span>
+                  <span className="text-2xl font-bold text-[#007AFF]">
+                    {formatCurrency(voucher.amount)}
+                  </span>
+                </div>
+
+                {taxBreakdown.hasVat && (taxBreakdown.vatAmount || 0) > 0 && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mt-3">
+                    <p className="text-xs text-amber-800 font-medium">VAT Note</p>
+                    <p className="text-xs text-amber-700 mt-0.5">
+                      This voucher VAT of {formatCurrency(taxBreakdown.vatAmount || 0)} is recorded for the filing period under Finance &rarr; VAT Management.
+                    </p>
+                  </div>
+                )}
+              </div>
+            </CardBody>
+          </Card>
+        );
+      })()}
 
       {/* Description */}
       {voucher.description && (

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Card, CardHeader, CardBody, CardFooter, Button } from '@/components/ui';
@@ -8,6 +8,8 @@ import { Card, CardHeader, CardBody, CardFooter, Button } from '@/components/ui'
 interface Supplier {
   id: string;
   companyName: string;
+  withholding?: boolean;
+  withholdRate?: number;
 }
 
 interface PurchaseOrder {
@@ -21,6 +23,13 @@ export default function NewSupplierPaymentPage() {
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
   const [submitting, setSubmitting] = useState(false);
+
+  // Tax & Withholding states
+  const [applyVat, setApplyVat] = useState(false);
+  const [vatRate, setVatRate] = useState<number>(15);
+  const [applyWithholding, setApplyWithholding] = useState(false);
+  const [withholdRate, setWithholdRate] = useState<number>(3);
+
   const [formData, setFormData] = useState({
     supplierId: '',
     purchaseOrderId: '',
@@ -32,6 +41,27 @@ export default function NewSupplierPaymentPage() {
     description: '',
     otherExpenses: false,
   });
+
+  // Calculated totals based on subtotal, VAT and withholding
+  const subtotal = useMemo(() => {
+    return parseFloat(formData.amount || '0') || 0;
+  }, [formData.amount]);
+
+  const totalVAT = useMemo(() => {
+    return applyVat ? (subtotal * vatRate) / 100 : 0;
+  }, [subtotal, applyVat, vatRate]);
+
+  const grossTotal = useMemo(() => {
+    return subtotal + totalVAT;
+  }, [subtotal, totalVAT]);
+
+  const withholdAmount = useMemo(() => {
+    return applyWithholding ? (subtotal * withholdRate) / 100 : 0;
+  }, [subtotal, applyWithholding, withholdRate]);
+
+  const netPayable = useMemo(() => {
+    return Math.max(0, grossTotal - withholdAmount);
+  }, [grossTotal, withholdAmount]);
 
   const ethiopianBanks = [
     'CBE',
@@ -88,10 +118,32 @@ export default function NewSupplierPaymentPage() {
     const { name, value, type } = e.target;
     const checked = (e.target as HTMLInputElement).checked;
 
-    setFormData({
-      ...formData,
+    if (name === 'supplierId') {
+      const selected = suppliers.find((s) => s.id === value);
+      if (selected?.withholding) {
+        setApplyWithholding(true);
+        if (selected.withholdRate) {
+          setWithholdRate(selected.withholdRate);
+        }
+      }
+    }
+
+    if (name === 'purchaseOrderId') {
+      const selectedPo = purchaseOrders.find((p) => p.id === value);
+      if (selectedPo && selectedPo.totalAmount > 0) {
+        setFormData((prev) => ({
+          ...prev,
+          purchaseOrderId: value,
+          amount: String(selectedPo.totalAmount),
+        }));
+        return;
+      }
+    }
+
+    setFormData((prev) => ({
+      ...prev,
       [name]: type === 'checkbox' ? checked : value,
-    });
+    }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -109,18 +161,44 @@ export default function NewSupplierPaymentPage() {
 
     setSubmitting(true);
     try {
+      // Determine effective payable amount and audit breakdown
+      const effectiveAmount = (applyVat || applyWithholding) && netPayable > 0
+        ? Math.round(netPayable * 100) / 100
+        : parseFloat(formData.amount);
+
+      let autoBreakdown = '';
+      if (applyVat || applyWithholding) {
+        const parts = [
+          `Subtotal (excl. VAT): ETB ${subtotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        ];
+        if (applyVat) {
+          parts.push(`VAT (${vatRate}%): +ETB ${totalVAT.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+          parts.push(`Gross: ETB ${grossTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+        }
+        if (applyWithholding) {
+          parts.push(`Withholding (${withholdRate}%): -ETB ${withholdAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+        }
+        parts.push(`Net Payable: ETB ${netPayable.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+        autoBreakdown = ` [${parts.join(' | ')}]`;
+      }
+
+      let finalDescription = formData.description || '';
+      if (autoBreakdown && !finalDescription.includes('Net Payable:')) {
+        finalDescription = finalDescription ? `${finalDescription}${autoBreakdown}` : autoBreakdown.trim().replace(/^\[|\]$/g, '');
+      }
+
       const res = await fetch('/api/purchasing/payments', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           supplierId: formData.supplierId,
           purchaseOrderId: formData.purchaseOrderId || null,
-          amount: parseFloat(formData.amount),
+          amount: effectiveAmount,
           paymentDate: formData.paymentDate,
           paymentMethod: formData.paymentMethod,
           bankName: formData.bankName || null,
           refNo: formData.refNo || null,
-          description: formData.description || null,
+          description: finalDescription || null,
         }),
       });
 
@@ -219,7 +297,7 @@ export default function NewSupplierPaymentPage() {
 
               {/* Amount */}
               <div>
-                <label className="block text-sm font-medium text-slate-900 mb-3">Amount (ETB) *</label>
+                <label className="block text-sm font-medium text-slate-900 mb-3">Amount / Subtotal (excl. VAT) *</label>
                 <input
                   type="number"
                   name="amount"
@@ -231,6 +309,12 @@ export default function NewSupplierPaymentPage() {
                   placeholder="0.00"
                   className="w-full px-4 py-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent text-slate-900"
                 />
+                {(applyVat || applyWithholding) && subtotal > 0 && (
+                  <p className="text-xs text-emerald-700 mt-1 font-medium flex items-center gap-1">
+                    <span>✓ Calculated Net Payable:</span>
+                    <strong>ETB {netPayable.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+                  </p>
+                )}
               </div>
 
               {/* Payment Date */}
@@ -308,6 +392,131 @@ export default function NewSupplierPaymentPage() {
                 rows={3}
                 className="w-full px-4 py-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent text-slate-900"
               />
+            </div>
+          </CardBody>
+        </Card>
+
+        {/* 3. VAT & Totals Card */}
+        <Card>
+          <CardHeader className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-lg font-semibold text-slate-900">3. VAT & Totals</h2>
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="flex items-center gap-2 text-xs font-medium text-slate-700 cursor-pointer bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-lg hover:bg-slate-100 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={applyVat}
+                  onChange={(e) => setApplyVat(e.target.checked)}
+                  className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"
+                />
+                <span>Apply VAT ({vatRate}%)</span>
+              </label>
+              {applyVat && (
+                <div className="flex items-center gap-1">
+                  <span className="text-xs text-slate-500">Rate:</span>
+                  <select
+                    value={vatRate}
+                    onChange={(e) => setVatRate(Number(e.target.value) || 0)}
+                    className="px-2 py-1 text-xs border border-slate-300 rounded-lg bg-white font-medium text-slate-700"
+                  >
+                    <option value={15}>15% (Standard VAT)</option>
+                    <option value={10}>10%</option>
+                    <option value={5}>5%</option>
+                    <option value={0}>0% (Exempt)</option>
+                  </select>
+                </div>
+              )}
+            </div>
+          </CardHeader>
+          <CardBody>
+            <div className="max-w-md ml-auto space-y-3">
+              <div className="flex justify-between text-sm">
+                <span className="text-slate-600">Subtotal (excl. VAT):</span>
+                <span className="font-medium text-slate-900">
+                  ETB {subtotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              </div>
+
+              {applyVat ? (
+                <div className="flex justify-between text-sm">
+                  <span className="text-slate-600">VAT ({vatRate}%):</span>
+                  <span className="font-medium text-blue-600">
+                    + ETB {totalVAT.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                </div>
+              ) : (
+                <div className="flex justify-between text-sm text-slate-400">
+                  <span>VAT (0% - Not Applied):</span>
+                  <span>+ ETB 0.00</span>
+                </div>
+              )}
+
+              <div className="flex justify-between text-sm border-t pt-2">
+                <span className="text-slate-900 font-medium">Gross Total:</span>
+                <span className="font-semibold text-slate-900">
+                  ETB {grossTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              </div>
+
+              {/* Withholding Tax */}
+              <div className="border-t pt-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="flex items-center gap-2 text-sm cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={applyWithholding}
+                      onChange={(e) => setApplyWithholding(e.target.checked)}
+                      className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"
+                    />
+                    <span className="text-slate-700 font-medium">
+                      Apply Withholding Tax ({withholdRate}%)
+                    </span>
+                  </label>
+                  {applyWithholding && (
+                    <div className="flex items-center gap-1">
+                      <span className="text-xs text-slate-500">Rate:</span>
+                      <select
+                        value={withholdRate}
+                        onChange={(e) => setWithholdRate(Number(e.target.value) || 0)}
+                        className="px-2 py-1 text-xs border border-slate-300 rounded-lg bg-white font-medium text-slate-700"
+                      >
+                        <option value={3}>3% (Goods/Services)</option>
+                        <option value={2}>2% (Standard Goods)</option>
+                        <option value={5}>5%</option>
+                        <option value={10}>10%</option>
+                      </select>
+                    </div>
+                  )}
+                </div>
+
+                {applyWithholding && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-red-600">Withholding ({withholdRate}% of subtotal):</span>
+                    <span className="font-medium text-red-600">
+                      - ETB {withholdAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              <div className="border-t border-slate-900 pt-3">
+                <div className="flex justify-between items-baseline">
+                  <span className="text-lg font-bold text-slate-900">Net Payable:</span>
+                  <span className="text-2xl font-bold text-[#007AFF]">
+                    ETB {netPayable.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                </div>
+              </div>
+
+              {/* VAT Note Info Box */}
+              {applyVat && totalVAT > 0 && (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mt-4">
+                  <p className="text-xs text-amber-800 font-medium">VAT Note</p>
+                  <p className="text-xs text-amber-700 mt-1">
+                    This purchasing payment VAT of ETB {totalVAT.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} will be recorded
+                    as Input VAT for the current filing period. View VAT reports under Finance &rarr; VAT Management.
+                  </p>
+                </div>
+              )}
             </div>
           </CardBody>
         </Card>

@@ -31,6 +31,33 @@ function getVoucherTypeInfo(refModule?: string | null, voucherNo?: string | null
   return { voucherType: 'Journal Entry', voucherSubtype: 'Journal Voucher' };
 }
 
+function isInitialBalanceEntry(entry: { refModule?: string | null; voucherNo?: string | null; description?: string | null }): boolean {
+  const mod = (entry.refModule || '').toUpperCase().trim();
+  const vNo = (entry.voucherNo || '').toUpperCase().trim();
+  const desc = (entry.description || '').toUpperCase().trim();
+
+  if (
+    mod === 'INITIAL BALANCE' ||
+    mod === 'INITIAL_BALANCE' ||
+    mod === 'INITIAL' ||
+    mod === 'OPENING BALANCE' ||
+    mod === 'OPENING_BALANCE' ||
+    mod === 'OPENING'
+  ) {
+    return true;
+  }
+  if (mod.includes('INITIAL') || mod.includes('OPENING')) {
+    return true;
+  }
+  if (vNo.startsWith('INIT-') || vNo.startsWith('OPEN-') || vNo.startsWith('OB-')) {
+    return true;
+  }
+  if (desc.startsWith('INITIAL OPENING') || desc.startsWith('OPENING BALANCE') || desc === 'INITIAL BALANCE') {
+    return true;
+  }
+  return false;
+}
+
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
@@ -68,10 +95,12 @@ export async function GET(request: NextRequest) {
       toDate.setHours(23, 59, 59, 999);
     }
 
-    // 1. Calculate Opening Balance before fromDate (if fromDate is specified)
+    // 1. Calculate Opening Balance:
+    // Any entry before fromDate OR any entry with refModule = 'INITIAL BALANCE' / 'INITIAL_BALANCE'
     let openingDebit = 0;
     let openingCredit = 0;
 
+    // Fetch prior entries before fromDate
     if (fromDate) {
       const openingWhere: any = {
         entryDate: { lt: fromDate },
@@ -88,31 +117,11 @@ export async function GET(request: NextRequest) {
         },
       });
 
-      openingDebit = Number(openingSums._sum.debit) || 0;
-      openingCredit = Number(openingSums._sum.credit) || 0;
+      openingDebit += Number(openingSums._sum.debit) || 0;
+      openingCredit += Number(openingSums._sum.credit) || 0;
     }
 
-    // Opening net balance
-    // For Asset/Expense: Net Debit (Debit - Credit)
-    // For Liability/Equity/Revenue: Net Credit (Credit - Debit)
-    let openingBalance = 0;
-    let openingBalanceType: 'Dr' | 'Cr' = 'Dr';
-    if (targetAccount) {
-      if (targetAccount.accountType === 'Asset' || targetAccount.accountType === 'Expense') {
-        const net = openingDebit - openingCredit;
-        openingBalance = net;
-        openingBalanceType = net >= 0 ? 'Dr' : 'Cr';
-      } else {
-        const net = openingCredit - openingDebit;
-        openingBalance = net;
-        openingBalanceType = net >= 0 ? 'Cr' : 'Dr';
-      }
-    } else {
-      openingBalance = openingDebit - openingCredit;
-      openingBalanceType = openingBalance >= 0 ? 'Dr' : 'Cr';
-    }
-
-    // 2. Fetch Journal Entries in date range
+    // 2. Fetch Journal Entries for the period (or all if no date filter)
     const whereClause: any = {};
     if (targetAccount) {
       whereClause.accountId = targetAccount.id;
@@ -131,13 +140,46 @@ export async function GET(request: NextRequest) {
 
     const accountMap = new Map(accounts.map((a) => [a.id, a]));
 
-    const entries = await prisma.journalEntry.findMany({
+    const rawEntries = await prisma.journalEntry.findMany({
       where: whereClause,
       include: {
         account: true,
       },
       orderBy: [{ entryDate: 'asc' }, { id: 'asc' }],
     });
+
+    // Separate INITIAL BALANCE entries into Opening Balance and regular period transactions
+    const regularEntries: any[] = [];
+
+    for (const entry of rawEntries) {
+      if (isInitialBalanceEntry(entry)) {
+        // Absorb into Opening Balance
+        openingDebit += Number(entry.debit) || 0;
+        openingCredit += Number(entry.credit) || 0;
+      } else {
+        regularEntries.push(entry);
+      }
+    }
+
+    // Calculate Opening Net Balance
+    let openingBalance = 0;
+    let openingBalanceType: 'Dr' | 'Cr' = 'Dr';
+    if (targetAccount) {
+      if (targetAccount.accountType === 'Asset' || targetAccount.accountType === 'Expense') {
+        const net = openingDebit - openingCredit;
+        openingBalance = net;
+        openingBalanceType = net >= 0 ? 'Dr' : 'Cr';
+      } else {
+        const net = openingCredit - openingDebit;
+        openingBalance = net;
+        openingBalanceType = net >= 0 ? 'Cr' : 'Dr';
+      }
+    } else {
+      openingBalance = openingDebit - openingCredit;
+      openingBalanceType = openingBalance >= 0 ? 'Dr' : 'Cr';
+    }
+
+    const entries = regularEntries;
 
     // 3. Find Against Accounts: fetch sibling lines for all unique voucher numbers
     const voucherNumbers = Array.from(new Set(entries.map((e) => e.voucherNo)));

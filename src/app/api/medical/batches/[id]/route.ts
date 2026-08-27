@@ -10,6 +10,9 @@ export async function GET(
   try {
     const record = await prisma.medicalBatch.findUnique({
       where: { id: params.id },
+      include: {
+        item: true,
+      },
     });
 
     if (!record) {
@@ -19,7 +22,20 @@ export async function GET(
       );
     }
 
-    return NextResponse.json({ success: true, data: record });
+    let supplier: any = null;
+    if (record.supplierId) {
+      supplier = await prisma.supplier.findUnique({
+        where: { id: record.supplierId },
+      });
+    }
+
+    return NextResponse.json({
+      success: true,
+      data: {
+        ...record,
+        supplier,
+      },
+    });
   } catch (error: any) {
     console.error('Error fetching record:', error);
     return NextResponse.json(

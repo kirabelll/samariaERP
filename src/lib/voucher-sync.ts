@@ -197,4 +197,26 @@ export async function updateVoucherLinkedDocument(voucher: any) {
       console.error('[VoucherSync] Failed to update SalesInvoice status:', err.message);
     }
   }
+
+  // 5. MEDICAL PURCHASE REQUESTS
+  if (sourceModule === 'MEDICAL' && (sourceId || sourceRef)) {
+    try {
+      let medReq = sourceId
+        ? await prisma.medicalRequest.findUnique({ where: { id: sourceId } })
+        : null;
+
+      if (!medReq && sourceRef) {
+        medReq = await prisma.medicalRequest.findFirst({ where: { requestNo: sourceRef } });
+      }
+
+      if (medReq && (medReq.status === 'Submitted' || medReq.status === 'Quoted')) {
+        await prisma.medicalRequest.update({
+          where: { id: medReq.id },
+          data: { status: 'Approved' },
+        });
+      }
+    } catch (err: any) {
+      console.error('[VoucherSync] Failed to update MedicalRequest status:', err.message);
+    }
+  }
 }

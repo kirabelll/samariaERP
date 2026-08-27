@@ -68,6 +68,7 @@ export default function NewVoucherPage() {
   // Entity lists
   const [customers, setCustomers] = useState<EntityOption[]>([]);
   const [suppliers, setSuppliers] = useState<EntityOption[]>([]);
+  const [medicalSuppliers, setMedicalSuppliers] = useState<EntityOption[]>([]);
   const [employees, setEmployees] = useState<EntityOption[]>([]);
   const [transporters, setTransporters] = useState<EntityOption[]>([]);
   const [bankAccounts, setBankAccounts] = useState<BankAccountOption[]>([]);
@@ -303,6 +304,7 @@ export default function NewVoucherPage() {
             id: s.id,
             name: s.companyName || s.name || '',
             code: s.code,
+            category: s.category || '',
             withholding: s.withholding || false,
             withholdRate: s.withholdRate || 3,
           }));
@@ -310,10 +312,19 @@ export default function NewVoucherPage() {
             { id: 'ONE_TIME_SUPPLIER', name: '⚡ One-Time Supplier (Ad-Hoc / Manual)', code: 'ONE-TIME' },
             ...fetchedSuppliers,
           ]);
+
+          // Filter medical/pharma suppliers
+          const medList = fetchedSuppliers.filter(
+            (s: any) =>
+              (s.category && s.category.toLowerCase().includes('med')) ||
+              (s.category && s.category.toLowerCase().includes('pharma'))
+          );
+          setMedicalSuppliers(medList.length > 0 ? medList : fetchedSuppliers);
         } else {
           setSuppliers([
             { id: 'ONE_TIME_SUPPLIER', name: '⚡ One-Time Supplier (Ad-Hoc / Manual)', code: 'ONE-TIME' },
           ]);
+          setMedicalSuppliers([]);
         }
         if (empRes.success) {
           setEmployees((empRes.data || []).map((e: any) => ({
@@ -374,6 +385,9 @@ export default function NewVoucherPage() {
     switch (formData.payeeType) {
       case 'CUSTOMER': return customers;
       case 'SUPPLIER': return suppliers;
+      case 'MEDICAL':
+      case 'MEDICAL_SUPPLIER':
+        return medicalSuppliers.length > 0 ? medicalSuppliers : suppliers;
       case 'ONE_TIME_SUPPLIER': return [{ id: 'ONE_TIME_SUPPLIER', name: '⚡ One-Time Supplier (Ad-Hoc / Manual)', code: 'ONE-TIME' }];
       case 'EMPLOYEE': return employees;
       case 'TRANSPORTER': return transporters;
@@ -530,19 +544,45 @@ export default function NewVoucherPage() {
             break;
           }
           case 'MEDICAL': {
-            const res = await fetch('/api/medical/purchase-requests?limit=100');
-            const data = await res.json();
-            if (data.success) {
-              // Only show Approved medical requests
-              const approvedOnly = (data.data || []).filter((r: any) =>
-                r.status === 'Approved' || r.status === 'Active'
-              );
-              refs = approvedOnly.map((r: any) => ({
-                id: r.id,
-                label: `${r.requestNo || r.id} — ${r.customer?.companyName || 'Unknown'}`,
-                ref: r.requestNo || r.id,
-                amount: r.totalAmount,
-              }));
+            const res = await fetch('/api/medical/requests?limit=200').then((r) => r.json()).catch(() => ({ success: false }));
+            if (res.success && Array.isArray(res.data)) {
+              refs = res.data.map((r: any) => {
+                let totalAmount = 0;
+                let itemCount = 0;
+                let itemsPreview = '';
+                try {
+                  const parsed = typeof r.items === 'string' ? JSON.parse(r.items) : r.items;
+                  if (Array.isArray(parsed)) {
+                    itemCount = parsed.length;
+                    totalAmount = parsed.reduce(
+                      (sum: number, it: any) =>
+                        sum + (Number(it.amount) || (Number(it.qty || 0) * Number(it.unitPrice || 0)) || 0),
+                      0
+                    );
+                    itemsPreview = parsed
+                      .map((it: any) => `${it.drugName || it.genericName || 'Item'} (${it.qty || 1})`)
+                      .slice(0, 3)
+                      .join(', ');
+                  }
+                } catch {}
+
+                const partnerName =
+                  r.supplier?.companyName ||
+                  r.customer?.companyName ||
+                  (r.supplier?.firstName ? `${r.supplier.firstName} ${r.supplier.lastName || ''}`.trim() : '') ||
+                  (r.customer?.firstName ? `${r.customer.firstName} ${r.customer.lastName || ''}`.trim() : '') ||
+                  'Medical Supplier';
+
+                return {
+                  id: r.id,
+                  label: `Medical Request: ${r.requestNo} — Supplier: ${partnerName} — ${itemCount} items${itemsPreview ? ` [${itemsPreview}]` : ''} — ETB ${totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })} (${r.status})`,
+                  ref: r.requestNo,
+                  amount: totalAmount,
+                  totalAmount: totalAmount,
+                  supplierName: partnerName,
+                  status: r.status,
+                };
+              });
             }
             break;
           }
@@ -671,6 +711,7 @@ export default function NewVoucherPage() {
     if (!formData.payeeType) return;
     const moduleMap: Record<string, string> = {
       'SUPPLIER': 'PURCHASE',
+      'MEDICAL': 'MEDICAL',
       'ONE_TIME_SUPPLIER': 'PURCHASE',
       'CUSTOMER': 'SALES',
       'TRANSPORTER': 'TRANSPORTER',
@@ -743,23 +784,54 @@ export default function NewVoucherPage() {
     setFormData((prev) => {
       // Auto-extract supplier/party name from reference label if available
       const labelParts = selected.label ? selected.label.split(' — ') : [];
-      const extractedParty = selected.supplierName || (labelParts.length > 1 ? labelParts[1].split(' (')[0].trim() : '');
+      let extractedParty = selected.supplierName || '';
+      if (!extractedParty && labelParts.length > 1) {
+        const p = labelParts[1].split(' (')[0].trim();
+        extractedParty = p.replace(/^Supplier:\s*/i, '').trim();
+      }
 
       const targetAmount = selected.amount !== undefined && selected.amount !== null && selected.amount > 0
         ? String(selected.amount)
         : prev.amount;
+
+      // Try finding matching supplier
+      const foundSupplier =
+        medicalSuppliers.find(
+          (s) =>
+            s.id !== 'ONE_TIME_SUPPLIER' &&
+            extractedParty &&
+            (s.name.toLowerCase().includes(extractedParty.toLowerCase()) ||
+              extractedParty.toLowerCase().includes(s.name.toLowerCase()))
+        ) ||
+        suppliers.find(
+          (s) =>
+            s.id !== 'ONE_TIME_SUPPLIER' &&
+            extractedParty &&
+            (s.name.toLowerCase().includes(extractedParty.toLowerCase()) ||
+              extractedParty.toLowerCase().includes(s.name.toLowerCase()))
+        );
+
+      const updatedPayeeId = foundSupplier?.id || prev.payeeId;
+      const updatedPayeeName = foundSupplier
+        ? `${foundSupplier.name}${foundSupplier.code ? ` (${foundSupplier.code})` : ''}`
+        : extractedParty || prev.payeeName;
 
       return {
         ...prev,
         sourceId: selected.id,
         sourceReference: selected.ref || '',
         amount: targetAmount,
-        payeeName: (prev.payeeId === 'ONE_TIME_SUPPLIER' || !prev.payeeName) && extractedParty
-          ? extractedParty
-          : prev.payeeName,
+        payeeId: prev.payeeId === 'ONE_TIME_SUPPLIER' ? 'ONE_TIME_SUPPLIER' : updatedPayeeId,
+        payeeName: prev.payeeId === 'ONE_TIME_SUPPLIER' && prev.payeeName ? prev.payeeName : updatedPayeeName,
         paymentMethod: selected.paymentMethod || prev.paymentMethod,
         bankName: selected.bankName || prev.bankName,
-        description: prev.description || (selected.ref ? `Voucher settlement for purchasing payment/order ref: ${selected.ref}` : prev.description),
+        description:
+          prev.description ||
+          (selected.ref
+            ? prev.sourceModule === 'MEDICAL'
+              ? `Medical Purchase Request Payment: ${selected.ref} — ${updatedPayeeName}`
+              : `Voucher settlement for ref: ${selected.ref}`
+            : prev.description),
       };
     });
   };
@@ -982,6 +1054,7 @@ export default function NewVoucherPage() {
                   { value: '', label: '-- Select Payee Type --' },
                   { value: 'CUSTOMER', label: 'Customer' },
                   { value: 'SUPPLIER', label: 'Supplier' },
+                  { value: 'MEDICAL', label: 'Medical / Pharma Supplier' },
                   { value: 'ONE_TIME_SUPPLIER', label: 'One-Time Supplier' },
                   { value: 'TRANSPORTER', label: 'Transporter' },
                   { value: 'EMPLOYEE', label: 'Employee' },
@@ -1002,6 +1075,7 @@ export default function NewVoucherPage() {
                 <h2 className="text-lg font-semibold text-[#1D1D1F]">
                   Select {formData.payeeType === 'CUSTOMER' ? 'Customer' :
                     formData.payeeType === 'SUPPLIER' ? 'Supplier' :
+                    formData.payeeType === 'MEDICAL' ? 'Medical Supplier' :
                     formData.payeeType === 'ONE_TIME_SUPPLIER' ? 'One-Time Supplier' :
                     formData.payeeType === 'TRANSPORTER' ? 'Transporter(s)' :
                     formData.payeeType === 'EMPLOYEE' ? 'Employee' :
@@ -1157,6 +1231,7 @@ export default function NewVoucherPage() {
                   <label className="block text-[13px] font-medium text-[#86868B] uppercase tracking-wider mb-1.5">
                     {formData.payeeType === 'CUSTOMER' ? 'Customer' :
                      formData.payeeType === 'SUPPLIER' ? 'Supplier' :
+                     formData.payeeType === 'MEDICAL' ? 'Medical Supplier' :
                      formData.payeeType === 'ONE_TIME_SUPPLIER' ? 'One-Time Supplier' :
                      formData.payeeType === 'TRANSPORTER' ? 'Transporter' :
                      formData.payeeType === 'EMPLOYEE' ? 'Employee' : 'Payee'} *
@@ -1226,7 +1301,7 @@ export default function NewVoucherPage() {
                   { value: 'AGGREGATE', label: 'Aggregate Dispatches' },
                   { value: 'CEMENT', label: 'Cement Purchases' },
                   { value: 'PAYROLL', label: 'Payroll' },
-                  { value: 'MEDICAL', label: 'Medical' },
+                  { value: 'MEDICAL', label: 'Medical Purchase Requests' },
                   { value: 'TRANSPORTER', label: 'Transporter Settlements' },
                   { value: 'ASSOCIATION', label: 'Association' },
                   { value: 'VAT', label: 'VAT / Tax' },

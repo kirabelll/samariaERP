@@ -38,9 +38,23 @@ export async function GET(request: NextRequest) {
       prisma.medicalRequest.count({ where: whereClause }),
     ]);
 
+    const partnerIds = data.map((d) => d.customerId).filter(Boolean);
+    const suppliers = await prisma.supplier.findMany({
+      where: { id: { in: partnerIds } },
+    });
+    const supplierMap = new Map(suppliers.map((s) => [s.id, s]));
+
+    const enrichedData = data.map((d) => {
+      const supp = supplierMap.get(d.customerId);
+      return {
+        ...d,
+        supplier: supp || null,
+      };
+    });
+
     return NextResponse.json({
       success: true,
-      data,
+      data: enrichedData,
       pagination: {
         total,
         page,

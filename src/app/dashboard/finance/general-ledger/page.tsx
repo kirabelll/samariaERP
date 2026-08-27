@@ -92,7 +92,7 @@ function formatCurrency(amount: number) {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
-  return `${amount < 0 ? 'Br -' : 'Br '}${formatted}`;
+  return `${amount < 0 ? '-Br ' : 'Br '}${formatted}`;
 }
 
 function GeneralLedgerContent() {
@@ -651,8 +651,9 @@ function GeneralLedgerContent() {
                         <td className="px-4 py-2.5 text-right font-mono text-xs text-gray-900">
                           {t.credit > 0 ? formatCurrency(t.credit) : 'Br 0.00'}
                         </td>
-                        <td className="px-4 py-2.5 text-right font-mono text-xs font-semibold text-gray-900">
-                          {formatCurrency(t.runningBalance)}
+                        <td className="px-4 py-2.5 text-right font-mono text-xs font-semibold text-gray-900 whitespace-nowrap">
+                          <span>{formatCurrency(t.runningBalance)}</span>
+                          <span className="ml-1 text-[10px] text-gray-500 font-normal">{t.balanceType}</span>
                         </td>
                         <td className="px-4 py-2.5 text-gray-700 whitespace-nowrap">
                           <span className="inline-block px-2 py-0.5 rounded text-[11px] font-medium bg-gray-100 text-gray-800 border border-gray-200">

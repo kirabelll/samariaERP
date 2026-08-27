@@ -95,30 +95,40 @@ export async function GET(request: NextRequest) {
       toDate.setHours(23, 59, 59, 999);
     }
 
-    // 1. Calculate Opening Balance:
-    // Any entry before fromDate OR any entry with refModule = 'INITIAL BALANCE' / 'INITIAL_BALANCE'
-    let openingDebit = 0;
-    let openingCredit = 0;
+    // 1. Calculate Opening Balances per account:
+    // Map accountId -> { debit, credit, balance, balanceType }
+    const accountOpeningBalances: Record<string, { debit: number; credit: number; balance: number; balanceType: 'Dr' | 'Cr' }> = {};
+
+    for (const acc of accounts) {
+      const isDebitNormal = acc.accountType === 'Asset' || acc.accountType === 'Expense';
+      accountOpeningBalances[acc.id] = {
+        debit: 0,
+        credit: 0,
+        balance: 0,
+        balanceType: isDebitNormal ? 'Dr' : 'Cr',
+      };
+    }
 
     // Fetch prior entries before fromDate
     if (fromDate) {
-      const openingWhere: any = {
-        entryDate: { lt: fromDate },
-      };
-      if (targetAccount) {
-        openingWhere.accountId = targetAccount.id;
-      }
-
-      const openingSums = await prisma.journalEntry.aggregate({
-        where: openingWhere,
+      const openingSums = await prisma.journalEntry.groupBy({
+        by: ['accountId'],
+        where: {
+          entryDate: { lt: fromDate },
+          ...(targetAccount ? { accountId: targetAccount.id } : {}),
+        },
         _sum: {
           debit: true,
           credit: true,
         },
       });
 
-      openingDebit += Number(openingSums._sum.debit) || 0;
-      openingCredit += Number(openingSums._sum.credit) || 0;
+      for (const s of openingSums) {
+        if (accountOpeningBalances[s.accountId]) {
+          accountOpeningBalances[s.accountId].debit += Number(s._sum.debit) || 0;
+          accountOpeningBalances[s.accountId].credit += Number(s._sum.credit) || 0;
+        }
+      }
     }
 
     // 2. Fetch Journal Entries for the period (or all if no date filter)
@@ -153,29 +163,53 @@ export async function GET(request: NextRequest) {
 
     for (const entry of rawEntries) {
       if (isInitialBalanceEntry(entry)) {
-        // Absorb into Opening Balance
-        openingDebit += Number(entry.debit) || 0;
-        openingCredit += Number(entry.credit) || 0;
+        // Absorb into this account's Opening Balance
+        if (accountOpeningBalances[entry.accountId]) {
+          accountOpeningBalances[entry.accountId].debit += Number(entry.debit) || 0;
+          accountOpeningBalances[entry.accountId].credit += Number(entry.credit) || 0;
+        }
       } else {
         regularEntries.push(entry);
       }
     }
 
-    // Calculate Opening Net Balance
+    // Calculate opening balance amount for each account based on its account type
+    let totalOpeningDebit = 0;
+    let totalOpeningCredit = 0;
+
+    for (const acc of accounts) {
+      const ob = accountOpeningBalances[acc.id];
+      if (ob) {
+        totalOpeningDebit += ob.debit;
+        totalOpeningCredit += ob.credit;
+
+        const isDebitNormal = acc.accountType === 'Asset' || acc.accountType === 'Expense';
+        if (isDebitNormal) {
+          ob.balance = ob.debit - ob.credit;
+          ob.balanceType = ob.balance >= 0 ? 'Dr' : 'Cr';
+        } else {
+          ob.balance = ob.credit - ob.debit;
+          ob.balanceType = ob.balance >= 0 ? 'Cr' : 'Dr';
+        }
+      }
+    }
+
+    // Overall opening balance for the report header/opening row
+    let openingDebit = 0;
+    let openingCredit = 0;
     let openingBalance = 0;
     let openingBalanceType: 'Dr' | 'Cr' = 'Dr';
+
     if (targetAccount) {
-      if (targetAccount.accountType === 'Asset' || targetAccount.accountType === 'Expense') {
-        const net = openingDebit - openingCredit;
-        openingBalance = net;
-        openingBalanceType = net >= 0 ? 'Dr' : 'Cr';
-      } else {
-        const net = openingCredit - openingDebit;
-        openingBalance = net;
-        openingBalanceType = net >= 0 ? 'Cr' : 'Dr';
-      }
+      const ob = accountOpeningBalances[targetAccount.id];
+      openingDebit = ob?.debit || 0;
+      openingCredit = ob?.credit || 0;
+      openingBalance = ob?.balance || 0;
+      openingBalanceType = ob?.balanceType || 'Dr';
     } else {
-      openingBalance = openingDebit - openingCredit;
+      openingDebit = totalOpeningDebit;
+      openingCredit = totalOpeningCredit;
+      openingBalance = totalOpeningDebit - totalOpeningCredit;
       openingBalanceType = openingBalance >= 0 ? 'Dr' : 'Cr';
     }
 
@@ -208,8 +242,12 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // 4. Calculate Running Balances and Format Transactions
-    let runningBalance = openingBalance;
+    // 4. Calculate Running Balances per Account and Format Transactions
+    const runningBalanceByAccount: Record<string, number> = {};
+    for (const acc of accounts) {
+      runningBalanceByAccount[acc.id] = accountOpeningBalances[acc.id]?.balance || 0;
+    }
+
     let totalDebit = 0;
     let totalCredit = 0;
 
@@ -220,14 +258,21 @@ export async function GET(request: NextRequest) {
       totalCredit += credit;
 
       const acc = entry.account || accountMap.get(entry.accountId);
-
-      // Update running balance based on account type
       const isDebitNormal = !acc || acc.accountType === 'Asset' || acc.accountType === 'Expense';
+
+      // Update THIS specific account's running balance
+      let currentBal = runningBalanceByAccount[entry.accountId] ?? 0;
       if (isDebitNormal) {
-        runningBalance += debit - credit;
+        currentBal += debit - credit;
       } else {
-        runningBalance += credit - debit;
+        currentBal += credit - debit;
       }
+      runningBalanceByAccount[entry.accountId] = currentBal;
+
+      const runningBalance = currentBal;
+      const balanceType = isDebitNormal
+        ? (runningBalance >= 0 ? 'Dr' : 'Cr')
+        : (runningBalance >= 0 ? 'Cr' : 'Dr');
 
       // Determine against account (the opposite side)
       const mySide = debit > 0 ? 'debit' : 'credit';
@@ -257,7 +302,7 @@ export async function GET(request: NextRequest) {
         debit,
         credit,
         runningBalance,
-        balanceType: (runningBalance >= 0 ? (isDebitNormal ? 'Dr' : 'Cr') : (isDebitNormal ? 'Cr' : 'Dr')) as 'Dr' | 'Cr',
+        balanceType,
         voucherType: typeInfo.voucherType,
         voucherSubtype: typeInfo.voucherSubtype,
         voucherNo: entry.voucherNo,
@@ -286,9 +331,14 @@ export async function GET(request: NextRequest) {
     }
 
     const netPeriodMovement = totalDebit - totalCredit;
-    const closingBalance = runningBalance;
-    const closingBalanceType = (targetAccount && (targetAccount.accountType === 'Liability' || targetAccount.accountType === 'Equity' || targetAccount.accountType === 'Revenue'))
-      ? (closingBalance >= 0 ? 'Cr' : 'Dr')
+    const closingBalance = targetAccount
+      ? (runningBalanceByAccount[targetAccount.id] ?? openingBalance)
+      : (openingBalance + netPeriodMovement);
+
+    const closingBalanceType = targetAccount
+      ? (targetAccount.accountType === 'Liability' || targetAccount.accountType === 'Equity' || targetAccount.accountType === 'Revenue')
+        ? (closingBalance >= 0 ? 'Cr' : 'Dr')
+        : (closingBalance >= 0 ? 'Dr' : 'Cr')
       : (closingBalance >= 0 ? 'Dr' : 'Cr');
 
     return NextResponse.json({

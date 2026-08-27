@@ -15,22 +15,50 @@ export async function GET(request: NextRequest) {
 
     const skip = (page - 1) * limit;
 
-    const whereClause: any = {};
+    const andClauses: any[] = [];
+
     if (search) {
-      whereClause.OR = [
-        { name: { contains: search, mode: 'insensitive' } },
-        { code: { contains: search, mode: 'insensitive' } },
-      ];
+      andClauses.push({
+        OR: [
+          { name: { contains: search, mode: 'insensitive' } },
+          { code: { contains: search, mode: 'insensitive' } },
+          { genericName: { contains: search, mode: 'insensitive' } },
+        ],
+      });
     }
+
     if (category) {
-      whereClause.category = category;
+      andClauses.push({ category });
     }
+
     if (status) {
-      whereClause.status = status;
+      andClauses.push({ status });
     }
-    if (division) {
-      whereClause.division = division;
+
+    if (division && division !== 'ALL') {
+      if (division === 'MEDICAL') {
+        andClauses.push({
+          OR: [
+            { division: 'MEDICAL' },
+            { division: 'BOTH' },
+            { division: 'GENERAL' },
+            { category: { contains: 'Med', mode: 'insensitive' } },
+            { category: { contains: 'Pharma', mode: 'insensitive' } },
+            { category: { contains: 'Drug', mode: 'insensitive' } },
+          ],
+        });
+      } else {
+        andClauses.push({
+          OR: [
+            { division: division },
+            { division: 'BOTH' },
+            { division: 'GENERAL' },
+          ],
+        });
+      }
     }
+
+    const whereClause = andClauses.length > 0 ? { AND: andClauses } : {};
 
     const [data, total] = await Promise.all([
       prisma.item.findMany({

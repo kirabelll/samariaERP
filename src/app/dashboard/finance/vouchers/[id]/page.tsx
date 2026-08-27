@@ -3,6 +3,21 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
+import {
+  Pencil,
+  Printer,
+  Trash2,
+  X,
+  Save,
+  CheckCircle2,
+  AlertCircle,
+  Building2,
+  Calendar,
+  DollarSign,
+  CreditCard,
+  FileText,
+  Layers,
+} from 'lucide-react';
 import { Card, CardBody, CardHeader, Button, Badge } from '@/components/ui';
 
 interface VoucherData {
@@ -33,6 +48,13 @@ interface VoucherData {
   rejectionReason?: string;
   voucherDate: string;
   createdAt: string;
+}
+
+interface BankAccountOption {
+  id: string;
+  bankName: string;
+  accountNo: string;
+  accountName: string;
 }
 
 interface TaxBreakdown {
@@ -111,6 +133,27 @@ export default function VoucherDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
 
+  // Edit Modal State
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  const [editLoading, setEditLoading] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+  const [bankAccounts, setBankAccounts] = useState<BankAccountOption[]>([]);
+  const [editForm, setEditForm] = useState({
+    voucherDate: '',
+    payeeName: '',
+    payeeType: 'SUPPLIER',
+    amount: '',
+    paymentMethod: 'bank_transfer',
+    bankAccountId: '',
+    bankName: '',
+    checkNo: '',
+    refNo: '',
+    sourceModule: 'MANUAL',
+    sourceRef: '',
+    description: '',
+    status: 'Draft',
+  });
+
   const fetchVoucher = async () => {
     try {
       setLoading(true);
@@ -130,6 +173,98 @@ export default function VoucherDetailPage() {
   useEffect(() => {
     if (voucherId) fetchVoucher();
   }, [voucherId]);
+
+  // Fetch Bank Accounts for Edit Form
+  const fetchBankAccounts = async () => {
+    try {
+      const res = await fetch('/api/finance/bank?limit=100');
+      const json = await res.json();
+      if (json.success && Array.isArray(json.data)) {
+        setBankAccounts(json.data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch bank accounts:', err);
+    }
+  };
+
+  const handleOpenEdit = () => {
+    if (!voucher) return;
+    setEditError(null);
+    setEditForm({
+      voucherDate: voucher.voucherDate ? voucher.voucherDate.slice(0, 10) : '',
+      payeeName: voucher.payeeName || '',
+      payeeType: voucher.payeeType || 'SUPPLIER',
+      amount: String(voucher.amount || 0),
+      paymentMethod: voucher.paymentMethod || 'bank_transfer',
+      bankAccountId: voucher.bankAccountId || '',
+      bankName: voucher.bankName || '',
+      checkNo: voucher.checkNo || '',
+      refNo: voucher.refNo || '',
+      sourceModule: voucher.sourceModule || 'MANUAL',
+      sourceRef: voucher.sourceRef || '',
+      description: voucher.description || '',
+      status: voucher.status || 'Draft',
+    });
+    fetchBankAccounts();
+    setIsEditOpen(true);
+  };
+
+  const handleSaveEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setEditError(null);
+
+    if (!editForm.payeeName.trim()) {
+      setEditError('Payee Name is required');
+      return;
+    }
+    const amt = parseFloat(editForm.amount);
+    if (isNaN(amt) || amt <= 0) {
+      setEditError('Amount must be a valid number greater than 0');
+      return;
+    }
+
+    setEditLoading(true);
+    try {
+      // Find bank name if bankAccountId selected
+      let selectedBankName = editForm.bankName;
+      if (editForm.bankAccountId) {
+        const matchingBank = bankAccounts.find((b) => b.id === editForm.bankAccountId);
+        if (matchingBank) selectedBankName = matchingBank.bankName;
+      }
+
+      const res = await fetch(`/api/finance/vouchers/${voucherId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          voucherDate: editForm.voucherDate,
+          payeeName: editForm.payeeName.trim(),
+          payeeType: editForm.payeeType,
+          amount: amt,
+          paymentMethod: editForm.paymentMethod,
+          bankAccountId: editForm.bankAccountId || null,
+          bankName: selectedBankName || null,
+          checkNo: editForm.checkNo.trim() || null,
+          refNo: editForm.refNo.trim() || null,
+          sourceModule: editForm.sourceModule,
+          sourceRef: editForm.sourceRef.trim() || null,
+          description: editForm.description.trim() || null,
+          status: editForm.status,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to update voucher');
+      }
+
+      setVoucher(data.data);
+      setIsEditOpen(false);
+    } catch (err: any) {
+      setEditError(err.message || 'Error updating voucher');
+    } finally {
+      setEditLoading(false);
+    }
+  };
 
   const handleStatusChange = async (newStatus: string) => {
     if (!confirm(`Are you sure you want to change the status to "${newStatus}"?`)) return;
@@ -363,7 +498,7 @@ export default function VoucherDetailPage() {
   }
 
   return (
-    <div className="space-y-6 max-w-4xl">
+    <div className="space-y-6 max-w-4xl pb-12">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -386,21 +521,38 @@ export default function VoucherDetailPage() {
             <p className="text-sm text-slate-500">Amount</p>
             <p className="text-3xl font-bold text-[#1D1D1F]">{formatCurrency(voucher.amount)}</p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Edit Button */}
+            {voucher.status !== 'Posted' && (
+              <Button
+                variant="secondary"
+                size="md"
+                onClick={handleOpenEdit}
+                icon={<Pencil className="w-4 h-4 mr-1.5" />}
+              >
+                Edit
+              </Button>
+            )}
+
             <button
               onClick={handlePrint}
-              className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm font-medium transition-colors"
+              className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm font-medium transition-colors flex items-center gap-1.5"
             >
-              Print Voucher
+              <Printer className="w-4 h-4" />
+              <span>Print</span>
             </button>
-            <Button
-              variant="danger"
-              size="md"
-              onClick={handleDelete}
-              isLoading={actionLoading}
-            >
-              Delete
-            </Button>
+
+            {voucher.status !== 'Posted' && (
+              <Button
+                variant="danger"
+                size="md"
+                onClick={handleDelete}
+                isLoading={actionLoading}
+                icon={<Trash2 className="w-4 h-4 mr-1.5" />}
+              >
+                Delete
+              </Button>
+            )}
           </div>
         </div>
       </div>
@@ -448,12 +600,12 @@ export default function VoucherDetailPage() {
         <CardBody>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
-              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Payee Type</p>
-              <p className="text-base font-medium text-slate-900 mt-1">{voucher.payeeType}</p>
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Payee Name</p>
+              <p className="text-base font-medium text-slate-900 mt-1">{voucher.payeeName}</p>
             </div>
             <div>
-              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Payee Name</p>
-              <p className="text-lg font-semibold text-slate-900 mt-1">{voucher.payeeName}</p>
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Payee Type</p>
+              <p className="text-base font-medium text-slate-900 mt-1">{voucher.payeeType}</p>
             </div>
           </div>
         </CardBody>
@@ -466,13 +618,13 @@ export default function VoucherDetailPage() {
         </CardHeader>
         <CardBody>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
-              <p className="text-xs font-semibold text-blue-600 uppercase tracking-wide">Net Paid Amount</p>
-              <p className="text-2xl font-bold text-blue-900 mt-1">{formatCurrency(voucher.amount)}</p>
-            </div>
             <div>
               <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Payment Method</p>
-              <p className="text-base font-medium text-slate-900 mt-1 capitalize">{voucher.paymentMethod.replace('_', ' ')}</p>
+              <p className="text-base font-medium text-slate-900 mt-1">{voucher.paymentMethod.replace('_', ' ')}</p>
+            </div>
+            <div>
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Amount</p>
+              <p className="text-base font-medium text-slate-900 mt-1">{formatCurrency(voucher.amount)}</p>
             </div>
             {voucher.bankName && (
               <div>
@@ -490,68 +642,51 @@ export default function VoucherDetailPage() {
         </CardBody>
       </Card>
 
-      {/* VAT & Withholding Breakdown Card */}
+      {/* Tax Breakdown */}
       {(() => {
-        const taxBreakdown = extractTaxBreakdown(voucher.description, voucher.amount);
+        const tax = extractTaxBreakdown(voucher.description, voucher.amount);
+        if (!tax.hasVat && !tax.hasWithholding) return null;
+
         return (
-          <Card>
+          <Card className="border-blue-200 bg-blue-50/20">
             <CardHeader>
-              <h2 className="text-lg font-semibold text-[#1D1D1F]">3. VAT & Withholding Breakdown</h2>
+              <h2 className="text-lg font-semibold text-blue-900 flex items-center gap-2">
+                <span>Tax Breakdown</span>
+                <span className="text-xs font-normal text-blue-700 bg-blue-100 px-2 py-0.5 rounded-full">
+                  Auto-calculated
+                </span>
+              </h2>
             </CardHeader>
             <CardBody>
-              <div className="max-w-md ml-auto space-y-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
-                <div className="flex justify-between text-sm">
-                  <span className="text-slate-600">Subtotal (excl. VAT):</span>
-                  <span className="font-medium text-slate-900">
-                    {formatCurrency(taxBreakdown.subtotal)}
-                  </span>
+              <div className="divide-y divide-blue-100">
+                <div className="flex justify-between items-center py-2 text-sm">
+                  <span className="text-slate-600">Subtotal (excl. VAT)</span>
+                  <span className="font-semibold text-slate-900 font-mono">{formatCurrency(tax.subtotal)}</span>
                 </div>
-
-                {taxBreakdown.hasVat && taxBreakdown.vatAmount !== undefined ? (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-slate-600">VAT ({taxBreakdown.vatRate || 15}%):</span>
-                    <span className="font-medium text-blue-600">
-                      + {formatCurrency(taxBreakdown.vatAmount)}
+                {tax.hasVat && (
+                  <div className="flex justify-between items-center py-2 text-sm">
+                    <span className="text-blue-700 flex items-center gap-1.5">
+                      <span>+ VAT ({tax.vatRate || 15}%)</span>
                     </span>
-                  </div>
-                ) : (
-                  <div className="flex justify-between text-sm text-slate-400">
-                    <span>VAT (0% - Not Applied):</span>
-                    <span>+ ETB 0.00</span>
+                    <span className="font-semibold text-blue-700 font-mono">+{formatCurrency(tax.vatAmount)}</span>
                   </div>
                 )}
-
-                <div className="flex justify-between text-sm border-t border-slate-200 pt-2">
-                  <span className="text-slate-900 font-medium">Gross Total:</span>
-                  <span className="font-semibold text-slate-900">
-                    {formatCurrency(taxBreakdown.grossTotal)}
-                  </span>
+                <div className="flex justify-between items-center py-2 text-sm font-semibold bg-blue-50/50 -mx-6 px-6">
+                  <span className="text-slate-800">Gross Total</span>
+                  <span className="text-slate-900 font-mono">{formatCurrency(tax.grossTotal)}</span>
                 </div>
-
-                {taxBreakdown.hasWithholding && taxBreakdown.withholdAmount !== undefined ? (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-red-600">Withholding Tax ({taxBreakdown.withholdRate || 3}% of subtotal):</span>
-                    <span className="font-medium text-red-600">
-                      - {formatCurrency(taxBreakdown.withholdAmount)}
+                {tax.hasWithholding && (
+                  <div className="flex justify-between items-center py-2 text-sm">
+                    <span className="text-red-600 flex items-center gap-1.5">
+                      <span>- Withholding Tax ({tax.withholdRate || 3}%)</span>
                     </span>
-                  </div>
-                ) : null}
-
-                <div className="border-t border-slate-900 pt-3 flex justify-between items-baseline">
-                  <span className="text-base font-bold text-slate-900">Net Payable / Settled:</span>
-                  <span className="text-2xl font-bold text-[#007AFF]">
-                    {formatCurrency(voucher.amount)}
-                  </span>
-                </div>
-
-                {taxBreakdown.hasVat && (taxBreakdown.vatAmount || 0) > 0 && (
-                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mt-3">
-                    <p className="text-xs text-amber-800 font-medium">VAT Note</p>
-                    <p className="text-xs text-amber-700 mt-0.5">
-                      This voucher VAT of {formatCurrency(taxBreakdown.vatAmount || 0)} is recorded for the filing period under Finance &rarr; VAT Management.
-                    </p>
+                    <span className="font-semibold text-red-600 font-mono">-{formatCurrency(tax.withholdAmount)}</span>
                   </div>
                 )}
+                <div className="flex justify-between items-center pt-3 text-base font-bold bg-blue-100/50 -mx-6 px-6 pb-1">
+                  <span className="text-blue-950">Net Payable / Settled</span>
+                  <span className="text-blue-900 font-mono text-lg">{formatCurrency(tax.netPayable)}</span>
+                </div>
               </div>
             </CardBody>
           </Card>
@@ -582,36 +717,36 @@ export default function VoucherDetailPage() {
                 <div className="flex justify-between items-center py-2 border-b border-slate-100">
                   <div>
                     <p className="text-sm font-medium text-slate-900">Prepared by</p>
-                    <p className="text-sm text-slate-600">{voucher.preparedBy}</p>
+                    <p className="text-xs text-slate-500">{voucher.preparedBy}</p>
                   </div>
-                  <p className="text-sm text-slate-500">{formatDateTime(voucher.createdAt)}</p>
+                  <span className="text-xs text-slate-400">{formatDateTime(voucher.createdAt)}</span>
                 </div>
               )}
               {voucher.checkedBy && (
                 <div className="flex justify-between items-center py-2 border-b border-slate-100">
                   <div>
                     <p className="text-sm font-medium text-slate-900">Checked by</p>
-                    <p className="text-sm text-slate-600">{voucher.checkedBy}</p>
+                    <p className="text-xs text-slate-500">{voucher.checkedBy}</p>
                   </div>
-                  <p className="text-sm text-slate-500">{formatDateTime(voucher.checkedAt)}</p>
+                  <span className="text-xs text-slate-400">{formatDateTime(voucher.checkedAt)}</span>
                 </div>
               )}
               {voucher.approvedBy && (
                 <div className="flex justify-between items-center py-2 border-b border-slate-100">
                   <div>
                     <p className="text-sm font-medium text-slate-900">Approved by</p>
-                    <p className="text-sm text-slate-600">{voucher.approvedBy}</p>
+                    <p className="text-xs text-slate-500">{voucher.approvedBy}</p>
                   </div>
-                  <p className="text-sm text-slate-500">{formatDateTime(voucher.approvedAt)}</p>
+                  <span className="text-xs text-slate-400">{formatDateTime(voucher.approvedAt)}</span>
                 </div>
               )}
               {voucher.postedBy && (
                 <div className="flex justify-between items-center py-2">
                   <div>
                     <p className="text-sm font-medium text-slate-900">Posted by</p>
-                    <p className="text-sm text-slate-600">{voucher.postedBy}</p>
+                    <p className="text-xs text-slate-500">{voucher.postedBy}</p>
                   </div>
-                  <p className="text-sm text-slate-500">{formatDateTime(voucher.postedAt)}</p>
+                  <span className="text-xs text-slate-400">{formatDateTime(voucher.postedAt)}</span>
                 </div>
               )}
             </div>
@@ -619,20 +754,8 @@ export default function VoucherDetailPage() {
         </Card>
       )}
 
-      {/* Rejection Reason */}
-      {voucher.rejectionReason && (
-        <Card>
-          <CardBody>
-            <div className="bg-red-50 border border-red-200 rounded-xl p-4">
-              <p className="text-sm font-semibold text-red-800">Rejection Reason</p>
-              <p className="text-red-700 mt-1">{voucher.rejectionReason}</p>
-            </div>
-          </CardBody>
-        </Card>
-      )}
-
-      {/* Actions */}
-      {voucher.status !== 'Posted' && voucher.status !== 'Cancelled' && (
+      {/* Actions Bar */}
+      {voucher.status !== 'Cancelled' && (
         <Card>
           <CardHeader>
             <h2 className="text-lg font-semibold text-[#1D1D1F]">Actions</h2>
@@ -640,13 +763,22 @@ export default function VoucherDetailPage() {
           <CardBody>
             <div className="flex flex-wrap gap-3">
               {voucher.status === 'Draft' && (
-                <Button
-                  variant="primary"
-                  onClick={() => handleStatusChange('Pending_Approval')}
-                  isLoading={actionLoading}
-                >
-                  Submit for Approval
-                </Button>
+                <>
+                  <Button
+                    variant="primary"
+                    onClick={() => handleStatusChange('Pending_Approval')}
+                    isLoading={actionLoading}
+                  >
+                    Submit for Approval
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    onClick={handleOpenEdit}
+                    icon={<Pencil className="w-4 h-4 mr-1.5" />}
+                  >
+                    Edit Voucher
+                  </Button>
+                </>
               )}
               {voucher.status === 'Pending_Approval' && canApprove && (
                 <>
@@ -664,6 +796,13 @@ export default function VoucherDetailPage() {
                   >
                     Reject
                   </Button>
+                  <Button
+                    variant="secondary"
+                    onClick={handleOpenEdit}
+                    icon={<Pencil className="w-4 h-4 mr-1.5" />}
+                  >
+                    Edit
+                  </Button>
                 </>
               )}
               {voucher.status === 'Pending_Approval' && !canApprove && (
@@ -674,13 +813,22 @@ export default function VoucherDetailPage() {
                 </div>
               )}
               {voucher.status === 'Approved' && canPost && (
-                <Button
-                  variant="primary"
-                  onClick={() => handleStatusChange('Posted')}
-                  isLoading={actionLoading}
-                >
-                  Post Voucher
-                </Button>
+                <>
+                  <Button
+                    variant="primary"
+                    onClick={() => handleStatusChange('Posted')}
+                    isLoading={actionLoading}
+                  >
+                    Post Voucher
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    onClick={handleOpenEdit}
+                    icon={<Pencil className="w-4 h-4 mr-1.5" />}
+                  >
+                    Edit
+                  </Button>
+                </>
               )}
               {voucher.status === 'Approved' && !canPost && (
                 <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-3">
@@ -710,6 +858,240 @@ export default function VoucherDetailPage() {
             </div>
           </CardBody>
         </Card>
+      )}
+
+      {/* Edit Voucher Modal Dialog */}
+      {isEditOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-fadeIn">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto border border-gray-200 animate-scaleUp">
+            <div className="flex items-center justify-between p-5 border-b border-gray-100 bg-gray-50/70">
+              <div className="flex items-center gap-2">
+                <Pencil className="w-5 h-5 text-blue-600" />
+                <h3 className="text-lg font-bold text-gray-900">
+                  Edit Voucher: <span className="font-mono text-blue-700">{voucher.voucherNo}</span>
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsEditOpen(false)}
+                className="p-1.5 text-gray-400 hover:text-gray-600 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {editError && (
+              <div className="m-5 p-3 rounded-xl bg-red-50 border border-red-200 text-red-800 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+                <span>{editError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSaveEdit} className="p-5 space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* Payee Name */}
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-bold uppercase tracking-wider text-gray-700">
+                    Payee Name *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editForm.payeeName}
+                    onChange={(e) => setEditForm({ ...editForm, payeeName: e.target.value })}
+                    className="w-full h-10 px-3 py-2 text-sm border border-gray-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium"
+                  />
+                </div>
+
+                {/* Payee Type */}
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-bold uppercase tracking-wider text-gray-700">
+                    Payee Type *
+                  </label>
+                  <select
+                    value={editForm.payeeType}
+                    onChange={(e) => setEditForm({ ...editForm, payeeType: e.target.value })}
+                    className="w-full h-10 px-3 py-2 text-sm border border-gray-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="SUPPLIER">Supplier</option>
+                    <option value="CUSTOMER">Customer</option>
+                    <option value="TRANSPORTER">Transporter</option>
+                    <option value="EMPLOYEE">Employee / Staff</option>
+                    <option value="MEDICAL">Medical / Pharma Supplier</option>
+                    <option value="OTHER">Other</option>
+                  </select>
+                </div>
+
+                {/* Voucher Date */}
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-bold uppercase tracking-wider text-gray-700">
+                    Voucher Date *
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={editForm.voucherDate}
+                    onChange={(e) => setEditForm({ ...editForm, voucherDate: e.target.value })}
+                    className="w-full h-10 px-3 py-2 text-sm border border-gray-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
+                {/* Amount */}
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-bold uppercase tracking-wider text-gray-700">
+                    Net / Total Amount (ETB) *
+                  </label>
+                  <input
+                    type="number"
+                    step="any"
+                    min="0.01"
+                    required
+                    value={editForm.amount}
+                    onChange={(e) => setEditForm({ ...editForm, amount: e.target.value })}
+                    className="w-full h-10 px-3 py-2 text-sm font-mono font-bold border border-gray-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-blue-900"
+                  />
+                </div>
+
+                {/* Payment Method */}
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-bold uppercase tracking-wider text-gray-700">
+                    Payment Method *
+                  </label>
+                  <select
+                    value={editForm.paymentMethod}
+                    onChange={(e) => setEditForm({ ...editForm, paymentMethod: e.target.value })}
+                    className="w-full h-10 px-3 py-2 text-sm border border-gray-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="bank_transfer">Bank Transfer</option>
+                    <option value="cash">Cash</option>
+                    <option value="check">Check / Cheque</option>
+                    <option value="other">Other</option>
+                  </select>
+                </div>
+
+                {/* Bank Account */}
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-bold uppercase tracking-wider text-gray-700">
+                    Bank Account
+                  </label>
+                  <select
+                    value={editForm.bankAccountId}
+                    onChange={(e) => {
+                      const bankId = e.target.value;
+                      const matched = bankAccounts.find((b) => b.id === bankId);
+                      setEditForm({
+                        ...editForm,
+                        bankAccountId: bankId,
+                        bankName: matched ? matched.bankName : editForm.bankName,
+                      });
+                    }}
+                    className="w-full h-10 px-3 py-2 text-sm border border-gray-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">-- None / Default --</option>
+                    {bankAccounts.map((acc) => (
+                      <option key={acc.id} value={acc.id}>
+                        {acc.bankName} — {acc.accountNo} ({acc.accountName})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Check No */}
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-bold uppercase tracking-wider text-gray-700">
+                    Check Number
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. CHK-12345"
+                    value={editForm.checkNo}
+                    onChange={(e) => setEditForm({ ...editForm, checkNo: e.target.value })}
+                    className="w-full h-10 px-3 py-2 text-sm border border-gray-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
+                {/* Reference No */}
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-bold uppercase tracking-wider text-gray-700">
+                    Ref No / Slip No
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. TT-987654"
+                    value={editForm.refNo}
+                    onChange={(e) => setEditForm({ ...editForm, refNo: e.target.value })}
+                    className="w-full h-10 px-3 py-2 text-sm border border-gray-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
+                {/* Source Module */}
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-bold uppercase tracking-wider text-gray-700">
+                    Source Module
+                  </label>
+                  <select
+                    value={editForm.sourceModule}
+                    onChange={(e) => setEditForm({ ...editForm, sourceModule: e.target.value })}
+                    className="w-full h-10 px-3 py-2 text-sm border border-gray-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="MANUAL">Manual / Direct</option>
+                    <option value="PURCHASE">Purchase Order / Bill</option>
+                    <option value="CEMENT">Cement Purchase</option>
+                    <option value="AGGREGATE">Aggregate Settlement</option>
+                    <option value="MEDICAL">Medical Purchase Request</option>
+                    <option value="PAYROLL">Payroll</option>
+                  </select>
+                </div>
+
+                {/* Source Reference */}
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-bold uppercase tracking-wider text-gray-700">
+                    Source Reference / Invoice No
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. PO-001 / INV-2026-004"
+                    value={editForm.sourceRef}
+                    onChange={(e) => setEditForm({ ...editForm, sourceRef: e.target.value })}
+                    className="w-full h-10 px-3 py-2 text-sm border border-gray-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+
+              {/* Description */}
+              <div className="space-y-1.5">
+                <label className="block text-xs font-bold uppercase tracking-wider text-gray-700">
+                  Description / Purpose
+                </label>
+                <textarea
+                  rows={3}
+                  value={editForm.description}
+                  onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                  placeholder="Enter details, tax breakdown notes, or purpose of voucher..."
+                  className="w-full p-3 text-sm border border-gray-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              {/* Modal Actions */}
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-gray-100">
+                <button
+                  type="button"
+                  onClick={() => setIsEditOpen(false)}
+                  className="px-4 py-2 text-sm font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-xl transition-colors"
+                >
+                  Cancel
+                </button>
+                <Button
+                  type="submit"
+                  isLoading={editLoading}
+                  icon={<Save className="w-4 h-4 mr-1.5" />}
+                >
+                  Save Changes
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
     </div>
   );

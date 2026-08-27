@@ -170,10 +170,19 @@ export async function PUT(
       );
     }
 
+    // Parse date and numeric fields if present
+    const cleanData: any = { ...updateData };
+    if (cleanData.voucherDate) {
+      cleanData.voucherDate = new Date(cleanData.voucherDate);
+    }
+    if (cleanData.amount !== undefined) {
+      cleanData.amount = parseFloat(cleanData.amount);
+    }
+
     const updatedVoucher = await prisma.paymentVoucher.update({
       where: { id: params.id },
       data: {
-        ...updateData,
+        ...cleanData,
         ...(isPostingVoucher ? { postedAt: new Date() } : {}),
       },
     });

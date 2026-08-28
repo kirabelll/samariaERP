@@ -181,26 +181,73 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
+    const searchParams = request.nextUrl.searchParams;
+    const isPermanent = searchParams.get('permanent') === 'true' || searchParams.get('hard') === 'true';
+
     const record = await prisma.salesOrder.findUnique({
       where: { id: params.id },
+      include: {
+        _count: {
+          select: {
+            deliveries: true,
+            invoices: true,
+          },
+        },
+      },
     });
 
     if (!record) {
       return NextResponse.json(
-        { success: false, error: 'Record not found' },
+        { success: false, error: 'Sales Order not found' },
         { status: 404 }
       );
     }
 
-    // Soft delete
+    if (record.status === 'Cancelled' || isPermanent) {
+      const counts = record._count;
+      const linked: string[] = [];
+      if (counts.deliveries > 0) linked.push(`${counts.deliveries} delivery(ies)`);
+      if (counts.invoices > 0) linked.push(`${counts.invoices} invoice(s)`);
+
+      if (linked.length > 0) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `Cannot permanently delete sales order because it is linked to: ${linked.join(', ')}.`,
+          },
+          { status: 400 }
+        );
+      }
+
+      // Delete approvals for this sales order if any
+      await prisma.approval.deleteMany({
+        where: { module: 'SalesOrder', recordId: params.id },
+      });
+
+      // Hard delete
+      await prisma.salesOrder.delete({
+        where: { id: params.id },
+      });
+
+      return NextResponse.json({
+        success: true,
+        message: 'Sales Order permanently deleted from database',
+      });
+    }
+
+    // Soft delete / Cancel
     const deletedRecord = await prisma.salesOrder.update({
       where: { id: params.id },
       data: { status: 'Cancelled' },
     });
 
-    return NextResponse.json({ success: true, message: 'Record deleted successfully', data: deletedRecord });
+    return NextResponse.json({
+      success: true,
+      message: 'Sales Order cancelled successfully (status set to Cancelled)',
+      data: deletedRecord,
+    });
   } catch (error: any) {
-    console.error('Error deleting record:', error);
+    console.error('Error deleting sales order:', error);
     return NextResponse.json(
       { success: false, error: error.message },
       { status: 500 }

@@ -24,12 +24,31 @@ export default function SalesOrdersPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 10;
 
-  const { data, pagination, loading, error } = useApiList<SalesOrder>('/api/sales/orders', {
+  const { data, pagination, loading, error, refetch } = useApiList<SalesOrder>('/api/sales/orders', {
     page: currentPage,
     limit: pageSize,
     search: searchTerm,
     filters: { status: statusFilter },
   });
+
+  const handleDeleteOrder = async (id: number | string, orderNo: string) => {
+    const confirmed = window.confirm(
+      `Are you sure you want to delete Sales Order "${orderNo}"?\n\nThis will cancel or permanently remove this order.`
+    );
+    if (!confirmed) return;
+
+    try {
+      const res = await fetch(`/api/sales/orders/${id}`, { method: 'DELETE' });
+      const result = await res.json();
+      if (!res.ok || !result.success) {
+        throw new Error(result.error || 'Failed to delete sales order');
+      }
+      alert(result.message || 'Sales order deleted successfully');
+      refetch();
+    } catch (err: any) {
+      alert(err.message || 'Failed to delete sales order');
+    }
+  };
 
   const columns: ColumnDef<SalesOrder>[] = [
     { header: 'Order No', accessor: 'orderNo', sortable: true },
@@ -57,11 +76,18 @@ export default function SalesOrdersPage() {
     {
       header: 'Actions',
       accessor: 'id',
-      render: (id) => (
+      render: (id, row) => (
         <div className="flex gap-2">
           <Link href={`/dashboard/sales/orders/${id}`}>
             <Button size="sm" variant="outline">View</Button>
           </Link>
+          <Button
+            size="sm"
+            variant="danger"
+            onClick={() => handleDeleteOrder(id, (row as any)?.orderNo || 'this order')}
+          >
+            Delete
+          </Button>
         </div>
       ),
     },

@@ -109,8 +109,35 @@ export default function MedicalCustomerDetailPage() {
       .finally(() => setLoadingSalesOrders(false));
   }, [customerId]);
 
+  const [deleting, setDeleting] = useState(false);
+
   const handleEdit = () => router.push(`/dashboard/medical/customers/${customerId}/edit`);
   const handleBack = () => router.push('/dashboard/medical/customers');
+
+  const handleDelete = async () => {
+    if (!customer) return;
+    const confirmed = window.confirm(
+      `Are you sure you want to delete "${customer.companyName}"?\n\nThis will deactivate or permanently remove the customer record.`
+    );
+    if (!confirmed) return;
+
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/customers/${customerId}`, {
+        method: 'DELETE',
+      });
+      const result = await res.json();
+      if (!res.ok || !result.success) {
+        throw new Error(result.error || 'Failed to delete customer');
+      }
+      alert(result.message || 'Customer deleted successfully!');
+      router.push('/dashboard/medical/customers');
+    } catch (err: any) {
+      alert(err.message || 'Failed to delete customer');
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -168,9 +195,12 @@ export default function MedicalCustomerDetailPage() {
             Customer Code: <span className="font-mono font-semibold text-slate-800">{customer.code}</span> • Division: <span className="font-semibold text-blue-600">{customer.division}</span> • Registered: {new Date(customer.createdAt).toLocaleDateString()}
           </p>
         </div>
-        <div className="flex gap-2.5">
+        <div className="flex flex-wrap gap-2.5">
           <Button variant="outline" size="md" onClick={handleBack}>&larr; Back</Button>
           <Button variant="secondary" size="md" onClick={handleEdit}>Edit Profile</Button>
+          <Button variant="danger" size="md" onClick={handleDelete} disabled={deleting}>
+            {deleting ? 'Deleting...' : 'Delete Customer'}
+          </Button>
           <Link href={`/dashboard/sales/orders/new`}>
             <Button variant="primary" size="md">+ New Order</Button>
           </Link>

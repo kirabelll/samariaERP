@@ -27,12 +27,31 @@ export default function MedicalCustomersPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 10;
 
-  const { data, pagination, loading, error } = useApiList<MedicalCustomer>('/api/customers', {
+  const { data, pagination, loading, error, refetch } = useApiList<MedicalCustomer>('/api/customers', {
     page: currentPage,
     limit: pageSize,
     search: searchTerm,
     filters: { division: 'MEDICAL', status: statusFilter },
   });
+
+  const handleDelete = async (id: number | string, companyName: string) => {
+    const confirmed = window.confirm(
+      `Are you sure you want to delete "${companyName}"?\n\nThis will deactivate or permanently remove the customer record.`
+    );
+    if (!confirmed) return;
+
+    try {
+      const res = await fetch(`/api/customers/${id}`, { method: 'DELETE' });
+      const result = await res.json();
+      if (!res.ok || !result.success) {
+        throw new Error(result.error || 'Failed to delete customer');
+      }
+      alert(result.message || 'Customer deleted successfully');
+      refetch();
+    } catch (err: any) {
+      alert(err.message || 'Failed to delete customer');
+    }
+  };
 
   const columns: ColumnDef<MedicalCustomer>[] = [
     { header: 'Code', accessor: 'code', sortable: true },
@@ -64,7 +83,7 @@ export default function MedicalCustomersPage() {
     {
       header: 'Actions',
       accessor: 'id',
-      render: (id) => (
+      render: (id, row) => (
         <div className="flex gap-2">
           <Link href={`/dashboard/medical/customers/${id}`}>
             <Button size="sm" variant="outline">View</Button>
@@ -72,6 +91,13 @@ export default function MedicalCustomersPage() {
           <Link href={`/dashboard/medical/customers/${id}/edit`}>
             <Button size="sm" variant="secondary">Edit</Button>
           </Link>
+          <Button
+            size="sm"
+            variant="danger"
+            onClick={() => handleDelete(id, (row as any)?.companyName || 'this customer')}
+          >
+            Delete
+          </Button>
         </div>
       ),
     },

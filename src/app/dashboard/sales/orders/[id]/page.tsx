@@ -68,6 +68,31 @@ export default function SalesOrderDetailPage() {
     }
   };
 
+  const handleDeleteOrder = async () => {
+    if (!data) return;
+    const confirmed = window.confirm(
+      `Are you sure you want to delete Sales Order "${data.orderNo}"?\n\nThis will cancel or permanently remove this sales order.`
+    );
+    if (!confirmed) return;
+
+    setActionLoading(true);
+    try {
+      const res = await fetch(`/api/sales/orders/${recordId}`, {
+        method: 'DELETE',
+      });
+      const result = await res.json();
+      if (!res.ok || !result.success) {
+        throw new Error(result.error || 'Failed to delete sales order');
+      }
+      alert(result.message || 'Sales Order deleted successfully');
+      router.push('/dashboard/sales/orders');
+    } catch (err: any) {
+      alert(err.message || 'Failed to delete sales order');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
@@ -113,7 +138,7 @@ export default function SalesOrderDetailPage() {
             {data.division && <span className="ml-2 px-2 py-0.5 rounded-full text-xs bg-blue-50 text-blue-700">{data.division}</span>}
           </p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-2.5">
           {data.status === 'Pending' && (
             <Button
               onClick={handleSubmitForApproval}
@@ -129,6 +154,9 @@ export default function SalesOrderDetailPage() {
               Edit
             </Button>
           )}
+          <Button variant="danger" className="rounded-2xl" onClick={handleDeleteOrder} disabled={actionLoading}>
+            {actionLoading ? 'Deleting...' : 'Delete Order'}
+          </Button>
           <Button variant="outline" className="rounded-2xl" onClick={() => router.push('/dashboard/sales/orders')}>
             Back
           </Button>

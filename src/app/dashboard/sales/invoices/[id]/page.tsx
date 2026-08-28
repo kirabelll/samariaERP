@@ -237,36 +237,88 @@ export default function SalesInvoiceDetailPage() {
           {/* Invoice Items */}
           {data.items && (
             <div className="border-t border-slate-200 pt-8">
-              <h3 className="text-lg font-semibold text-slate-900 mb-4">Invoice Items</h3>
+              <h3 className="text-lg font-semibold text-slate-900 mb-4">Invoice Line Items</h3>
               <div className="overflow-x-auto">
                 <table className="w-full border-collapse">
                   <thead>
                     <tr className="bg-slate-100 border-b border-slate-300">
-                      <th className="px-4 py-2 text-left text-sm font-semibold text-slate-900">Item Name</th>
-                      <th className="px-4 py-2 text-right text-sm font-semibold text-slate-900">Quantity</th>
-                      <th className="px-4 py-2 text-right text-sm font-semibold text-slate-900">Unit</th>
-                      <th className="px-4 py-2 text-right text-sm font-semibold text-slate-900">Unit Price</th>
-                      <th className="px-4 py-2 text-right text-sm font-semibold text-slate-900">Total</th>
+                      <th className="px-4 py-2.5 text-left text-sm font-semibold text-slate-900">#</th>
+                      <th className="px-4 py-2.5 text-left text-sm font-semibold text-slate-900">Item Description</th>
+                      <th className="px-4 py-2.5 text-right text-sm font-semibold text-slate-900">Quantity</th>
+                      <th className="px-4 py-2.5 text-right text-sm font-semibold text-slate-900">Unit</th>
+                      <th className="px-4 py-2.5 text-right text-sm font-semibold text-slate-900">Unit Price (ETB)</th>
+                      <th className="px-4 py-2.5 text-right text-sm font-semibold text-slate-900">Line Total (ETB)</th>
                     </tr>
                   </thead>
                   <tbody>
                     {(() => {
                       try {
                         const items = typeof data.items === 'string' ? JSON.parse(data.items) : data.items;
-                        if (!Array.isArray(items)) return null;
-                        return items.map((item: any, idx: number) => (
-                          <tr key={idx} className="border-b border-slate-200 hover:bg-slate-50">
-                            <td className="px-4 py-3 text-slate-900">{item.name || item.itemName || item.itemId || 'Unknown'}</td>
-                            <td className="px-4 py-3 text-right text-slate-900">{item.qty || item.quantity || '-'}</td>
-                            <td className="px-4 py-3 text-right text-slate-900">{item.unit || '-'}</td>
-                            <td className="px-4 py-3 text-right text-slate-900">{item.unitPrice ? formatCurrency(Number(item.unitPrice)) : '-'}</td>
-                            <td className="px-4 py-3 text-right text-slate-900 font-medium">
-                              {item.total ? formatCurrency(Number(item.total)) : (item.qty && item.unitPrice ? formatCurrency(item.qty * item.unitPrice) : '-')}
+                        if (!Array.isArray(items) || items.length === 0) {
+                          return (
+                            <tr>
+                              <td colSpan={6} className="px-4 py-4 text-center text-slate-400">
+                                No line items found.
+                              </td>
+                            </tr>
+                          );
+                        }
+                        return items.map((item: any, idx: number) => {
+                          const itemName = item.name || item.itemName || item.item || item.itemId || `Item ${idx + 1}`;
+                          const qty = Number(item.qty || item.quantity || 0);
+                          const unit = item.unit || (data.division === 'CEMENT' ? 'tons' : data.division === 'AGGREGATE' ? 'm³' : 'pcs');
+                          const unitPrice = Number(item.unitPrice || item.price || 0);
+                          const total = item.total != null ? Number(item.total) : qty * unitPrice;
+
+                          return (
+                            <tr key={idx} className="border-b border-slate-200 hover:bg-slate-50">
+                              <td className="px-4 py-3 text-slate-400 font-mono text-xs">{idx + 1}</td>
+                              <td className="px-4 py-3 font-medium text-slate-900">
+                                <div>
+                                  <span>{itemName}</span>
+                                  {item.batchNo && (
+                                    <span className="ml-2 px-2 py-0.5 bg-purple-50 text-purple-700 text-xs font-semibold rounded border border-purple-200">
+                                      Batch: {item.batchNo}
+                                    </span>
+                                  )}
+                                  {item.expiryDate && (
+                                    <span className="ml-2 text-xs text-slate-500">
+                                      (Exp: {new Date(item.expiryDate).toLocaleDateString()})
+                                    </span>
+                                  )}
+                                  {item.dispatchNo && (
+                                    <span className="ml-2 text-xs text-blue-600 font-medium">
+                                      [Dispatch: {item.dispatchNo}]
+                                    </span>
+                                  )}
+                                  {item.liftingNo && (
+                                    <span className="ml-2 text-xs text-purple-600 font-medium">
+                                      [Lifting: {item.liftingNo}]
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="px-4 py-3 text-right text-slate-900 font-semibold">
+                                {qty.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 3 })}
+                              </td>
+                              <td className="px-4 py-3 text-right text-slate-600">{unit}</td>
+                              <td className="px-4 py-3 text-right text-slate-900 font-mono">
+                                {formatCurrency(unitPrice)}
+                              </td>
+                              <td className="px-4 py-3 text-right text-slate-900 font-bold font-mono">
+                                {formatCurrency(total)}
+                              </td>
+                            </tr>
+                          );
+                        });
+                      } catch {
+                        return (
+                          <tr>
+                            <td colSpan={6} className="px-4 py-3 text-slate-600">
+                              Unable to parse items
                             </td>
                           </tr>
-                        ));
-                      } catch {
-                        return <tr><td colSpan={5} className="px-4 py-3 text-slate-600">Unable to parse items</td></tr>;
+                        );
                       }
                     })()}
                   </tbody>
@@ -275,7 +327,219 @@ export default function SalesInvoiceDetailPage() {
             </div>
           )}
 
-          {/* Related Deliveries */}
+          {/* Related Cement Liftings */}
+          {((data.cementLiftings && data.cementLiftings.length > 0) || data.cementLifting) && (
+            <div className="border-t border-slate-200 pt-8">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="text-lg font-semibold text-slate-900">Associated Cement Liftings</h3>
+                  <p className="text-sm text-slate-600 mt-0.5">
+                    Weighbridge tickets, quantities, factory sources, and driver details for this invoice
+                  </p>
+                </div>
+                <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-100 text-blue-800">
+                  {(data.cementLiftings || (data.cementLifting ? [data.cementLifting] : [])).length} Ticket(s)
+                </span>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-slate-100 border-b border-slate-300">
+                      <th className="px-3 py-2 text-left font-semibold text-slate-900">Lifting No</th>
+                      <th className="px-3 py-2 text-left font-semibold text-slate-900">Factory / Supplier</th>
+                      <th className="px-3 py-2 text-left font-semibold text-slate-900">Coupon</th>
+                      <th className="px-3 py-2 text-left font-semibold text-slate-900">Driver & Truck</th>
+                      <th className="px-3 py-2 text-right font-semibold text-slate-900">Factory Wt (Tons)</th>
+                      <th className="px-3 py-2 text-right font-semibold text-slate-900">Site Wt (Tons)</th>
+                      <th className="px-3 py-2 text-right font-semibold text-slate-900">Shortage (Tons)</th>
+                      <th className="px-3 py-2 text-left font-semibold text-slate-900">Date</th>
+                      <th className="px-3 py-2 text-left font-semibold text-slate-900">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(data.cementLiftings || (data.cementLifting ? [data.cementLifting] : [])).map((lifting: any) => (
+                      <tr key={lifting.id} className="border-b border-slate-200 hover:bg-slate-50">
+                        <td className="px-3 py-3 font-medium">
+                          <button
+                            onClick={() => router.push(`/dashboard/cement/liftings/${lifting.id}`)}
+                            className="text-blue-600 hover:underline font-mono"
+                          >
+                            {lifting.liftingNo}
+                          </button>
+                        </td>
+                        <td className="px-3 py-3 text-slate-900">
+                          {lifting.factory?.name || lifting.purchase?.factory?.name || '—'}
+                        </td>
+                        <td className="px-3 py-3 text-slate-700 font-mono text-xs">
+                          {lifting.coupon?.couponNo || (lifting as any).couponNo || '—'}
+                        </td>
+                        <td className="px-3 py-3 text-slate-900">
+                          <div>
+                            <span className="font-medium">{lifting.driverName || lifting.truck?.driverName || '—'}</span>
+                            {(lifting.truckPlateNo || lifting.truck?.plateNo) && (
+                              <span className="block text-xs text-slate-500 font-mono">
+                                {lifting.truckPlateNo || lifting.truck?.plateNo}
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-3 py-3 text-right text-slate-900 font-bold">
+                          {Number(lifting.factoryWeight || 0).toFixed(2)}
+                        </td>
+                        <td className="px-3 py-3 text-right text-slate-900">
+                          {lifting.buyerWeighbridgeQty != null ? Number(lifting.buyerWeighbridgeQty).toFixed(2) : '—'}
+                        </td>
+                        <td className="px-3 py-3 text-right text-orange-600 font-semibold">
+                          {lifting.shortageQty != null ? Number(lifting.shortageQty).toFixed(2) : '0.00'}
+                        </td>
+                        <td className="px-3 py-3 text-slate-900">
+                          {lifting.liftingDate ? formatDate(lifting.liftingDate) : '—'}
+                        </td>
+                        <td className="px-3 py-3">
+                          <Badge status={lifting.status}>{lifting.status}</Badge>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="bg-slate-50 font-bold border-t border-slate-300">
+                      <td className="px-3 py-3 text-slate-900" colSpan={4}>
+                        Total Cement Quantity
+                      </td>
+                      <td className="px-3 py-3 text-right text-slate-900">
+                        {(data.cementLiftings || (data.cementLifting ? [data.cementLifting] : []))
+                          .reduce((sum: number, l: any) => sum + (Number(l.factoryWeight) || 0), 0)
+                          .toFixed(2)}{' '}
+                        Tons
+                      </td>
+                      <td className="px-3 py-3 text-right text-slate-900">
+                        {(data.cementLiftings || (data.cementLifting ? [data.cementLifting] : []))
+                          .reduce((sum: number, l: any) => sum + (Number(l.buyerWeighbridgeQty) || 0), 0)
+                          .toFixed(2)}{' '}
+                        Tons
+                      </td>
+                      <td className="px-3 py-3 text-right text-orange-600">
+                        {(data.cementLiftings || (data.cementLifting ? [data.cementLifting] : []))
+                          .reduce((sum: number, l: any) => sum + (Number(l.shortageQty) || 0), 0)
+                          .toFixed(2)}{' '}
+                        Tons
+                      </td>
+                      <td className="px-3 py-3" colSpan={2}></td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Related Aggregate Dispatches */}
+          {data.dispatches && data.dispatches.length > 0 && (
+            <div className="border-t border-slate-200 pt-8">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="text-lg font-semibold text-slate-900">Associated Aggregate Dispatches</h3>
+                  <p className="text-sm text-slate-600 mt-0.5">
+                    Quarry dispatch tickets, transporter freight fees, delivered volumes, and shortage deductions
+                  </p>
+                </div>
+                <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800">
+                  {data.dispatches.length} Dispatch(es)
+                </span>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-slate-100 border-b border-slate-300">
+                      <th className="px-3 py-2 text-left font-semibold text-slate-900">Dispatch No</th>
+                      <th className="px-3 py-2 text-left font-semibold text-slate-900">Supplier / Quarry</th>
+                      <th className="px-3 py-2 text-left font-semibold text-slate-900">Transporter & Driver</th>
+                      <th className="px-3 py-2 text-right font-semibold text-slate-900">Loaded (m³)</th>
+                      <th className="px-3 py-2 text-right font-semibold text-slate-900">Delivered (m³)</th>
+                      <th className="px-3 py-2 text-right font-semibold text-slate-900">Shortage (m³)</th>
+                      <th className="px-3 py-2 text-right font-semibold text-slate-900">Transport Rate</th>
+                      <th className="px-3 py-2 text-right font-semibold text-slate-900">Gross Fee</th>
+                      <th className="px-3 py-2 text-right font-semibold text-slate-900">Deduction</th>
+                      <th className="px-3 py-2 text-right font-semibold text-slate-900">Net Payment</th>
+                      <th className="px-3 py-2 text-left font-semibold text-slate-900">Date</th>
+                      <th className="px-3 py-2 text-left font-semibold text-slate-900">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.dispatches.map((dispatch: any) => (
+                      <tr key={dispatch.id} className="border-b border-slate-200 hover:bg-slate-50">
+                        <td className="px-3 py-3 text-blue-600 font-medium">
+                          <button
+                            onClick={() => router.push(`/dashboard/aggregate/${dispatch.id}`)}
+                            className="hover:underline font-mono"
+                          >
+                            {dispatch.dispatchNo}
+                          </button>
+                        </td>
+                        <td className="px-3 py-3 text-slate-900">
+                          {dispatch.supplier?.companyName || dispatch.supplier?.name || '—'}
+                        </td>
+                        <td className="px-3 py-3 text-slate-900">
+                          <div>
+                            <span className="font-medium">
+                              {dispatch.driverName || dispatch.transporter?.driverName || dispatch.truck?.driverName || '—'}
+                            </span>
+                            {(dispatch.truck?.plateNo || dispatch.transporter?.companyName) && (
+                              <span className="block text-xs text-slate-500 font-mono">
+                                {dispatch.truck?.plateNo ? `[${dispatch.truck.plateNo}] ` : ''}
+                                {dispatch.transporter?.companyName || ''}
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-3 py-3 text-right text-slate-900 font-semibold">{dispatch.loadedVolume?.toFixed(2) || '-'}</td>
+                        <td className="px-3 py-3 text-right text-slate-900 font-bold">{dispatch.deliveredVolume?.toFixed(2) || '-'}</td>
+                        <td className="px-3 py-3 text-right text-orange-600">{dispatch.shortageVolume?.toFixed(2) || '0.00'}</td>
+                        <td className="px-3 py-3 text-right text-slate-700 font-mono">{dispatch.transportRate ? formatCurrency(dispatch.transportRate) : '—'}</td>
+                        <td className="px-3 py-3 text-right text-slate-900 font-mono">{dispatch.grossTruckFee ? formatCurrency(dispatch.grossTruckFee) : '-'}</td>
+                        <td className="px-3 py-3 text-right text-red-600 font-mono">
+                          {dispatch.shortageDeduction ? `-${formatCurrency(dispatch.shortageDeduction)}` : '0.00'}
+                        </td>
+                        <td className="px-3 py-3 text-right text-green-600 font-medium font-mono">
+                          {dispatch.netTruckPayment ? formatCurrency(dispatch.netTruckPayment) : '-'}
+                        </td>
+                        <td className="px-3 py-3 text-slate-900">{dispatch.dispatchDate ? formatDate(dispatch.dispatchDate) : '-'}</td>
+                        <td className="px-3 py-3"><Badge status={dispatch.status}>{dispatch.status}</Badge></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="bg-slate-50 font-bold border-t border-slate-300">
+                      <td className="px-3 py-3 text-slate-900" colSpan={3}>
+                        Aggregate Totals
+                      </td>
+                      <td className="px-3 py-3 text-right text-slate-900">
+                        {data.dispatches.reduce((sum: number, d: any) => sum + (d.loadedVolume || 0), 0).toFixed(2)} m³
+                      </td>
+                      <td className="px-3 py-3 text-right text-slate-900">
+                        {data.dispatches.reduce((sum: number, d: any) => sum + (d.deliveredVolume || 0), 0).toFixed(2)} m³
+                      </td>
+                      <td className="px-3 py-3 text-right text-orange-600">
+                        {data.dispatches.reduce((sum: number, d: any) => sum + (d.shortageVolume || 0), 0).toFixed(2)} m³
+                      </td>
+                      <td className="px-3 py-3 text-right text-slate-500">—</td>
+                      <td className="px-3 py-3 text-right text-slate-900 font-mono">
+                        {formatCurrency(data.dispatches.reduce((sum: number, d: any) => sum + (d.grossTruckFee || 0), 0))}
+                      </td>
+                      <td className="px-3 py-3 text-right text-red-600 font-mono">
+                        -{formatCurrency(data.dispatches.reduce((sum: number, d: any) => sum + (d.shortageDeduction || 0), 0))}
+                      </td>
+                      <td className="px-3 py-3 text-right text-green-600 font-mono">
+                        {formatCurrency(data.dispatches.reduce((sum: number, d: any) => sum + (d.netTruckPayment || 0), 0))}
+                      </td>
+                      <td className="px-3 py-3" colSpan={2}></td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Related Deliveries (General / Construction) */}
           {data.deliveries && data.deliveries.length > 0 && (
             <div className="border-t border-slate-200 pt-8">
               <h3 className="text-lg font-semibold text-slate-900 mb-4">Related Deliveries</h3>
@@ -294,7 +558,7 @@ export default function SalesInvoiceDetailPage() {
                   <tbody>
                     {data.deliveries.map((del: any) => (
                       <tr key={del.id} className="border-b border-slate-200 hover:bg-slate-50">
-                        <td className="px-4 py-3 text-blue-600 font-medium">{del.deliveryNo}</td>
+                        <td className="px-4 py-3 text-blue-600 font-medium font-mono">{del.deliveryNo}</td>
                         <td className="px-4 py-3 text-slate-900">{del.driverName || '-'}</td>
                         <td className="px-4 py-3 text-slate-900">{del.truckPlateNo || '-'}</td>
                         <td className="px-4 py-3 text-slate-900">{del.deliveredTo || '-'}</td>
@@ -303,83 +567,6 @@ export default function SalesInvoiceDetailPage() {
                       </tr>
                     ))}
                   </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-
-          {/* Related Aggregate Dispatches */}
-          {data.dispatches && data.dispatches.length > 0 && (
-            <div className="border-t border-slate-200 pt-8">
-              <h3 className="text-lg font-semibold text-slate-900 mb-4">Related Aggregate Dispatches</h3>
-              <p className="text-sm text-slate-600 mb-3">
-                Dispatches for this customer — showing delivery volumes and financial details
-              </p>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="bg-slate-100 border-b border-slate-300">
-                      <th className="px-3 py-2 text-left font-semibold text-slate-900">Dispatch No</th>
-                      <th className="px-3 py-2 text-right font-semibold text-slate-900">Loaded (m³)</th>
-                      <th className="px-3 py-2 text-right font-semibold text-slate-900">Delivered (m³)</th>
-                      <th className="px-3 py-2 text-right font-semibold text-slate-900">Shortage (m³)</th>
-                      <th className="px-3 py-2 text-right font-semibold text-slate-900">Gross Fee</th>
-                      <th className="px-3 py-2 text-right font-semibold text-slate-900">Deduction</th>
-                      <th className="px-3 py-2 text-right font-semibold text-slate-900">Net Payment</th>
-                      <th className="px-3 py-2 text-left font-semibold text-slate-900">Date</th>
-                      <th className="px-3 py-2 text-left font-semibold text-slate-900">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.dispatches.map((dispatch: any) => (
-                      <tr key={dispatch.id} className="border-b border-slate-200 hover:bg-slate-50">
-                        <td className="px-3 py-3 text-blue-600 font-medium">
-                          <button
-                            onClick={() => router.push(`/dashboard/aggregate/${dispatch.id}`)}
-                            className="hover:underline"
-                          >
-                            {dispatch.dispatchNo}
-                          </button>
-                        </td>
-                        <td className="px-3 py-3 text-right text-slate-900">{dispatch.loadedVolume?.toFixed(2) || '-'}</td>
-                        <td className="px-3 py-3 text-right text-slate-900">{dispatch.deliveredVolume?.toFixed(2) || '-'}</td>
-                        <td className="px-3 py-3 text-right text-orange-600">{dispatch.shortageVolume?.toFixed(2) || '0'}</td>
-                        <td className="px-3 py-3 text-right text-slate-900">{dispatch.grossTruckFee ? formatCurrency(dispatch.grossTruckFee) : '-'}</td>
-                        <td className="px-3 py-3 text-right text-red-600">
-                          {dispatch.shortageDeduction ? `-${formatCurrency(dispatch.shortageDeduction)}` : '0'}
-                        </td>
-                        <td className="px-3 py-3 text-right text-green-600 font-medium">
-                          {dispatch.netTruckPayment ? formatCurrency(dispatch.netTruckPayment) : '-'}
-                        </td>
-                        <td className="px-3 py-3 text-slate-900">{dispatch.dispatchDate ? formatDate(dispatch.dispatchDate) : '-'}</td>
-                        <td className="px-3 py-3"><Badge status={dispatch.status}>{dispatch.status}</Badge></td>
-                      </tr>
-                    ))}
-                  </tbody>
-                  <tfoot>
-                    <tr className="bg-slate-50 font-medium">
-                      <td className="px-3 py-3 text-slate-900">Totals</td>
-                      <td className="px-3 py-3 text-right text-slate-900">
-                        {data.dispatches.reduce((sum: number, d: any) => sum + (d.loadedVolume || 0), 0).toFixed(2)}
-                      </td>
-                      <td className="px-3 py-3 text-right text-slate-900">
-                        {data.dispatches.reduce((sum: number, d: any) => sum + (d.deliveredVolume || 0), 0).toFixed(2)}
-                      </td>
-                      <td className="px-3 py-3 text-right text-orange-600">
-                        {data.dispatches.reduce((sum: number, d: any) => sum + (d.shortageVolume || 0), 0).toFixed(2)}
-                      </td>
-                      <td className="px-3 py-3 text-right text-slate-900">
-                        {formatCurrency(data.dispatches.reduce((sum: number, d: any) => sum + (d.grossTruckFee || 0), 0))}
-                      </td>
-                      <td className="px-3 py-3 text-right text-red-600">
-                        -{formatCurrency(data.dispatches.reduce((sum: number, d: any) => sum + (d.shortageDeduction || 0), 0))}
-                      </td>
-                      <td className="px-3 py-3 text-right text-green-600">
-                        {formatCurrency(data.dispatches.reduce((sum: number, d: any) => sum + (d.netTruckPayment || 0), 0))}
-                      </td>
-                      <td className="px-3 py-3" colSpan={2}></td>
-                    </tr>
-                  </tfoot>
                 </table>
               </div>
             </div>

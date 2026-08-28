@@ -13,8 +13,12 @@ export async function GET(
       include: {
         customer: {
           select: {
+            id: true,
             companyName: true,
             code: true,
+            tin: true,
+            phone: true,
+            location: true,
           },
         },
         salesOrder: {
@@ -22,6 +26,14 @@ export async function GET(
             id: true,
             orderNo: true,
             status: true,
+          },
+        },
+        cementLifting: {
+          include: {
+            factory: true,
+            truck: true,
+            purchase: true,
+            customer: true,
           },
         },
       },
@@ -53,33 +65,87 @@ export async function GET(
       });
     }
 
+    // Fetch related cement liftings
+    let cementLiftings: any[] = [];
+    if (record.division === 'CEMENT' || record.liftingId) {
+      const liftingFilter: any = {};
+      if (record.liftingId) {
+        liftingFilter.OR = [
+          { id: record.liftingId },
+          { customerId: record.customerId },
+        ];
+      } else {
+        liftingFilter.customerId = record.customerId;
+      }
+
+      cementLiftings = await prisma.cementLifting.findMany({
+        where: liftingFilter,
+        include: {
+          factory: true,
+          truck: true,
+          purchase: {
+            include: { factory: true },
+          },
+          customer: true,
+        },
+        orderBy: { liftingDate: 'desc' },
+        take: 30,
+      });
+
+      // Fetch linked coupons for liftings
+      const couponIds = cementLiftings.map((l: any) => l.couponId).filter(Boolean) as string[];
+      if (couponIds.length > 0) {
+        const coupons = await prisma.coupon.findMany({
+          where: { id: { in: couponIds } },
+          select: { id: true, couponNo: true, status: true, tonnage: true },
+        });
+        const couponMap = Object.fromEntries(coupons.map((c: any) => [c.id, c]));
+        cementLiftings = cementLiftings.map((l: any) => ({
+          ...l,
+          coupon: l.couponId ? couponMap[l.couponId] : null,
+        }));
+      }
+    }
+
     // Fetch related aggregate dispatches for this customer
-    const dispatches = await prisma.aggregateDelivery.findMany({
+    const rawDispatches = await prisma.aggregateDelivery.findMany({
       where: { customerId: record.customerId },
-      select: {
-        id: true,
-        dispatchNo: true,
-        loadedVolume: true,
-        deliveredVolume: true,
-        shortageVolume: true,
-        transportRate: true,
-        aggregateValue: true,
-        grossTruckFee: true,
-        shortageDeduction: true,
-        netTruckPayment: true,
-        dispatchDate: true,
-        status: true,
-        driverName: true,
+      include: {
+        transporter: true,
+        truck: true,
       },
       orderBy: { dispatchDate: 'desc' },
-      take: 20,
+      take: 30,
     });
+
+    // Lookup suppliers and items for aggregate deliveries
+    const supplierIds = Array.from(new Set(rawDispatches.map((d) => d.supplierId).filter(Boolean)));
+    const itemIds = Array.from(new Set(rawDispatches.map((d) => d.itemId).filter(Boolean)));
+
+    const [suppliers, items] = await Promise.all([
+      supplierIds.length > 0
+        ? prisma.supplier.findMany({ where: { id: { in: supplierIds } }, select: { id: true, companyName: true } })
+        : [],
+      itemIds.length > 0
+        ? prisma.item.findMany({ where: { id: { in: itemIds } }, select: { id: true, name: true } })
+        : [],
+    ]);
+
+    const supplierMap = new Map<string, any>(suppliers.map((s): [string, any] => [s.id, s]));
+    const itemMap = new Map<string, any>(items.map((i): [string, any] => [i.id, i]));
+
+    const dispatches = rawDispatches.map((d) => ({
+      ...d,
+      supplier: supplierMap.get(d.supplierId) || null,
+      item: itemMap.get(d.itemId) || null,
+    }));
 
     return NextResponse.json({
       success: true,
       data: {
         ...record,
         deliveries,
+        cementLiftings,
         dispatches,
       },
     });

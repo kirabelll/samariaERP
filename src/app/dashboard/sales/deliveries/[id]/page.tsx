@@ -38,8 +38,32 @@ export default function DeliveryDetailPage() {
     }
   }, [recordId]);
 
+  const [deleting, setDeleting] = useState(false);
+
   const handleBack = () => {
     router.push(`/dashboard/sales/deliveries`);
+  };
+
+  const handleDelete = async () => {
+    if (!window.confirm(`Are you sure you want to delete delivery ${data?.deliveryNo}? This will also restore the inventory items to stock.`)) {
+      return;
+    }
+    setDeleting(true);
+    try {
+      const response = await fetch(`/api/sales/deliveries/${recordId}`, {
+        method: 'DELETE',
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Failed to delete delivery');
+      }
+      alert('Delivery deleted and stock restored successfully.');
+      router.push('/dashboard/sales/deliveries');
+    } catch (err: any) {
+      alert(err.message || 'Failed to delete delivery');
+    } finally {
+      setDeleting(false);
+    }
   };
 
   const parsedItems = React.useMemo(() => {
@@ -101,6 +125,15 @@ export default function DeliveryDetailPage() {
           </h1>
         </div>
         <div className="flex gap-2">
+          <Button
+            variant="outline"
+            size="md"
+            onClick={handleDelete}
+            isLoading={deleting}
+            className="border-red-300 text-red-600 hover:bg-red-50 hover:border-red-400 font-semibold"
+          >
+            Delete Delivery
+          </Button>
           <Button variant="outline" size="md" onClick={handleBack}>
             ← Back
           </Button>

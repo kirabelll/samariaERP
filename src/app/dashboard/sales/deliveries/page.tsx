@@ -24,12 +24,32 @@ export default function DeliveriesPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 10;
 
-  const { data, pagination, loading, error } = useApiList<Delivery>('/api/sales/deliveries', {
+  const { data, pagination, loading, error, refetch } = useApiList<Delivery>('/api/sales/deliveries', {
     page: currentPage,
     limit: pageSize,
     search: searchTerm,
     filters: { status: statusFilter },
   });
+
+  const handleDelete = async (delivery: Delivery) => {
+    if (!window.confirm(`Are you sure you want to delete delivery ${delivery.deliveryNo}? This will restore the inventory stock items.`)) {
+      return;
+    }
+    try {
+      const response = await fetch(`/api/sales/deliveries/${delivery.id}`, {
+        method: 'DELETE',
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Failed to delete delivery');
+      }
+      alert('Delivery deleted and stock restored successfully.');
+      if (refetch) refetch();
+      else window.location.reload();
+    } catch (err: any) {
+      alert(err.message || 'Failed to delete delivery');
+    }
+  };
 
   const columns: ColumnDef<Delivery>[] = [
     { header: 'Delivery No', accessor: 'deliveryNo', sortable: true },
@@ -58,10 +78,20 @@ export default function DeliveriesPage() {
     {
       header: 'Actions',
       accessor: 'id',
-      render: (id) => (
-        <Link href={`/dashboard/sales/deliveries/${id}`}>
-          <Button size="sm" variant="outline">View</Button>
-        </Link>
+      render: (id, row) => (
+        <div className="flex items-center gap-2">
+          <Link href={`/dashboard/sales/deliveries/${id}`}>
+            <Button size="sm" variant="outline">View</Button>
+          </Link>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => handleDelete(row)}
+            className="border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300"
+          >
+            Delete
+          </Button>
+        </div>
       ),
     },
   ];

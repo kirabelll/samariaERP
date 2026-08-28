@@ -153,13 +153,114 @@ export default function AggregateOperationsPage() {
     },
   ];
 
+  const [isExporting, setIsExporting] = useState(false);
+
+  const exportToExcel = async () => {
+    try {
+      setIsExporting(true);
+      const params = new URLSearchParams({
+        page: '1',
+        limit: '10000',
+      });
+      if (searchTerm) params.append('search', searchTerm);
+      if (statusFilter) params.append('status', statusFilter);
+      if (startDate) params.append('startDate', startDate);
+      if (endDate) params.append('endDate', endDate);
+
+      const res = await fetch(`/api/aggregate?${params.toString()}`);
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        throw new Error(json.error || 'Failed to fetch aggregate records');
+      }
+
+      const records: AggregateDelivery[] = json.data || [];
+      if (records.length === 0) {
+        alert('No aggregate records found to export.');
+        return;
+      }
+
+      const headers = [
+        'Dispatch No',
+        'Pad / Receipt No',
+        'Customer Name',
+        'Customer Code',
+        'Supplier Name',
+        'Supplier Code',
+        'Transporter',
+        'Truck Plate No',
+        'Loaded Volume (m3)',
+        'Delivered Volume (m3)',
+        'Shortage Volume (m3)',
+        'Transport Rate (ETB)',
+        'Aggregate Value (ETB)',
+        'Gross Truck Fee (ETB)',
+        'Shortage Deduction (ETB)',
+        'Net Truck Payment (ETB)',
+        'Dispatch Date',
+        'Delivery Date',
+        'Status',
+      ];
+
+      const rows = records.map((r) => [
+        `"${(r.dispatchNo || '').replace(/"/g, '""')}"`,
+        `"${(r.padNumber || '').replace(/"/g, '""')}"`,
+        `"${(r.customer?.companyName || '').replace(/"/g, '""')}"`,
+        `"${(r.customer?.code || '').replace(/"/g, '""')}"`,
+        `"${(r.supplier?.companyName || '').replace(/"/g, '""')}"`,
+        `"${(r.supplier?.code || '').replace(/"/g, '""')}"`,
+        `"${(r.transporter?.companyName || '').replace(/"/g, '""')}"`,
+        `"${(r.truck?.plateNo || '').replace(/"/g, '""')}"`,
+        r.loadedVolume != null ? r.loadedVolume : '',
+        r.deliveredVolume != null ? r.deliveredVolume : '',
+        r.shortageVolume != null ? r.shortageVolume : '',
+        r.transportRate != null ? r.transportRate : '',
+        r.aggregateValue != null ? r.aggregateValue : '',
+        r.grossTruckFee != null ? r.grossTruckFee : '',
+        r.shortageDeduction != null ? r.shortageDeduction : '',
+        r.netTruckPayment != null ? r.netTruckPayment : '',
+        r.dispatchDate ? new Date(r.dispatchDate).toLocaleDateString() : '',
+        r.deliveryDate ? new Date(r.deliveryDate).toLocaleDateString() : '',
+        `"${(r.status || '').replace(/"/g, '""')}"`,
+      ]);
+
+      const csvContent = '\uFEFF' + [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      const today = new Date().toISOString().split('T')[0];
+      link.setAttribute('href', url);
+      link.setAttribute('download', `Aggregate_Deliveries_${today}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (err: any) {
+      alert('Failed to export Excel: ' + (err.message || 'Unknown error'));
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   return (
     <div className="space-y-4 sm:space-y-6">
       <div className="flex flex-wrap gap-3 items-center justify-between">
-        <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900">Aggregate Operations</h1>
-        <Link href="/dashboard/aggregate/new">
-          <Button variant="primary" size="lg">+ New Delivery</Button>
-        </Link>
+        <div>
+          <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900">Aggregate Operations</h1>
+          <p className="text-sm text-gray-500 mt-1">Manage quarry dispatch tickets, deliveries, and transporter freight records.</p>
+        </div>
+        <div className="flex flex-wrap gap-2.5 items-center">
+          <Link href="/dashboard/aggregate/new">
+            <Button variant="primary" size="lg">+ New Delivery</Button>
+          </Link>
+          <button
+            onClick={exportToExcel}
+            disabled={isExporting || loading}
+            className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold flex items-center gap-2 text-sm shadow-sm transition-all disabled:opacity-50"
+          >
+            <span>📊</span>
+            <span>{isExporting ? 'Exporting Excel...' : 'Export Excel'}</span>
+          </button>
+        </div>
       </div>
 
       <Card>

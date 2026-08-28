@@ -181,28 +181,157 @@ function CementOperationsContent() {
   ];
 
   const activeData = activeTab === 'purchases' ? purchases : liftings;
+  const [isExporting, setIsExporting] = useState(false);
 
-  const exportToExcel = () => {
-    const today = new Date().toISOString().split('T')[0];
-    let csvContent = '';
-    if (activeTab === 'purchases') {
-      csvContent = 'Purchase No,Factory,Date,Quantity (tons),Total (ETB),Status\n';
-      (purchases.data as CementPurchase[]).forEach((row) => {
-        csvContent += `"${row.purchaseNo}","${row.factory?.name || '-'}","${row.createdAt ? new Date(row.createdAt).toLocaleDateString() : '-'}","${Number(row.quantityTons).toLocaleString('en-US')}","${Number(row.totalAmount).toLocaleString('en-US')}","${row.status}"\n`;
-      });
-    } else {
-      csvContent = 'Lifting No,Customer,Factory,Coupon,Date,Quantity (tons),Status\n';
-      (liftings.data as CementLifting[]).forEach((row) => {
-        csvContent += `"${row.liftingNo}","${row.customer?.companyName || '-'}","${row.factory?.name || '-'}","${row.coupon?.couponNo || '-'}","${row.liftingDate ? new Date(row.liftingDate).toLocaleDateString() : '-'}","${Number(row.factoryWeight).toLocaleString('en-US')}","${row.status}"\n`;
-      });
+  const exportToExcel = async () => {
+    try {
+      setIsExporting(true);
+      const today = new Date().toISOString().split('T')[0];
+      let csvContent = '';
+
+      if (activeTab === 'purchases') {
+        const params = new URLSearchParams({ page: '1', limit: '10000' });
+        if (searchTerm) params.append('search', searchTerm);
+        if (statusFilter) params.append('status', statusFilter);
+
+        const res = await fetch(`/api/cement/purchases?${params.toString()}`);
+        const json = await res.json();
+        const records: any[] = json.data || [];
+
+        if (records.length === 0) {
+          alert('No cement purchases found to export.');
+          return;
+        }
+
+        const headers = [
+          'Purchase No',
+          'Factory / Supplier',
+          'Factory Code',
+          'Cement Type',
+          'Quantity (Tons)',
+          'Unit Price (ETB)',
+          'Subtotal (ETB)',
+          'VAT Rate (%)',
+          'VAT Amount (ETB)',
+          'Total Amount (ETB)',
+          'Paid Amount (ETB)',
+          'Balance Remaining (ETB)',
+          'Payment Status',
+          'Payment Reference',
+          'Payment Date',
+          'Purchase Status',
+          'Created Date',
+          'Created By',
+        ];
+
+        const rows = records.map((r: any) => {
+          const subtotal = (Number(r.quantityTons) || 0) * (Number(r.unitPrice) || 0);
+          return [
+            `"${(r.purchaseNo || '').replace(/"/g, '""')}"`,
+            `"${(r.factory?.name || '').replace(/"/g, '""')}"`,
+            `"${(r.factory?.code || '').replace(/"/g, '""')}"`,
+            `"${(r.cementType || '').replace(/"/g, '""')}"`,
+            r.quantityTons != null ? r.quantityTons : '',
+            r.unitPrice != null ? r.unitPrice : '',
+            subtotal ? subtotal.toFixed(2) : (r.totalAmount != null ? r.totalAmount : ''),
+            r.vatRate != null ? r.vatRate : 15,
+            r.vatAmount != null ? r.vatAmount : '',
+            r.totalAmount != null ? r.totalAmount : '',
+            r.paidAmount != null ? r.paidAmount : '0',
+            r.balanceRemaining != null ? r.balanceRemaining : (Number(r.totalAmount || 0) - Number(r.paidAmount || 0)),
+            `"${(r.paymentStatus || 'Unpaid').replace(/"/g, '""')}"`,
+            `"${(r.paymentRef || '').replace(/"/g, '""')}"`,
+            r.paymentDate ? new Date(r.paymentDate).toLocaleDateString() : '',
+            `"${(r.status || '').replace(/"/g, '""')}"`,
+            r.createdAt ? new Date(r.createdAt).toLocaleDateString() : '',
+            `"${(r.createdBy || '').replace(/"/g, '""')}"`,
+          ];
+        });
+
+        csvContent = '\uFEFF' + [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
+      } else {
+        const params = new URLSearchParams({ page: '1', limit: '10000' });
+        if (searchTerm) params.append('search', searchTerm);
+        if (statusFilter) params.append('status', statusFilter);
+
+        const res = await fetch(`/api/cement/liftings?${params.toString()}`);
+        const json = await res.json();
+        const records: any[] = json.data || [];
+
+        if (records.length === 0) {
+          alert('No cement liftings found to export.');
+          return;
+        }
+
+        const headers = [
+          'Lifting No',
+          'Customer Name',
+          'Customer TIN',
+          'Customer Phone',
+          'Factory / Supplier',
+          'Purchase Reference',
+          'Coupon No',
+          'Delivery Note No',
+          'Factory Weighbridge Ref',
+          'Factory Weight (Tons)',
+          'Buyer / Site Weight (Tons)',
+          'Shortage Quantity (Tons)',
+          'Shortage Penalty (ETB)',
+          'Driver Name',
+          'Truck Plate No',
+          'Transporter / Association',
+          'Lifting Date',
+          'Status',
+          'Registered By',
+          'Created Date',
+        ];
+
+        const rows = records.map((r: any) => {
+          const couponNo = r.coupon?.couponNo || (r as any).couponNo || '';
+          const driver = r.driverName || r.truck?.driverName || '';
+          const plate = r.truckPlateNo || r.truck?.plateNo || '';
+          const association = r.truck?.association?.name || r.truck?.association || '';
+          return [
+            `"${(r.liftingNo || '').replace(/"/g, '""')}"`,
+            `"${(r.customer?.companyName || '').replace(/"/g, '""')}"`,
+            `"${(r.customer?.tin || '').replace(/"/g, '""')}"`,
+            `"${(r.customer?.phone || '').replace(/"/g, '""')}"`,
+            `"${(r.factory?.name || r.purchase?.factory?.name || '').replace(/"/g, '""')}"`,
+            `"${(r.purchase?.purchaseNo || '').replace(/"/g, '""')}"`,
+            `"${(couponNo || '').replace(/"/g, '""')}"`,
+            `"${(r.deliveryNoteNo || '').replace(/"/g, '""')}"`,
+            `"${(r.factoryWeighbridgeRef || '').replace(/"/g, '""')}"`,
+            r.factoryWeight != null ? r.factoryWeight : '',
+            r.buyerWeighbridgeQty != null ? r.buyerWeighbridgeQty : (r.siteWeight != null ? r.siteWeight : ''),
+            r.shortageQty != null ? r.shortageQty : (r.shortage != null ? r.shortage : ''),
+            r.shortagePenalty != null ? r.shortagePenalty : '',
+            `"${(driver || '').replace(/"/g, '""')}"`,
+            `"${(plate || '').replace(/"/g, '""')}"`,
+            `"${(association || '').replace(/"/g, '""')}"`,
+            r.liftingDate ? new Date(r.liftingDate).toLocaleDateString() : '',
+            `"${(r.status || '').replace(/"/g, '""')}"`,
+            `"${(r.registeredBy || '').replace(/"/g, '""')}"`,
+            r.createdAt ? new Date(r.createdAt).toLocaleDateString() : '',
+          ];
+        });
+
+        csvContent = '\uFEFF' + [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
+      }
+
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `Cement_${activeTab.toUpperCase()}_Full_Export_${today}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (err: any) {
+      alert('Failed to export Excel: ' + (err.message || 'Unknown error'));
+    } finally {
+      setIsExporting(false);
     }
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `cement-${activeTab}-${today}.csv`;
-    link.click();
-    URL.revokeObjectURL(url);
   };
 
   return (
@@ -216,8 +345,13 @@ function CementOperationsContent() {
           <Link href="/dashboard/cement/lifting/new">
             <Button variant="primary">+ New Lifting</Button>
           </Link>
-          <button onClick={exportToExcel} className="px-4 py-2 rounded-lg bg-green-600 text-white font-medium hover:bg-green-700 flex items-center gap-2 text-sm">
-            Export Excel
+          <button
+            onClick={exportToExcel}
+            disabled={isExporting || activeData.loading}
+            className="px-4 py-2 rounded-lg bg-green-600 text-white font-medium hover:bg-green-700 flex items-center gap-2 text-sm disabled:opacity-50 transition-all shadow-sm"
+          >
+            <span>📊</span>
+            <span>{isExporting ? 'Exporting Excel...' : 'Export Excel'}</span>
           </button>
         </div>
       </div>

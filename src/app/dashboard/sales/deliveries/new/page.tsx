@@ -11,6 +11,8 @@ interface DeliveryItem {
   itemName: string;
   quantity: number;
   unit: string;
+  batchNo?: string;
+  expiryDate?: string;
 }
 
 interface Customer {
@@ -27,6 +29,22 @@ interface Item {
   name: string;
   code: string;
   unit: string | { name: string };
+}
+
+interface MedicalBatch {
+  id: string;
+  itemId: string;
+  batchNo: string;
+  expiryDate: string;
+  quantity: number;
+  status: string;
+}
+
+interface RegisteredTruck {
+  id: string;
+  plateNo: string;
+  driverName?: string;
+  transporterName?: string;
 }
 
 interface SalesOrder {
@@ -56,26 +74,31 @@ const DIVISIONS = [
 export default function NewDeliveryPage() {
   const router = useRouter();
   const [division, setDivision] = useState('CONSTRUCTION');
+  const [isSelfTransport, setIsSelfTransport] = useState(false);
   const [customerId, setCustomerId] = useState('');
   const [salesOrderId, setSalesOrderId] = useState('');
+  const [selectedTruckId, setSelectedTruckId] = useState('');
   const [driverName, setDriverName] = useState('');
   const [truckPlateNo, setTruckPlateNo] = useState('');
   const [deliveryDate, setDeliveryDate] = useState(new Date().toISOString().split('T')[0]);
   const [items, setItems] = useState<DeliveryItem[]>([
-    { id: 1, itemId: '', itemName: '', quantity: 1, unit: 'pcs' },
+    { id: 1, itemId: '', itemName: '', quantity: 1, unit: 'pcs', batchNo: '', expiryDate: '' },
   ]);
 
   const [loading, setLoading] = useState(false);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [salesOrders, setSalesOrders] = useState<SalesOrder[]>([]);
   const [masterItems, setMasterItems] = useState<Item[]>([]);
+  const [medicalBatches, setMedicalBatches] = useState<MedicalBatch[]>([]);
+  const [registeredTrucks, setRegisteredTrucks] = useState<RegisteredTruck[]>([]);
   const [loadingCustomers, setLoadingCustomers] = useState(true);
   const [loadingOrders, setLoadingOrders] = useState(false);
   const [loadingItems, setLoadingItems] = useState(false);
+  const [loadingTrucks, setLoadingTrucks] = useState(false);
 
   const isMedical = division === 'MEDICAL';
 
-  // Fetch customers, sales orders, and items whenever division changes
+  // Fetch customers, sales orders, items, registered trucks, and batches
   useEffect(() => {
     let isCancelled = false;
 
@@ -83,20 +106,50 @@ export default function NewDeliveryPage() {
       setLoadingCustomers(true);
       setLoadingOrders(true);
       setLoadingItems(true);
+      setLoadingTrucks(true);
 
       // Reset selections on division change
       setCustomerId('');
       setSalesOrderId('');
-      setItems([{ id: 1, itemId: '', itemName: '', quantity: 1, unit: 'pcs' }]);
+      setSelectedTruckId('');
+      setItems([{ id: 1, itemId: '', itemName: '', quantity: 1, unit: 'pcs', batchNo: '', expiryDate: '' }]);
 
       try {
+        // Fetch registered transporters/trucks for company delivery
+        fetch('/api/transporters?limit=200')
+          .then((r) => r.json())
+          .then((tData) => {
+            if (!isCancelled && tData.success && Array.isArray(tData.data)) {
+              const allTrucks: RegisteredTruck[] = [];
+              tData.data.forEach((trans: any) => {
+                if (Array.isArray(trans.trucks)) {
+                  trans.trucks.forEach((trk: any) => {
+                    allTrucks.push({
+                      id: trk.id,
+                      plateNo: trk.plateNo,
+                      driverName: trk.driverName || trans.driverName || '',
+                      transporterName: trans.companyName,
+                    });
+                  });
+                }
+              });
+              setRegisteredTrucks(allTrucks);
+            }
+          })
+          .catch(() => {})
+          .finally(() => {
+            if (!isCancelled) setLoadingTrucks(false);
+          });
         // 1. Fetch Customers based on division
         if (division === 'MEDICAL') {
-          const res = await fetch('/api/customers?division=MEDICAL&limit=500');
-          const data = await res.json();
-          if (!isCancelled && data.success && Array.isArray(data.data)) {
+          const [custRes, batchRes] = await Promise.all([
+            fetch('/api/customers?division=MEDICAL&limit=500').then((r) => r.json()).catch(() => ({ success: false, data: [] })),
+            fetch('/api/medical/batches?limit=1000').then((r) => r.json()).catch(() => ({ success: false, data: [] })),
+          ]);
+
+          if (!isCancelled && custRes.success && Array.isArray(custRes.data)) {
             setCustomers(
-              data.data.map((c: any) => ({
+              custRes.data.map((c: any) => ({
                 customerId: c.id,
                 companyName: c.companyName || `${c.firstName || ''} ${c.lastName || ''}`.trim() || c.code,
                 phone: c.phone,
@@ -105,10 +158,15 @@ export default function NewDeliveryPage() {
               }))
             );
           }
+
+          if (!isCancelled && batchRes.success && Array.isArray(batchRes.data)) {
+            setMedicalBatches(batchRes.data);
+          }
         } else {
+          setMedicalBatches([]);
           const [agreementsRes, generalRes] = await Promise.all([
-            fetch(`/api/sales/agreements/customers${division ? `?division=${division}` : ''}`).then(r => r.json()).catch(() => ({ success: false, data: [] })),
-            fetch(`/api/customers${division ? `?division=${division}&limit=500` : '?limit=500'}`).then(r => r.json()).catch(() => ({ success: false, data: [] })),
+            fetch(`/api/sales/agreements/customers${division ? `?division=${division}` : ''}`).then((r) => r.json()).catch(() => ({ success: false, data: [] })),
+            fetch(`/api/customers${division ? `?division=${division}&limit=500` : '?limit=500'}`).then((r) => r.json()).catch(() => ({ success: false, data: [] })),
           ]);
 
           if (!isCancelled) {
@@ -174,25 +232,23 @@ export default function NewDeliveryPage() {
     };
   }, [division]);
 
-  // Filter available sales orders based on selected customer (if any is chosen)
+  // Filter available sales orders based on selected customer
   const availableSalesOrders = useMemo(() => {
     if (!customerId) return salesOrders;
     return salesOrders.filter((so) => so.customerId === customerId || so.customer?.id === customerId);
   }, [salesOrders, customerId]);
 
-  // Handle Sales Order selection and auto-populate items
+  // Handle Sales Order selection and auto-populate items (including batch & expiry)
   const handleSalesOrderChange = (soId: string) => {
     setSalesOrderId(soId);
     if (!soId) return;
 
     const selectedSO = salesOrders.find((so) => so.id === soId);
     if (selectedSO) {
-      // Auto-set customer if not set
       if (selectedSO.customerId && selectedSO.customerId !== customerId) {
         setCustomerId(selectedSO.customerId);
       }
 
-      // Auto-populate items from Sales Order
       let orderItems: any[] = [];
       try {
         orderItems = typeof selectedSO.items === 'string' ? JSON.parse(selectedSO.items) : selectedSO.items;
@@ -205,13 +261,31 @@ export default function NewDeliveryPage() {
           const itemMaster = masterItems.find(
             (mi) => mi.id === oi.itemId || mi.id === oi.id || mi.name?.toLowerCase() === (oi.name || oi.item || oi.itemName)?.toLowerCase()
           );
+          const itemId = itemMaster?.id || oi.itemId || oi.id || '';
           const unit = oi.unit || (typeof itemMaster?.unit === 'string' ? itemMaster.unit : (itemMaster?.unit as any)?.name) || 'pcs';
+
+          // Try to match active batch for medical items
+          let matchedBatchNo = oi.batchNo || oi.batch || '';
+          let matchedExpiryDate = oi.expiryDate || oi.expiry || '';
+
+          if (isMedical && !matchedBatchNo && itemId) {
+            const availableForThisItem = medicalBatches.filter(
+              (b) => b.itemId === itemId && (b.status === 'Available' || Number(b.quantity) > 0)
+            );
+            if (availableForThisItem.length > 0) {
+              matchedBatchNo = availableForThisItem[0].batchNo;
+              matchedExpiryDate = availableForThisItem[0].expiryDate ? availableForThisItem[0].expiryDate.split('T')[0] : '';
+            }
+          }
+
           return {
             id: idx + 1,
-            itemId: itemMaster?.id || oi.itemId || oi.id || '',
+            itemId: itemId,
             itemName: oi.name || oi.itemName || oi.item || itemMaster?.name || oi.description || 'Item ' + (idx + 1),
             quantity: Number(oi.qty || oi.quantity || 1),
             unit: unit,
+            batchNo: matchedBatchNo,
+            expiryDate: matchedExpiryDate ? matchedExpiryDate.split('T')[0] : '',
           };
         });
         setItems(mappedItems);
@@ -221,7 +295,7 @@ export default function NewDeliveryPage() {
 
   const handleAddItem = () => {
     const newId = Math.max(...items.map((i) => i.id), 0) + 1;
-    setItems([...items, { id: newId, itemId: '', itemName: '', quantity: 1, unit: 'pcs' }]);
+    setItems([...items, { id: newId, itemId: '', itemName: '', quantity: 1, unit: 'pcs', batchNo: '', expiryDate: '' }]);
   };
 
   const handleRemoveItem = (id: number) => {
@@ -235,18 +309,47 @@ export default function NewDeliveryPage() {
         if (item.id === id) {
           if (field === 'itemId') {
             const selectedItem = masterItems.find((i) => i.id === value);
-            const unit = typeof selectedItem?.unit === 'object' && selectedItem?.unit !== null
-              ? (selectedItem.unit as any).name
-              : typeof selectedItem?.unit === 'string'
-              ? selectedItem.unit
-              : item.unit;
+            const unit =
+              typeof selectedItem?.unit === 'object' && selectedItem?.unit !== null
+                ? (selectedItem.unit as any).name
+                : typeof selectedItem?.unit === 'string'
+                ? selectedItem.unit
+                : item.unit;
+
+            // Auto-detect batch for selected medical item
+            let autoBatchNo = item.batchNo || '';
+            let autoExpiryDate = item.expiryDate || '';
+
+            if (isMedical && value) {
+              const itemBatches = medicalBatches.filter(
+                (b) => b.itemId === value && (b.status === 'Available' || Number(b.quantity) > 0)
+              );
+              if (itemBatches.length > 0) {
+                autoBatchNo = itemBatches[0].batchNo;
+                autoExpiryDate = itemBatches[0].expiryDate ? itemBatches[0].expiryDate.split('T')[0] : '';
+              }
+            }
+
             return {
               ...item,
               itemId: value,
               itemName: selectedItem?.name || '',
               unit: unit || 'pcs',
+              batchNo: autoBatchNo,
+              expiryDate: autoExpiryDate,
             };
           }
+
+          if (field === 'batchNo') {
+            // When user picks a batch, automatically set expiry date if known
+            const matchedBatch = medicalBatches.find((b) => b.batchNo === value && b.itemId === item.itemId);
+            return {
+              ...item,
+              batchNo: value,
+              expiryDate: matchedBatch?.expiryDate ? matchedBatch.expiryDate.split('T')[0] : item.expiryDate,
+            };
+          }
+
           return { ...item, [field]: value };
         }
         return item;
@@ -264,10 +367,10 @@ export default function NewDeliveryPage() {
       return;
     }
 
-    // Driver & Truck plate are required only for Non-Medical divisions
-    if (!isMedical) {
+    // Driver & Truck plate validation: Required only when Transport Type is DELIVERY and division is NOT medical
+    if (!isSelfTransport && !isMedical) {
       if (!driverName.trim() || !truckPlateNo.trim()) {
-        alert('Please provide driver name and truck plate number for dispatch delivery.');
+        alert('Please provide driver name and truck plate number for company dispatched delivery.');
         return;
       }
     }
@@ -286,8 +389,16 @@ export default function NewDeliveryPage() {
           customerId,
           salesOrderId: salesOrderId || null,
           division,
-          driverName: isMedical ? null : driverName,
-          truckPlateNo: isMedical ? null : truckPlateNo,
+          driverName: isSelfTransport
+            ? 'Self-Transport (Customer Pickup)'
+            : isMedical
+            ? driverName || 'Direct Supply / Medical Store Issue'
+            : driverName,
+          truckPlateNo: isSelfTransport
+            ? 'Customer Vehicle / Pickup'
+            : isMedical
+            ? truckPlateNo || null
+            : truckPlateNo,
           deliveryDate,
           items: JSON.stringify(
             items.map((i) => ({
@@ -295,6 +406,8 @@ export default function NewDeliveryPage() {
               itemName: i.itemName,
               qty: i.quantity,
               unit: i.unit,
+              batchNo: i.batchNo || null,
+              expiryDate: i.expiryDate || null,
             }))
           ),
         }),
@@ -325,11 +438,13 @@ export default function NewDeliveryPage() {
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">New Sales Delivery</h1>
           <p className="text-sm text-gray-500 mt-1">
-            Dispatch items to customer by division with optional Sales Order linkage.
+            Dispatch items to customer by division with transport mode and batch/expiry tracking.
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={handleCancel}>Cancel</Button>
+          <Button variant="outline" onClick={handleCancel}>
+            Cancel
+          </Button>
           <Button variant="primary" onClick={handleSave} disabled={loading}>
             {loading ? 'Saving Delivery...' : 'Save & Dispatch Delivery'}
           </Button>
@@ -339,11 +454,24 @@ export default function NewDeliveryPage() {
       {/* Delivery Header Card */}
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-gray-900">1. Delivery Header & Sales Order Link</h2>
-            <span className="text-xs bg-blue-50 text-blue-700 px-2.5 py-1 rounded-full font-medium">
-              {isMedical ? '🏥 Medical Mode (No Driver/Truck required)' : '🚛 Logistics / Dispatch Mode'}
-            </span>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-lg font-semibold text-gray-900">1. Delivery Header & Transport Setup</h2>
+            <label className="inline-flex items-center gap-2.5 px-3.5 py-1.5 rounded-lg bg-gray-50 border border-gray-300 hover:bg-gray-100 cursor-pointer transition-colors select-none">
+              <input
+                type="checkbox"
+                checked={isSelfTransport}
+                onChange={(e) => {
+                  setIsSelfTransport(e.target.checked);
+                  if (e.target.checked) {
+                    setSelectedTruckId('');
+                  }
+                }}
+                className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 border-gray-300"
+              />
+              <span className="text-xs sm:text-sm font-semibold text-gray-800 flex items-center gap-1.5">
+                <span>🏢</span> Self-Transport (Customer Pickup)
+              </span>
+            </label>
           </div>
         </CardHeader>
         <CardBody className="space-y-6">
@@ -366,12 +494,12 @@ export default function NewDeliveryPage() {
               </select>
               <p className="text-xs text-gray-500 mt-1.5">
                 {isMedical
-                  ? 'Medical deliveries do not require driver/truck dispatch info.'
+                  ? 'Medical supply release with regulatory batch & expiry verification.'
                   : `Logistics delivery for ${division} division.`}
               </p>
             </div>
 
-            {/* Sales Order Selection (Fetched from Sales Orders) */}
+            {/* Sales Order Selection */}
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-2">
                 Sales Order Reference (Optional)
@@ -392,7 +520,7 @@ export default function NewDeliveryPage() {
                 ))}
               </select>
               <p className="text-xs text-blue-600 mt-1.5 font-medium">
-                💡 Selecting a Sales Order auto-loads customer and order items.
+                💡 Auto-loads customer, line items, and batch/expiry data.
               </p>
             </div>
 
@@ -441,38 +569,69 @@ export default function NewDeliveryPage() {
               </select>
             </div>
 
-            {/* If Non-Medical, show Driver Name and Truck Plate */}
-            {!isMedical ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* Transport Details Section */}
+            {isSelfTransport ? (
+              <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center gap-3">
+                <span className="text-2xl">🏢</span>
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Driver Name <span className="text-red-500">*</span>
-                  </label>
-                  <Input
-                    placeholder="e.g., Abebe Kebede"
-                    value={driverName}
-                    onChange={(e) => setDriverName(e.target.value)}
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Truck Plate No <span className="text-red-500">*</span>
-                  </label>
-                  <Input
-                    placeholder="e.g., 3-AA-12345"
-                    value={truckPlateNo}
-                    onChange={(e) => setTruckPlateNo(e.target.value)}
-                  />
+                  <h4 className="text-xs font-bold text-emerald-900">Self-Transport (Customer Pickup) Active</h4>
+                  <p className="text-[11px] text-emerald-700 mt-0.5">
+                    Customer is picking up directly from warehouse/plant. No company driver or truck registration required.
+                  </p>
                 </div>
               </div>
             ) : (
-              <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center gap-3">
-                <span className="text-2xl">🏥</span>
-                <div>
-                  <h4 className="text-xs font-bold text-emerald-900">Medical Direct Issue / Supply</h4>
-                  <p className="text-[11px] text-emerald-700 mt-0.5">
-                    Driver and Truck Plate fields are omitted for medical supply release.
-                  </p>
+              <div className="space-y-3">
+                {/* Registered Driver & Truck Dropdown Selector */}
+                {registeredTrucks.length > 0 && (
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1">
+                      🚚 Quick-Select Registered Driver & Truck (Optional)
+                    </label>
+                    <select
+                      value={selectedTruckId}
+                      onChange={(e) => {
+                        const trkId = e.target.value;
+                        setSelectedTruckId(trkId);
+                        const matched = registeredTrucks.find((t) => t.id === trkId);
+                        if (matched) {
+                          if (matched.driverName) setDriverName(matched.driverName);
+                          if (matched.plateNo) setTruckPlateNo(matched.plateNo);
+                        }
+                      }}
+                      className="block w-full rounded-lg border border-blue-200 bg-blue-50/50 shadow-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200 px-3 py-2 text-xs text-gray-900 font-medium"
+                    >
+                      <option value="">-- Choose from Registered Drivers & Trucks --</option>
+                      {registeredTrucks.map((trk) => (
+                        <option key={trk.id} value={trk.id}>
+                          {trk.driverName ? `${trk.driverName} — ` : ''}{trk.plateNo} ({trk.transporterName})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1">
+                      Driver Name {!isMedical && <span className="text-red-500">*</span>}
+                    </label>
+                    <Input
+                      placeholder="e.g., Abebe Kebede"
+                      value={driverName}
+                      onChange={(e) => setDriverName(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1">
+                      Truck Plate No {!isMedical && <span className="text-red-500">*</span>}
+                    </label>
+                    <Input
+                      placeholder="e.g., 3-AA-12345"
+                      value={truckPlateNo}
+                      onChange={(e) => setTruckPlateNo(e.target.value)}
+                    />
+                  </div>
                 </div>
               </div>
             )}
@@ -487,9 +646,9 @@ export default function NewDeliveryPage() {
             <div>
               <h2 className="text-lg font-semibold text-gray-900">2. Delivery Items</h2>
               <p className="text-xs text-gray-500 mt-0.5">
-                {masterItems.length > 0
-                  ? `Catalog filtered for ${division} division (${masterItems.length} products)`
-                  : 'Specify delivery items'}
+                {isMedical
+                  ? `Medical batch tracking active (${medicalBatches.length} batch records indexed)`
+                  : `Catalog filtered for ${division} division (${masterItems.length} items)`}
               </p>
             </div>
             <Button variant="secondary" size="sm" onClick={handleAddItem}>
@@ -502,80 +661,147 @@ export default function NewDeliveryPage() {
             <table className="w-full border-collapse">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-200 text-xs font-semibold text-gray-600 uppercase tracking-wider text-left">
-                  <th className="py-3 px-4 w-[50%]">Item Description</th>
-                  <th className="py-3 px-4 w-[20%]">Quantity</th>
-                  <th className="py-3 px-4 w-[20%]">Unit</th>
-                  <th className="py-3 px-4 w-[10%] text-center">Action</th>
+                  <th className="py-3 px-4 w-[35%]">Item Description</th>
+                  {isMedical && (
+                    <>
+                      <th className="py-3 px-3 w-[20%]">Batch Number</th>
+                      <th className="py-3 px-3 w-[15%]">Expiry Date</th>
+                    </>
+                  )}
+                  <th className="py-3 px-3 w-[15%]">Quantity</th>
+                  <th className="py-3 px-3 w-[10%]">Unit</th>
+                  <th className="py-3 px-3 w-[5%] text-center">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {items.map((item) => (
-                  <tr key={item.id} className="hover:bg-gray-50/50 transition-colors">
-                    <td className="py-3 px-4">
-                      {masterItems.length > 0 ? (
-                        <div className="space-y-1.5">
-                          <select
-                            value={item.itemId}
-                            onChange={(e) => handleItemChange(item.id, 'itemId', e.target.value)}
-                            disabled={loadingItems}
-                            className="w-full rounded-md border border-gray-300 shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 px-2.5 py-1.5 text-sm bg-white"
-                          >
-                            <option value="">-- Select from {division} catalog --</option>
-                            {masterItems.map((masterItem) => (
-                              <option key={masterItem.id} value={masterItem.id}>
-                                {masterItem.code ? `[${masterItem.code}] ` : ''}{masterItem.name}
-                              </option>
-                            ))}
-                          </select>
-                          {!item.itemId && (
+                {items.map((item) => {
+                  const availableItemBatches = medicalBatches.filter((b) => b.itemId === item.itemId);
+
+                  return (
+                    <tr key={item.id} className="hover:bg-gray-50/50 transition-colors">
+                      {/* Item Selector / Name */}
+                      <td className="py-3 px-4">
+                        {masterItems.length > 0 ? (
+                          <div className="space-y-1.5">
+                            <select
+                              value={item.itemId}
+                              onChange={(e) => handleItemChange(item.id, 'itemId', e.target.value)}
+                              disabled={loadingItems}
+                              className="w-full rounded-md border border-gray-300 shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 px-2.5 py-1.5 text-sm bg-white"
+                            >
+                              <option value="">-- Select from {division} catalog --</option>
+                              {masterItems.map((masterItem) => (
+                                <option key={masterItem.id} value={masterItem.id}>
+                                  {masterItem.code ? `[${masterItem.code}] ` : ''}{masterItem.name}
+                                </option>
+                              ))}
+                            </select>
+                            {!item.itemId && (
+                              <Input
+                                placeholder="Or type custom item name"
+                                value={item.itemName}
+                                onChange={(e) => handleItemChange(item.id, 'itemName', e.target.value)}
+                                className="text-xs"
+                              />
+                            )}
+                          </div>
+                        ) : (
+                          <Input
+                            placeholder="Enter item name"
+                            value={item.itemName}
+                            onChange={(e) => handleItemChange(item.id, 'itemName', e.target.value)}
+                          />
+                        )}
+                      </td>
+
+                      {/* Batch Number (Medical) */}
+                      {isMedical && (
+                        <td className="py-3 px-3">
+                          {availableItemBatches.length > 0 ? (
+                            <div className="space-y-1">
+                              <select
+                                value={item.batchNo || ''}
+                                onChange={(e) => handleItemChange(item.id, 'batchNo', e.target.value)}
+                                className="w-full rounded-md border border-gray-300 shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 px-2 py-1.5 text-xs bg-white font-mono"
+                              >
+                                <option value="">-- Select Batch --</option>
+                                {availableItemBatches.map((b) => (
+                                  <option key={b.id} value={b.batchNo}>
+                                    {b.batchNo} (Qty: {b.quantity}, Exp: {b.expiryDate ? b.expiryDate.split('T')[0] : 'N/A'})
+                                  </option>
+                                ))}
+                              </select>
+                              <Input
+                                placeholder="Or custom batch no"
+                                value={item.batchNo || ''}
+                                onChange={(e) => handleItemChange(item.id, 'batchNo', e.target.value)}
+                                className="text-xs font-mono"
+                              />
+                            </div>
+                          ) : (
                             <Input
-                              placeholder="Or type custom item name"
-                              value={item.itemName}
-                              onChange={(e) => handleItemChange(item.id, 'itemName', e.target.value)}
-                              className="text-xs"
+                              placeholder="Batch Number"
+                              value={item.batchNo || ''}
+                              onChange={(e) => handleItemChange(item.id, 'batchNo', e.target.value)}
+                              className="text-xs font-mono"
                             />
                           )}
-                        </div>
-                      ) : (
-                        <Input
-                          placeholder="Enter item name"
-                          value={item.itemName}
-                          onChange={(e) => handleItemChange(item.id, 'itemName', e.target.value)}
-                        />
+                        </td>
                       )}
-                    </td>
-                    <td className="py-3 px-4">
-                      <input
-                        type="number"
-                        min="0.01"
-                        step="any"
-                        value={item.quantity}
-                        onChange={(e) => handleItemChange(item.id, 'quantity', parseFloat(e.target.value) || 0)}
-                        className="w-full rounded-md border border-gray-300 shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 px-2.5 py-1.5 text-sm"
-                      />
-                    </td>
-                    <td className="py-3 px-4">
-                      <input
-                        type="text"
-                        placeholder="e.g. pcs, box, m3"
-                        value={item.unit}
-                        onChange={(e) => handleItemChange(item.id, 'unit', e.target.value)}
-                        className="w-full rounded-md border border-gray-300 shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 px-2.5 py-1.5 text-sm"
-                      />
-                    </td>
-                    <td className="py-3 px-4 text-center">
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveItem(item.id)}
-                        disabled={items.length <= 1}
-                        className="text-gray-400 hover:text-red-600 disabled:opacity-30 transition-colors p-1"
-                        title="Remove item"
-                      >
-                        ✕
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+
+                      {/* Expiry Date (Medical) */}
+                      {isMedical && (
+                        <td className="py-3 px-3">
+                          <input
+                            type="date"
+                            value={item.expiryDate || ''}
+                            onChange={(e) => handleItemChange(item.id, 'expiryDate', e.target.value)}
+                            className="w-full rounded-md border border-gray-300 shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 px-2 py-1.5 text-xs"
+                          />
+                          {item.expiryDate && new Date(item.expiryDate) < new Date() && (
+                            <span className="text-[10px] text-red-600 font-bold block mt-0.5">⚠️ Expired</span>
+                          )}
+                        </td>
+                      )}
+
+                      {/* Quantity */}
+                      <td className="py-3 px-3">
+                        <input
+                          type="number"
+                          min="0.01"
+                          step="any"
+                          value={item.quantity}
+                          onChange={(e) => handleItemChange(item.id, 'quantity', parseFloat(e.target.value) || 0)}
+                          className="w-full rounded-md border border-gray-300 shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 px-2.5 py-1.5 text-sm"
+                        />
+                      </td>
+
+                      {/* Unit */}
+                      <td className="py-3 px-3">
+                        <input
+                          type="text"
+                          placeholder="e.g. pcs, box"
+                          value={item.unit}
+                          onChange={(e) => handleItemChange(item.id, 'unit', e.target.value)}
+                          className="w-full rounded-md border border-gray-300 shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 px-2.5 py-1.5 text-sm"
+                        />
+                      </td>
+
+                      {/* Remove Line Action */}
+                      <td className="py-3 px-3 text-center">
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveItem(item.id)}
+                          disabled={items.length <= 1}
+                          className="text-gray-400 hover:text-red-600 disabled:opacity-30 transition-colors p-1"
+                          title="Remove item"
+                        >
+                          ✕
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

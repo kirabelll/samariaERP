@@ -88,13 +88,79 @@ export async function DELETE(
       );
     }
 
+    // If the delivery is being deleted/cancelled, restore stock
+    if (record.status !== 'Inactive' && record.status !== 'Cancelled') {
+      let parsedItems: any[] = [];
+      try {
+        parsedItems = typeof record.items === 'string' ? JSON.parse(record.items) : record.items;
+      } catch {
+        parsedItems = [];
+      }
+
+      const warehouse = record.division === 'MEDICAL' ? 'medical_store' : 'main';
+      for (const item of parsedItems) {
+        const qtyToRestore = Number(item.qty || item.quantity || 0);
+        if (qtyToRestore <= 0) continue;
+
+        let itemId = item.itemId;
+        if (!itemId && item.itemName) {
+          const matchedItem = await prisma.item.findFirst({
+            where: { name: { equals: item.itemName, mode: 'insensitive' } },
+          });
+          if (matchedItem) itemId = matchedItem.id;
+        }
+
+        if (itemId) {
+          try {
+            // Restore StockBalance
+            const existingStock = await prisma.stockBalance.findUnique({
+              where: {
+                itemId_warehouse: {
+                  itemId,
+                  warehouse,
+                },
+              },
+            });
+
+            if (existingStock) {
+              await prisma.stockBalance.update({
+                where: { id: existingStock.id },
+                data: {
+                  quantity: existingStock.quantity + qtyToRestore,
+                  lastUpdated: new Date(),
+                },
+              });
+            }
+
+            // Restore MedicalBatch
+            if (item.batchNo) {
+              const existingBatch = await prisma.medicalBatch.findFirst({
+                where: { itemId, batchNo: item.batchNo },
+              });
+              if (existingBatch) {
+                await prisma.medicalBatch.update({
+                  where: { id: existingBatch.id },
+                  data: {
+                    quantity: existingBatch.quantity + qtyToRestore,
+                    status: 'Available',
+                  },
+                });
+              }
+            }
+          } catch (e) {
+            console.error('Error restoring stock on delivery delete:', e);
+          }
+        }
+      }
+    }
+
     // Soft delete - set status to Inactive/Cancelled
     const deletedRecord = await prisma.delivery.update({
       where: { id: params.id },
       data: { status: 'Inactive' },
     });
 
-    return NextResponse.json({ success: true, message: 'Record deleted successfully', data: deletedRecord });
+    return NextResponse.json({ success: true, message: 'Record deleted and stock restored successfully', data: deletedRecord });
   } catch (error: any) {
     console.error('Error deleting record:', error);
     return NextResponse.json(

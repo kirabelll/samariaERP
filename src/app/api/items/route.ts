@@ -65,14 +65,38 @@ export async function GET(request: NextRequest) {
         where: whereClause,
         skip,
         take: limit,
+        include: {
+          stockBalances: true,
+          medicalBatches: {
+            where: { status: 'Available' },
+            select: { id: true, batchNo: true, quantity: true, expiryDate: true, status: true },
+          },
+        },
         orderBy: { createdAt: 'desc' },
       }),
       prisma.item.count({ where: whereClause }),
     ]);
 
+    const formattedData = data.map((item: any) => {
+      const totalStock = Array.isArray(item.stockBalances)
+        ? item.stockBalances.reduce((sum: number, sb: any) => sum + (Number(sb.quantity) || 0), 0)
+        : 0;
+
+      const batchStock = Array.isArray(item.medicalBatches)
+        ? item.medicalBatches.reduce((sum: number, mb: any) => sum + (Number(mb.quantity) || 0), 0)
+        : 0;
+
+      return {
+        ...item,
+        currentStock: item.division === 'MEDICAL' && batchStock > 0 ? batchStock : totalStock,
+        totalStock,
+        batchStock,
+      };
+    });
+
     return NextResponse.json({
       success: true,
-      data,
+      data: formattedData,
       pagination: {
         total,
         page,

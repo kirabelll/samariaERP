@@ -166,7 +166,7 @@ export const sidebarData: SidebarData = {
       title: 'Construction',
       items: [
         {
-          title: 'Aggregate Operations',
+          title: 'Aggregate',
           icon: IconBuildingSkyscraper,
           items: [
             {

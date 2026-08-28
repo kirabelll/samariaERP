@@ -181,40 +181,124 @@ export default function SalesOrderDetailPage() {
             </CardBody>
           </Card>
 
-          {/* Items */}
+          {/* Items Table */}
           {items.length > 0 && (
             <Card className="rounded-2xl">
               <CardBody className="p-6">
-                <h3 className="text-lg font-bold mb-4" style={{ color: '#1D1D1F' }}>Items</h3>
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr style={{ background: '#F5F5F7', borderBottom: '1px solid #E5E5EA' }}>
-                      <th className="px-4 py-2 text-left font-semibold">Item</th>
-                      <th className="px-4 py-2 text-right font-semibold">Qty</th>
-                      <th className="px-4 py-2 text-right font-semibold">Unit Price</th>
-                      <th className="px-4 py-2 text-right font-semibold">Total</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {items.map((item: any, idx: number) => (
-                      <tr key={idx} className="border-b" style={{ borderColor: '#E5E5EA' }}>
-                        <td className="px-4 py-2">{item.name || item.itemName || item.description || `Item ${idx + 1}`}</td>
-                        <td className="px-4 py-2 text-right">{item.quantity || item.qty || '-'}</td>
-                        <td className="px-4 py-2 text-right">{Number(item.unitPrice || item.price || 0).toLocaleString('en-US')}</td>
-                        <td className="px-4 py-2 text-right font-medium">
-                          {Number((item.quantity || item.qty || 0) * (item.unitPrice || item.price || 0)).toLocaleString('en-US')}
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-bold" style={{ color: '#1D1D1F' }}>Order Items</h3>
+                  <span className="text-xs text-gray-500 font-medium">{items.length} item{items.length !== 1 ? 's' : ''}</span>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr style={{ background: '#F5F5F7', borderBottom: '1px solid #E5E5EA' }}>
+                        <th className="px-4 py-2.5 text-left font-semibold text-gray-700">Item Name</th>
+                        <th className="px-4 py-2.5 text-center font-semibold text-gray-700">Unit</th>
+                        <th className="px-4 py-2.5 text-right font-semibold text-gray-700">Qty</th>
+                        <th className="px-4 py-2.5 text-right font-semibold text-gray-700">Unit Price (ETB)</th>
+                        <th className="px-4 py-2.5 text-right font-semibold text-gray-700">Total (ETB)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {items.map((item: any, idx: number) => {
+                        const itemName = item.name || item.itemName || item.item || item.description || `Item ${idx + 1}`;
+                        const itemCode = item.code || item.itemCode || '';
+                        const unit = item.unit || 'pcs';
+                        const qty = Number(item.qty || item.quantity || 0);
+                        const unitPrice = Number(item.unitPrice || item.price || 0);
+                        const lineTotal = Number(item.total || (qty * unitPrice));
+
+                        return (
+                          <tr key={idx} className="border-b hover:bg-gray-50/60 transition-colors" style={{ borderColor: '#E5E5EA' }}>
+                            <td className="px-4 py-3">
+                              <span className="font-semibold text-gray-900 block">{itemName}</span>
+                              {itemCode && (
+                                <span className="text-xs text-gray-400 font-mono block">Code: {itemCode}</span>
+                              )}
+                            </td>
+                            <td className="px-4 py-3 text-center text-gray-600 font-medium">{unit}</td>
+                            <td className="px-4 py-3 text-right font-medium text-gray-800">{qty.toLocaleString('en-US')}</td>
+                            <td className="px-4 py-3 text-right text-gray-700">
+                              {unitPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </td>
+                            <td className="px-4 py-3 text-right font-bold text-gray-900">
+                              {lineTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                    <tfoot>
+                      <tr className="bg-gray-50 font-bold border-t-2 border-gray-200">
+                        <td colSpan={4} className="px-4 py-3 text-right text-gray-700 uppercase text-xs tracking-wider">
+                          Total Amount:
+                        </td>
+                        <td className="px-4 py-3 text-right text-base text-gray-900">
+                          ETB {Number(data.totalAmount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </td>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </tfoot>
+                  </table>
+                </div>
               </CardBody>
             </Card>
           )}
         </div>
 
-        {/* Sidebar: Approval Status */}
+        {/* Sidebar: Approval Status & Customer Details */}
         <div className="space-y-6">
+          {/* Customer & License Info */}
+          {data.customer && (
+            <Card className="rounded-2xl">
+              <CardBody className="p-6">
+                <h3 className="text-lg font-bold mb-3" style={{ color: '#1D1D1F' }}>Customer Information</h3>
+                <div className="space-y-2.5 text-sm">
+                  <div>
+                    <span className="text-xs uppercase font-semibold text-gray-400 block">Company / Name</span>
+                    <span className="font-semibold text-gray-900">
+                      {data.customer.companyName || `${data.customer.firstName || ''} ${data.customer.lastName || ''}`.trim()}
+                    </span>
+                  </div>
+                  {data.customer.phone && (
+                    <div>
+                      <span className="text-xs uppercase font-semibold text-gray-400 block">Phone</span>
+                      <span className="text-gray-700">{data.customer.phone}</span>
+                    </div>
+                  )}
+                  {data.customer.tin && (
+                    <div>
+                      <span className="text-xs uppercase font-semibold text-gray-400 block">TIN</span>
+                      <span className="text-gray-700">{data.customer.tin}</span>
+                    </div>
+                  )}
+                  {data.customer.licenseNo && (
+                    <div className="pt-2 border-t border-gray-100">
+                      <span className="text-xs uppercase font-semibold text-blue-600 block">Medical License</span>
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <span className="font-medium text-gray-800">{data.customer.licenseNo}</span>
+                        {data.customer.licenseExpiry && (
+                          <span
+                            className={`text-xs px-2 py-0.5 rounded font-semibold ${
+                              new Date(data.customer.licenseExpiry) < new Date()
+                                ? 'bg-red-100 text-red-700'
+                                : 'bg-green-100 text-green-700'
+                            }`}
+                          >
+                            {new Date(data.customer.licenseExpiry) < new Date() ? 'Expired' : 'Valid'}
+                          </span>
+                        )}
+                      </div>
+                      {data.customer.licenseType && (
+                        <span className="text-xs text-gray-500 block mt-0.5">{data.customer.licenseType}</span>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </CardBody>
+            </Card>
+          )}
+
           <Card className="rounded-2xl">
             <CardBody className="p-6">
               <h3 className="text-lg font-bold mb-4" style={{ color: '#1D1D1F' }}>Approval Status</h3>

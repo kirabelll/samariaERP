@@ -14,9 +14,17 @@ export async function GET(
       include: {
         customer: {
           select: {
+            id: true,
+            code: true,
             companyName: true,
             firstName: true,
             lastName: true,
+            phone: true,
+            tin: true,
+            licenseNo: true,
+            licenseExpiry: true,
+            licenseType: true,
+            medicalApproved: true,
           },
         },
       },
@@ -27,6 +35,46 @@ export async function GET(
         { success: false, error: 'Record not found' },
         { status: 404 }
       );
+    }
+
+    // Parse items and enrich with database Item details if itemIds exist
+    let enrichedItems: any[] = [];
+    try {
+      const parsedItems = typeof record.items === 'string' ? JSON.parse(record.items) : (record.items || []);
+      if (Array.isArray(parsedItems)) {
+        const itemIds = parsedItems.map((i: any) => i.itemId || i.id).filter(Boolean);
+        const dbItems = itemIds.length > 0
+          ? await prisma.item.findMany({
+              where: { id: { in: itemIds } },
+              select: { id: true, name: true, code: true, unit: true },
+            })
+          : [];
+        const dbItemMap = new Map(dbItems.map((di) => [di.id, di]));
+
+        enrichedItems = parsedItems.map((item: any) => {
+          const targetId = item.itemId || item.id;
+          const dbItem = targetId ? dbItemMap.get(targetId) : null;
+          const name = item.name || item.itemName || item.item || item.description || dbItem?.name || 'Unnamed Item';
+          const code = item.code || item.itemCode || dbItem?.code || '';
+          const unit = item.unit || (typeof dbItem?.unit === 'string' ? dbItem.unit : (dbItem?.unit as any)?.name) || 'pcs';
+
+          return {
+            ...item,
+            name,
+            item: name,
+            itemName: name,
+            code,
+            itemCode: code,
+            unit,
+            qty: item.qty || item.quantity || 1,
+            quantity: item.qty || item.quantity || 1,
+            unitPrice: Number(item.unitPrice || item.price || 0),
+            total: Number(item.total || ((item.qty || item.quantity || 1) * (item.unitPrice || item.price || 0))),
+          };
+        });
+      }
+    } catch (e) {
+      console.warn('Could not parse/enrich order items:', e);
     }
 
     // Also fetch approval status
@@ -43,7 +91,12 @@ export async function GET(
       console.warn('Could not fetch approvals:', e);
     }
 
-    return NextResponse.json({ success: true, data: record, approvals });
+    const orderData = {
+      ...record,
+      items: enrichedItems.length > 0 ? enrichedItems : record.items,
+    };
+
+    return NextResponse.json({ success: true, data: orderData, approvals });
   } catch (error: any) {
     console.error('Error fetching record:', error);
     return NextResponse.json(

@@ -71,12 +71,17 @@ export async function POST(request: NextRequest) {
       phone,
       email,
       contactPerson,
+      location,
       division,
       status,
       creditLimit,
       creditTermDays,
       withholding,
       withholdRate,
+      licenseNo,
+      licenseExpiry,
+      licenseType,
+      medicalApproved,
     } = body;
 
     if (!customerType || !companyName || !phone) {
@@ -100,12 +105,17 @@ export async function POST(request: NextRequest) {
         phone,
         email: email || null,
         contactPerson: contactPerson || null,
+        location: location || null,
         division: division || 'CONSTRUCTION',
         status: status || 'Active',
         creditLimit: creditLimit || 0,
         creditTermDays: creditTermDays || 0,
         withholding: withholding || false,
         withholdRate: withholdRate || 2,
+        licenseNo: licenseNo || null,
+        licenseExpiry: licenseExpiry ? new Date(licenseExpiry) : null,
+        licenseType: licenseType || null,
+        medicalApproved: medicalApproved !== undefined ? Boolean(medicalApproved) : false,
       },
     });
 

@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { Card, CardHeader, CardBody, CardFooter, Button, Input, Select } from '@/components/ui';
+import { Card, CardHeader, CardBody, Button, Input, Badge } from '@/components/ui';
 
 interface OrderItem {
   id: number;
@@ -14,11 +14,19 @@ interface OrderItem {
   total: number;
 }
 
-interface Customer {
+interface CustomerOption {
   customerId: string;
   companyName: string;
-  agreementNo: string;
-  status?: string;
+  phone?: string;
+  tin?: string;
+  agreementNo?: string;
+  agreementId?: string;
+  division?: string;
+  licenseNo?: string;
+  licenseExpiry?: string;
+  licenseType?: string;
+  medicalApproved?: boolean;
+  licenseStatus?: 'Valid' | 'Expired' | 'N/A';
 }
 
 interface SystemItem {
@@ -26,100 +34,271 @@ interface SystemItem {
   name: string;
   code: string;
   unitPrice?: number;
-  unit?: { name: string };
+  unit?: string | { name: string };
+  category?: string;
+  division?: string;
 }
+
+const DIVISIONS = [
+  { value: 'CONSTRUCTION', label: 'Construction' },
+  { value: 'CEMENT', label: 'Cement' },
+  { value: 'AGGREGATE', label: 'Aggregate' },
+  { value: 'MEDICAL', label: 'Medical (Licensed)' },
+  { value: 'GENERAL', label: 'General' },
+];
 
 export default function NewSalesOrderPage() {
   const router = useRouter();
-  const [customer, setCustomer] = useState('');
-  const [division, setDivision] = useState('');
+  const [division, setDivision] = useState<string>('CONSTRUCTION');
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string>('');
   const [items, setItems] = useState<OrderItem[]>([
     { id: 1, item: '', itemId: '', qty: 1, unit: '', unitPrice: 0, total: 0 },
   ]);
 
-  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [customers, setCustomers] = useState<CustomerOption[]>([]);
   const [systemItems, setSystemItems] = useState<SystemItem[]>([]);
-  const [loadingCustomers, setLoadingCustomers] = useState(true);
+  const [loadingCustomers, setLoadingCustomers] = useState<boolean>(true);
+  const [loadingItems, setLoadingItems] = useState<boolean>(false);
+  const [submitting, setSubmitting] = useState<boolean>(false);
 
+  // Fetch customers and items whenever division changes
   useEffect(() => {
-    // Fetch customers with active sales agreements
-    fetch('/api/sales/agreements/customers')
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.success) {
-          setCustomers(data.data || []);
-        }
-      })
-      .catch(console.error)
-      .finally(() => setLoadingCustomers(false));
+    let isCancelled = false;
 
-    // Fetch items/products
-    fetch('/api/items?limit=500')
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.success) setSystemItems(data.data || []);
-      })
-      .catch(console.error);
-  }, []);
+    async function loadDivisionData() {
+      setLoadingCustomers(true);
+      setLoadingItems(true);
+      setSelectedCustomerId(''); // Reset customer selection on division switch
+
+      try {
+        if (division === 'MEDICAL') {
+          // Fetch licensed medical customers
+          const res = await fetch('/api/customers?division=MEDICAL&limit=500');
+          const data = await res.json();
+
+          if (!isCancelled && data.success && Array.isArray(data.data)) {
+            const medicalCustomers: CustomerOption[] = data.data.map((c: any) => {
+              const hasExpiry = Boolean(c.licenseExpiry);
+              const isExpired = hasExpiry ? new Date(c.licenseExpiry) < new Date() : false;
+              const licenseStatus: 'Valid' | 'Expired' | 'N/A' = !c.licenseNo
+                ? 'N/A'
+                : isExpired
+                ? 'Expired'
+                : 'Valid';
+
+              return {
+                customerId: c.id,
+                companyName: c.companyName || `${c.firstName || ''} ${c.lastName || ''}`.trim() || c.code,
+                phone: c.phone || '',
+                tin: c.tin || '',
+                division: c.division || 'MEDICAL',
+                licenseNo: c.licenseNo || '',
+                licenseExpiry: c.licenseExpiry || '',
+                licenseType: c.licenseType || 'Pharmacy / Healthcare',
+                medicalApproved: Boolean(c.medicalApproved),
+                licenseStatus,
+              };
+            });
+
+            setCustomers(medicalCustomers);
+          }
+        } else {
+          // For other divisions: Fetch agreement customers + general customers for that division
+          const agreementUrl = division
+            ? `/api/sales/agreements/customers?division=${division}`
+            : '/api/sales/agreements/customers';
+          const generalUrl = division
+            ? `/api/customers?division=${division}&limit=500`
+            : '/api/customers?limit=500';
+
+          const [agreementRes, generalRes] = await Promise.all([
+            fetch(agreementUrl).then((r) => r.json()).catch(() => ({ success: false, data: [] })),
+            fetch(generalUrl).then((r) => r.json()).catch(() => ({ success: false, data: [] })),
+          ]);
+
+          if (!isCancelled) {
+            const customerMap = new Map<string, CustomerOption>();
+
+            // Add agreement customers first
+            if (agreementRes.success && Array.isArray(agreementRes.data)) {
+              agreementRes.data.forEach((agr: any) => {
+                if (agr.customerId) {
+                  customerMap.set(agr.customerId, {
+                    customerId: agr.customerId,
+                    companyName: agr.companyName,
+                    phone: agr.phone,
+                    tin: agr.tin,
+                    agreementNo: agr.agreementNo,
+                    agreementId: agr.agreementId,
+                    division: agr.division,
+                    licenseNo: agr.licenseNo,
+                    licenseExpiry: agr.licenseExpiry,
+                    licenseType: agr.licenseType,
+                    medicalApproved: agr.medicalApproved,
+                  });
+                }
+              });
+            }
+
+            // Merge general customers for this division if not already added
+            if (generalRes.success && Array.isArray(generalRes.data)) {
+              generalRes.data.forEach((c: any) => {
+                if (!customerMap.has(c.id)) {
+                  customerMap.set(c.id, {
+                    customerId: c.id,
+                    companyName: c.companyName || `${c.firstName || ''} ${c.lastName || ''}`.trim() || c.code,
+                    phone: c.phone || '',
+                    tin: c.tin || '',
+                    division: c.division,
+                    licenseNo: c.licenseNo,
+                    licenseExpiry: c.licenseExpiry,
+                    licenseType: c.licenseType,
+                    medicalApproved: c.medicalApproved,
+                  });
+                }
+              });
+            }
+
+            setCustomers(Array.from(customerMap.values()));
+          }
+        }
+
+        // Fetch division-filtered items
+        const itemsUrl = division ? `/api/items?division=${division}&limit=500` : '/api/items?limit=500';
+        const itemsRes = await fetch(itemsUrl);
+        const itemsData = await itemsRes.json();
+        if (!isCancelled && itemsData.success) {
+          setSystemItems(itemsData.data || []);
+        }
+      } catch (err) {
+        console.error('Error fetching division data:', err);
+      } finally {
+        if (!isCancelled) {
+          setLoadingCustomers(false);
+          setLoadingItems(false);
+        }
+      }
+    }
+
+    loadDivisionData();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [division]);
+
+  // Find currently selected customer details
+  const selectedCustomer = useMemo(() => {
+    return customers.find((c) => c.customerId === selectedCustomerId) || null;
+  }, [customers, selectedCustomerId]);
 
   const handleAddItem = () => {
-    const newId = Math.max(...items.map(i => i.id), 0) + 1;
+    const newId = Math.max(...items.map((i) => i.id), 0) + 1;
     setItems([...items, { id: newId, item: '', itemId: '', qty: 1, unit: '', unitPrice: 0, total: 0 }]);
   };
 
   const handleRemoveItem = (id: number) => {
-    setItems(items.filter(i => i.id !== id));
+    if (items.length <= 1) return;
+    setItems(items.filter((i) => i.id !== id));
   };
 
   const handleItemChange = (id: number, field: string, value: any) => {
-    setItems(items.map(item => {
-      if (item.id === id) {
-        const updated = { ...item, [field]: value };
+    setItems(
+      items.map((item) => {
+        if (item.id === id) {
+          const updated = { ...item, [field]: value };
 
-        // If selecting from catalog, auto-fill price and unit
-        if (field === 'itemId' && value) {
-          const catalogItem = systemItems.find(si => si.id === value);
-          if (catalogItem) {
-            updated.item = catalogItem.name;
-            updated.unitPrice = catalogItem.unitPrice || 0;
-            updated.unit = catalogItem.unit?.name || '';
+          // If selecting from catalog, auto-fill price and unit
+          if (field === 'itemId' && value) {
+            const catalogItem = systemItems.find((si) => si.id === value);
+            if (catalogItem) {
+              updated.item = catalogItem.name;
+              updated.unitPrice = catalogItem.unitPrice || 0;
+              const unitName = typeof catalogItem.unit === 'object' && catalogItem.unit !== null
+                ? (catalogItem.unit as any).name
+                : typeof catalogItem.unit === 'string'
+                ? catalogItem.unit
+                : '';
+              updated.unit = unitName;
+            }
           }
-        }
 
-        if (field === 'qty' || field === 'unitPrice') {
-          updated.total = updated.qty * updated.unitPrice;
+          if (field === 'qty' || field === 'unitPrice') {
+            const qty = field === 'qty' ? Number(value) || 0 : item.qty;
+            const unitPrice = field === 'unitPrice' ? Number(value) || 0 : item.unitPrice;
+            updated.total = qty * unitPrice;
+          }
+          return updated;
         }
-        return updated;
-      }
-      return item;
-    }));
+        return item;
+      })
+    );
   };
 
   const totalAmount = items.reduce((sum, item) => sum + item.total, 0);
 
   const handleSave = async () => {
-    if (!customer || items.some(i => !i.item)) {
-      alert('Please fill in all required fields');
+    if (!selectedCustomerId) {
+      alert('Please select a customer.');
       return;
     }
+    if (items.some((i) => !i.item && !i.itemId)) {
+      alert('Please fill in all order items.');
+      return;
+    }
+
+    if (division === 'MEDICAL' && selectedCustomer?.licenseStatus === 'Expired') {
+      const confirmExpired = confirm(
+        'Warning: This customer\'s medical license is EXPIRED. Are you sure you want to proceed with this medical order?'
+      );
+      if (!confirmExpired) return;
+    }
+
+    const payloadItems = items.map((i) => {
+      const catalogItem = systemItems.find((si) => si.id === i.itemId);
+      const name = i.item || catalogItem?.name || 'Unnamed Item';
+      const code = catalogItem?.code || '';
+      const unit = i.unit || (typeof catalogItem?.unit === 'string' ? catalogItem.unit : (catalogItem?.unit as any)?.name) || '';
+      return {
+        id: i.id,
+        itemId: i.itemId || null,
+        name,
+        item: name,
+        itemName: name,
+        code,
+        itemCode: code,
+        unit,
+        qty: Number(i.qty) || 1,
+        quantity: Number(i.qty) || 1,
+        unitPrice: Number(i.unitPrice) || 0,
+        total: Number(i.total) || 0,
+      };
+    });
+
+    setSubmitting(true);
     try {
       const res = await fetch('/api/sales/orders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          customerId: customer,
-          items,
+          customerId: selectedCustomerId,
+          items: payloadItems,
           totalAmount,
           division: division || 'CONSTRUCTION',
           status: 'Pending',
         }),
       });
       const d = await res.json();
-      if (!d.success) { alert(d.error || 'Failed'); return; }
-      alert('Sales Order saved successfully!');
+      if (!d.success) {
+        alert(d.error || 'Failed to save sales order');
+        return;
+      }
+      alert('Sales Order created successfully!');
       router.push('/dashboard/sales/orders');
     } catch {
       alert('Failed to save sales order');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -128,132 +307,295 @@ export default function NewSalesOrderPage() {
   };
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-3xl font-bold text-gray-900">New Sales Order</h1>
+    <div className="space-y-6 max-w-7xl mx-auto p-4 sm:p-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Create Sales Order</h1>
+          <p className="text-sm text-gray-500 mt-1">
+            Generate and submit a sales order by division with verified customer licensing.
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={handleCancel}>Cancel</Button>
+          <Button variant="primary" onClick={handleSave} disabled={submitting}>
+            {submitting ? 'Saving Order...' : 'Save Order'}
+          </Button>
+        </div>
+      </div>
 
+      {/* Division & Customer Details */}
       <Card>
         <CardHeader>
-          <h2 className="text-xl font-semibold text-gray-900">Order Details</h2>
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-gray-900">1. Order Header & Customer Selection</h2>
+            <span className="text-xs bg-blue-50 text-blue-700 px-2.5 py-1 rounded-full font-medium">
+              Division-Specific Verification
+            </span>
+          </div>
         </CardHeader>
-        <CardBody className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <CardBody className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Division Selector */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Customer *</label>
-              <select
-                value={customer}
-                onChange={(e) => setCustomer(e.target.value)}
-                className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border px-3 py-2"
-              >
-                <option value="">{loadingCustomers ? 'Loading...' : 'Select Customer'}</option>
-                {customers.map((c) => (
-                  <option key={c.customerId} value={c.customerId}>{c.companyName} — {c.agreementNo}</option>
-                ))}
-              </select>
-              {customers.length === 0 && !loadingCustomers && (
-                <p className="text-xs text-red-500 mt-1">No customers with active sales agreements found</p>
-              )}
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Division</label>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                Business Division <span className="text-red-500">*</span>
+              </label>
               <select
                 value={division}
                 onChange={(e) => setDivision(e.target.value)}
-                className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border px-3 py-2"
+                className="block w-full rounded-lg border border-gray-300 shadow-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200 px-3.5 py-2.5 bg-white text-gray-900 font-medium"
               >
-                <option value="">Select Division</option>
-                <option value="CONSTRUCTION">Construction</option>
-                <option value="CEMENT">Cement</option>
-                <option value="AGGREGATE">Aggregate</option>
-                <option value="MEDICAL">Medical</option>
-                <option value="GENERAL">General</option>
+                {DIVISIONS.map((d) => (
+                  <option key={d.value} value={d.value}>
+                    {d.label}
+                  </option>
+                ))}
               </select>
+              <p className="text-xs text-gray-500 mt-1.5">
+                {division === 'MEDICAL'
+                  ? '🏥 Medical division fetches licensed healthcare providers and pharmaceutical customers.'
+                  : `📦 Fetching agreement and registered customers for ${division} division.`}
+              </p>
+            </div>
+
+            {/* Customer Selector */}
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                {division === 'MEDICAL' ? 'Licensed Medical Customer' : 'Customer'}{' '}
+                <span className="text-red-500">*</span>
+              </label>
+              <select
+                value={selectedCustomerId}
+                onChange={(e) => setSelectedCustomerId(e.target.value)}
+                disabled={loadingCustomers}
+                className="block w-full rounded-lg border border-gray-300 shadow-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200 px-3.5 py-2.5 bg-white text-gray-900 font-medium disabled:bg-gray-100"
+              >
+                <option value="">
+                  {loadingCustomers
+                    ? 'Loading customers...'
+                    : division === 'MEDICAL'
+                    ? '-- Select Licensed Medical Customer --'
+                    : '-- Select Customer --'}
+                </option>
+                {customers.map((c) => {
+                  let label = c.companyName;
+                  if (division === 'MEDICAL') {
+                    const lic = c.licenseNo ? `License: ${c.licenseNo}` : 'No License';
+                    const statusText = c.licenseStatus === 'Expired' ? '⚠️ EXPIRED' : c.licenseStatus === 'Valid' ? '✓ Valid' : '';
+                    label = `${c.companyName} [${lic}${statusText ? ` - ${statusText}` : ''}]`;
+                  } else if (c.agreementNo) {
+                    label = `${c.companyName} — Agreement #${c.agreementNo}`;
+                  }
+                  return (
+                    <option key={c.customerId} value={c.customerId}>
+                      {label}
+                    </option>
+                  );
+                })}
+              </select>
+
+              {customers.length === 0 && !loadingCustomers && (
+                <p className="text-xs text-amber-600 mt-1.5 font-medium">
+                  {division === 'MEDICAL'
+                    ? 'No licensed medical customers found in the system.'
+                    : `No customers found for ${division} division.`}
+                </p>
+              )}
             </div>
           </div>
+
+          {/* Selected Customer Details Banner */}
+          {selectedCustomer && (
+            <div className={`p-4 rounded-xl border transition-all ${
+              division === 'MEDICAL'
+                ? selectedCustomer.licenseStatus === 'Expired'
+                  ? 'bg-red-50 border-red-200'
+                  : 'bg-emerald-50 border-emerald-200'
+                : 'bg-slate-50 border-slate-200'
+            }`}>
+              <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-bold text-gray-900 text-base">{selectedCustomer.companyName}</h3>
+                    {division === 'MEDICAL' && (
+                      <span
+                        className={`text-xs px-2.5 py-0.5 rounded-full font-semibold ${
+                          selectedCustomer.licenseStatus === 'Valid'
+                            ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                            : selectedCustomer.licenseStatus === 'Expired'
+                            ? 'bg-red-100 text-red-800 border border-red-300'
+                            : 'bg-gray-100 text-gray-700'
+                        }`}
+                      >
+                        {selectedCustomer.licenseStatus === 'Valid' ? '✓ License Active' : '✕ License Expired'}
+                      </span>
+                    )}
+                    {selectedCustomer.agreementNo && (
+                      <span className="text-xs bg-blue-100 text-blue-800 border border-blue-200 px-2 py-0.5 rounded-md font-medium">
+                        Agrmt #{selectedCustomer.agreementNo}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs text-gray-600 mt-1.5">
+                    {selectedCustomer.phone && <span>📞 Phone: <strong>{selectedCustomer.phone}</strong></span>}
+                    {selectedCustomer.tin && <span>📄 TIN: <strong>{selectedCustomer.tin}</strong></span>}
+                    {selectedCustomer.licenseNo && <span>🏷️ License No: <strong>{selectedCustomer.licenseNo}</strong></span>}
+                    {selectedCustomer.licenseType && <span>🏥 Type: <strong>{selectedCustomer.licenseType}</strong></span>}
+                    {selectedCustomer.licenseExpiry && (
+                      <span className={selectedCustomer.licenseStatus === 'Expired' ? 'text-red-700 font-bold' : ''}>
+                        📅 Expiry: <strong>{new Date(selectedCustomer.licenseExpiry).toLocaleDateString()}</strong>
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {division === 'MEDICAL' && selectedCustomer.licenseStatus === 'Expired' && (
+                  <div className="text-xs bg-red-100 text-red-700 font-semibold px-3 py-1.5 rounded-lg border border-red-200">
+                    ⚠️ Expired Medical License
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </CardBody>
       </Card>
 
+      {/* Items Section */}
       <Card>
         <CardHeader>
           <div className="flex justify-between items-center">
-            <h2 className="text-xl font-semibold text-gray-900">Items</h2>
-            <Button variant="secondary" size="sm" onClick={handleAddItem}>+ Add Item</Button>
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900">2. Order Items</h2>
+              <p className="text-xs text-gray-500 mt-0.5">
+                {loadingItems ? 'Loading division catalog...' : `Catalog filtered by ${division} division (${systemItems.length} products available)`}
+              </p>
+            </div>
+            <Button variant="secondary" size="sm" onClick={handleAddItem}>
+              + Add Item
+            </Button>
           </div>
         </CardHeader>
-        <CardBody>
+        <CardBody className="p-0">
           <div className="overflow-x-auto">
-            <table className="w-full">
+            <table className="w-full border-collapse">
               <thead>
-                <tr className="border-b">
-                  <th className="text-left py-2 px-2 text-sm font-semibold text-gray-900">Item</th>
-                  <th className="text-left py-2 px-2 text-sm font-semibold text-gray-900">Qty</th>
-                  <th className="text-left py-2 px-2 text-sm font-semibold text-gray-900">Unit Price</th>
-                  <th className="text-left py-2 px-2 text-sm font-semibold text-gray-900">Total</th>
-                  <th className="text-left py-2 px-2 text-sm font-semibold text-gray-900">Action</th>
+                <tr className="bg-gray-50 border-b border-gray-200 text-xs font-semibold text-gray-600 uppercase tracking-wider text-left">
+                  <th className="py-3 px-4 w-[40%]">Item Description</th>
+                  <th className="py-3 px-4 w-[15%]">Qty</th>
+                  <th className="py-3 px-4 w-[15%]">Unit</th>
+                  <th className="py-3 px-4 w-[15%]">Unit Price (ETB)</th>
+                  <th className="py-3 px-4 w-[15%] text-right">Total (ETB)</th>
+                  <th className="py-3 px-4 w-[5%] text-center">Action</th>
                 </tr>
               </thead>
-              <tbody>
-                {items.map((item) => (
-                  <tr key={item.id} className="border-b">
-                    <td className="py-3 px-2">
+              <tbody className="divide-y divide-gray-100">
+                {items.map((item, idx) => (
+                  <tr key={item.id} className="hover:bg-gray-50/50 transition-colors">
+                    <td className="py-3 px-4">
                       {systemItems.length > 0 ? (
-                        <select
-                          value={item.itemId}
-                          onChange={(e) => handleItemChange(item.id, 'itemId', e.target.value)}
-                          className="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border px-2 py-1"
-                        >
-                          <option value="">Select or type below</option>
-                          {systemItems.map((si) => (
-                            <option key={si.id} value={si.id}>{si.code ? `${si.code} — ` : ''}{si.name}</option>
-                          ))}
-                        </select>
+                        <div className="space-y-1.5">
+                          <select
+                            value={item.itemId}
+                            onChange={(e) => handleItemChange(item.id, 'itemId', e.target.value)}
+                            className="w-full rounded-md border border-gray-300 shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 px-2.5 py-1.5 text-sm bg-white"
+                          >
+                            <option value="">-- Select from {division} catalog --</option>
+                            {systemItems.map((si) => (
+                              <option key={si.id} value={si.id}>
+                                {si.code ? `[${si.code}] ` : ''}{si.name}
+                              </option>
+                            ))}
+                          </select>
+                          {!item.itemId && (
+                            <Input
+                              placeholder="Or type custom item name"
+                              value={item.item}
+                              onChange={(e) => handleItemChange(item.id, 'item', e.target.value)}
+                              className="text-xs"
+                            />
+                          )}
+                        </div>
                       ) : (
                         <Input
-                          placeholder="Enter item name"
+                          placeholder="Enter item description"
                           value={item.item}
                           onChange={(e) => handleItemChange(item.id, 'item', e.target.value)}
                         />
                       )}
-                      {!item.itemId && systemItems.length > 0 && (
-                        <Input
-                          placeholder="Or type item name"
-                          value={item.item}
-                          onChange={(e) => handleItemChange(item.id, 'item', e.target.value)}
-                          className="mt-1"
-                        />
-                      )}
                     </td>
-                    <td className="py-3 px-2">
-                      <input type="number" min="1" value={item.qty}
-                        onChange={(e) => handleItemChange(item.id, 'qty', parseInt(e.target.value) || 0)}
-                        className="w-24 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border px-2 py-1" />
+                    <td className="py-3 px-4">
+                      <input
+                        type="number"
+                        min="1"
+                        value={item.qty}
+                        onChange={(e) => handleItemChange(item.id, 'qty', e.target.value)}
+                        className="w-full rounded-md border border-gray-300 shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 px-2.5 py-1.5 text-sm"
+                      />
                     </td>
-                    <td className="py-3 px-2">
-                      <input type="number" step="0.01" value={item.unitPrice}
-                        onChange={(e) => handleItemChange(item.id, 'unitPrice', parseFloat(e.target.value) || 0)}
-                        className="w-32 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border px-2 py-1" />
+                    <td className="py-3 px-4">
+                      <input
+                        type="text"
+                        placeholder="e.g. pcs, box, ton"
+                        value={item.unit}
+                        onChange={(e) => handleItemChange(item.id, 'unit', e.target.value)}
+                        className="w-full rounded-md border border-gray-300 shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 px-2.5 py-1.5 text-sm"
+                      />
                     </td>
-                    <td className="py-3 px-2 text-sm font-medium">ETB {item.total.toLocaleString('en-US')}</td>
-                    <td className="py-3 px-2">
-                      <Button variant="outline" size="sm" onClick={() => handleRemoveItem(item.id)}>Remove</Button>
+                    <td className="py-3 px-4">
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={item.unitPrice}
+                        onChange={(e) => handleItemChange(item.id, 'unitPrice', e.target.value)}
+                        className="w-full rounded-md border border-gray-300 shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 px-2.5 py-1.5 text-sm"
+                      />
+                    </td>
+                    <td className="py-3 px-4 text-right font-semibold text-gray-900 text-sm">
+                      ETB {item.total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </td>
+                    <td className="py-3 px-4 text-center">
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveItem(item.id)}
+                        disabled={items.length <= 1}
+                        className="text-gray-400 hover:text-red-600 disabled:opacity-30 transition-colors p-1"
+                        title="Remove item"
+                      >
+                        ✕
+                      </button>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-          <div className="mt-4 flex justify-end">
+
+          <div className="p-4 bg-gray-50 border-t border-gray-200 flex flex-col sm:flex-row justify-between items-center gap-4">
+            <Button variant="secondary" size="sm" onClick={handleAddItem}>
+              + Add Another Line
+            </Button>
             <div className="text-right">
-              <div className="text-sm text-gray-600 mb-2">Total Amount:</div>
-              <div className="text-3xl font-bold text-gray-900">ETB {totalAmount.toLocaleString('en-US')}</div>
+              <span className="text-xs text-gray-500 uppercase tracking-wider block font-semibold">Total Order Amount</span>
+              <span className="text-2xl font-black text-gray-900">
+                ETB {totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </span>
             </div>
           </div>
         </CardBody>
       </Card>
 
-      <div className="flex gap-3">
-        <Button variant="primary" size="lg" onClick={handleSave} className="flex-1">Save Order</Button>
-        <Button variant="outline" size="lg" onClick={handleCancel} className="flex-1">Cancel</Button>
+      {/* Action Footer */}
+      <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
+        <Button variant="outline" size="lg" onClick={handleCancel}>
+          Cancel
+        </Button>
+        <Button variant="primary" size="lg" onClick={handleSave} disabled={submitting}>
+          {submitting ? 'Submitting Order...' : 'Save & Submit Sales Order'}
+        </Button>
       </div>
     </div>
   );
 }
+

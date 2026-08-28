@@ -63,6 +63,10 @@ export async function PUT(
         creditTermDays: body.creditTermDays !== undefined ? body.creditTermDays : customer.creditTermDays,
         withholding: body.withholding !== undefined ? body.withholding : customer.withholding,
         withholdRate: body.withholdRate !== undefined ? body.withholdRate : customer.withholdRate,
+        licenseNo: body.licenseNo !== undefined ? body.licenseNo : customer.licenseNo,
+        licenseExpiry: body.licenseExpiry !== undefined ? (body.licenseExpiry ? new Date(body.licenseExpiry) : null) : customer.licenseExpiry,
+        licenseType: body.licenseType !== undefined ? body.licenseType : customer.licenseType,
+        medicalApproved: body.medicalApproved !== undefined ? Boolean(body.medicalApproved) : customer.medicalApproved,
       },
     });
 

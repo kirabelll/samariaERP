@@ -32,9 +32,27 @@ export async function GET(request: NextRequest) {
     const skip = (page - 1) * limit;
 
     const whereClause: any = {};
-    if (customerId) whereClause.customerId = customerId;
-    if (supplierId) whereClause.supplierId = supplierId;
-    if (transporterId) whereClause.transporterId = transporterId;
+    if (customerId) {
+      if (customerId.includes(',')) {
+        whereClause.customerId = { in: customerId.split(',').map((s) => s.trim()).filter(Boolean) };
+      } else {
+        whereClause.customerId = customerId;
+      }
+    }
+    if (supplierId) {
+      if (supplierId.includes(',')) {
+        whereClause.supplierId = { in: supplierId.split(',').map((s) => s.trim()).filter(Boolean) };
+      } else {
+        whereClause.supplierId = supplierId;
+      }
+    }
+    if (transporterId) {
+      if (transporterId.includes(',')) {
+        whereClause.transporterId = { in: transporterId.split(',').map((s) => s.trim()).filter(Boolean) };
+      } else {
+        whereClause.transporterId = transporterId;
+      }
+    }
 
     if (search) {
       whereClause.OR = [

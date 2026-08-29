@@ -31,6 +31,8 @@ interface SourceRefOption {
   transporterPayable?: number;
   driverName?: string;
   truckPlate?: string;
+  transporterId?: string;
+  transporterName?: string;
   supplierName?: string;
   paymentMethod?: string;
   bankName?: string;
@@ -448,13 +450,20 @@ export default function NewVoucherPage() {
             break;
           }
           case 'AGGREGATE': {
-            const aggParams = new URLSearchParams({ limit: '500' });
+            const aggParams = new URLSearchParams({ limit: '1000' });
             if (formData.payeeType === 'CUSTOMER' && formData.payeeId && formData.payeeId !== 'ONE_TIME_SUPPLIER') {
               aggParams.set('customerId', formData.payeeId);
             } else if (formData.payeeType === 'SUPPLIER' && formData.payeeId && formData.payeeId !== 'ONE_TIME_SUPPLIER') {
               aggParams.set('supplierId', formData.payeeId);
-            } else if (formData.payeeType === 'TRANSPORTER' && formData.payeeId && formData.payeeId !== 'ONE_TIME_SUPPLIER') {
-              aggParams.set('transporterId', formData.payeeId);
+            } else if (formData.payeeType === 'TRANSPORTER') {
+              if (transporterMode === 'single' && formData.payeeId && formData.payeeId !== 'ONE_TIME_SUPPLIER') {
+                aggParams.set('transporterId', formData.payeeId);
+              } else if (transporterMode === 'multi') {
+                const selectedTransporterIds = transporters.filter((t) => multiTransporters[t.id]?.selected).map((t) => t.id);
+                if (selectedTransporterIds.length > 0) {
+                  aggParams.set('transporterId', selectedTransporterIds.join(','));
+                }
+              }
             }
 
             const res = await fetch(`/api/aggregate?${aggParams.toString()}`);
@@ -479,7 +488,8 @@ export default function NewVoucherPage() {
                 }
 
                 const podStr = d.padNumber ? `POD: ${d.padNumber}` : 'POD: N/A';
-                const partyStr = d.customer?.companyName || d.supplier?.companyName || d.transporter?.companyName || '';
+                const transName = d.transporter?.companyName || d.transporter?.name || '';
+                const partyStr = transName || d.customer?.companyName || d.supplier?.companyName || '';
 
                 return {
                   id: d.id,
@@ -491,6 +501,10 @@ export default function NewVoucherPage() {
                   supplierPayable: Number(d.supplierPayable || 0),
                   transporterPayable: Number(d.transporterPayable || d.netTruckPayment || 0),
                   customerReceivable: Number(d.customerReceivable || 0),
+                  transporterId: d.transporterId,
+                  transporterName: transName,
+                  driverName: d.driverName,
+                  truckPlate: d.truck?.plateNo || d.truck?.plateNumber || d.plateNumber,
                 };
               });
             }
@@ -636,9 +650,14 @@ export default function NewVoucherPage() {
             break;
           }
           case 'TRANSPORTER': {
-            const transParams = new URLSearchParams({ limit: '500' });
-            if (formData.payeeId && formData.payeeId !== 'ONE_TIME_SUPPLIER') {
+            const transParams = new URLSearchParams({ limit: '1000' });
+            if (transporterMode === 'single' && formData.payeeId && formData.payeeId !== 'ONE_TIME_SUPPLIER') {
               transParams.set('transporterId', formData.payeeId);
+            } else if (transporterMode === 'multi') {
+              const selectedTransporterIds = transporters.filter((t) => multiTransporters[t.id]?.selected).map((t) => t.id);
+              if (selectedTransporterIds.length > 0) {
+                transParams.set('transporterId', selectedTransporterIds.join(','));
+              }
             }
             const res = await fetch(`/api/aggregate?${transParams.toString()}`);
             const data = await res.json();
@@ -649,21 +668,25 @@ export default function NewVoucherPage() {
               refs = eligible.map((d: any) => {
                 const amount = Number(d.transporterPayable || d.netTruckPayment || d.grossTruckFee || 0);
                 const podStr = d.padNumber ? `POD: ${d.padNumber}` : 'POD: N/A';
-                const driverInfo = d.driverName || d.plateNumber || d.truck?.plateNumber
-                  ? `Truck: ${d.driverName || ''} ${d.plateNumber || d.truck?.plateNumber || ''}`.trim()
+                const plate = d.truck?.plateNo || d.truck?.plateNumber || d.plateNumber || '';
+                const driverInfo = d.driverName || plate
+                  ? `Truck: ${d.driverName || ''} ${plate ? `(${plate})` : ''}`.trim()
                   : '';
-                const partyStr = d.transporter?.companyName || d.customer?.companyName || '';
+                const transName = d.transporter?.companyName || d.transporter?.name || '';
+                const partyStr = transName ? `Transporter: ${transName}` : (d.customer?.companyName || '');
 
                 return {
                   id: d.id,
                   dispatchNo: d.dispatchNo,
                   padNumber: d.padNumber || 'N/A',
-                  label: `${d.dispatchNo} — ${podStr}${driverInfo ? ` — ${driverInfo}` : ''}${partyStr ? ` (${partyStr})` : ''} — ETB ${amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}`,
+                  label: `${d.dispatchNo} — ${podStr}${driverInfo ? ` — ${driverInfo}` : ''}${partyStr ? ` — ${partyStr}` : ''} — ETB ${amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}`,
                   ref: d.dispatchNo,
                   amount: Math.round(amount * 100) / 100,
                   transporterPayable: amount,
+                  transporterId: d.transporterId,
+                  transporterName: transName,
                   driverName: d.driverName,
-                  truckPlate: d.plateNumber || d.truck?.plateNumber,
+                  truckPlate: plate,
                 };
               });
             }
@@ -685,7 +708,7 @@ export default function NewVoucherPage() {
     };
 
     fetchRefs();
-  }, [formData.sourceModule, formData.payeeId]);
+  }, [formData.sourceModule, formData.payeeId, formData.payeeType, transporterMode]);
 
   // When payee type changes, reset payee selection
   useEffect(() => {
@@ -848,6 +871,30 @@ export default function NewVoucherPage() {
       // Update form: comma-separated IDs, refs, and sum of amounts
       const selectedRefs = sourceRefs.filter((r) => next.has(r.id));
       const totalAmount = selectedRefs.reduce((sum, r) => sum + (r.amount || 0), 0);
+
+      // In Multi-Transporter mode, update individual transporter amounts based on selected dispatches
+      if (formData.payeeType === 'TRANSPORTER' && transporterMode === 'multi') {
+        const transSums: Record<string, number> = {};
+        selectedRefs.forEach((r) => {
+          if (r.transporterId) {
+            transSums[r.transporterId] = (transSums[r.transporterId] || 0) + (r.amount || 0);
+          }
+        });
+
+        if (selectedRefs.length > 0) {
+          setMultiTransporters((prevTrans) => {
+            const nextTrans = { ...prevTrans };
+            Object.keys(transSums).forEach((tId) => {
+              nextTrans[tId] = {
+                selected: true,
+                amount: String(Math.round(transSums[tId] * 100) / 100),
+              };
+            });
+            return nextTrans;
+          });
+        }
+      }
+
       setFormData((prev) => ({
         ...prev,
         sourceId: Array.from(next).join(','),
@@ -858,7 +905,7 @@ export default function NewVoucherPage() {
     });
   };
 
-  // Filter source refs (deliveries/trips) by search query (matching POD number, dispatch no, driver, truck, etc.)
+  // Filter source refs (deliveries/trips) by search query (matching POD number, dispatch no, transporter, driver, truck, etc.)
   const filteredSourceRefs = useMemo(() => {
     if (!deliverySearch.trim()) return sourceRefs;
     const rawQ = deliverySearch.toLowerCase().trim();
@@ -870,6 +917,7 @@ export default function NewVoucherPage() {
       const label = String(r.label || '').toLowerCase();
       const driver = String(r.driverName || '').toLowerCase();
       const plate = String(r.truckPlate || '').toLowerCase();
+      const transporter = String(r.transporterName || '').toLowerCase();
 
       return (
         pod.includes(rawQ) ||
@@ -877,7 +925,8 @@ export default function NewVoucherPage() {
         dispatchNo.includes(rawQ) ||
         label.includes(rawQ) ||
         driver.includes(rawQ) ||
-        plate.includes(rawQ)
+        plate.includes(rawQ) ||
+        transporter.includes(rawQ)
       );
     });
   }, [sourceRefs, deliverySearch]);
@@ -898,6 +947,30 @@ export default function NewVoucherPage() {
       }
       const selectedRefs = sourceRefs.filter((r) => next.has(r.id));
       const totalAmount = selectedRefs.reduce((sum, r) => sum + (r.amount || 0), 0);
+
+      // In Multi-Transporter mode, update individual transporter amounts
+      if (formData.payeeType === 'TRANSPORTER' && transporterMode === 'multi') {
+        const transSums: Record<string, number> = {};
+        selectedRefs.forEach((r) => {
+          if (r.transporterId) {
+            transSums[r.transporterId] = (transSums[r.transporterId] || 0) + (r.amount || 0);
+          }
+        });
+
+        if (selectedRefs.length > 0) {
+          setMultiTransporters((prevTrans) => {
+            const nextTrans = { ...prevTrans };
+            Object.keys(transSums).forEach((tId) => {
+              nextTrans[tId] = {
+                selected: true,
+                amount: String(Math.round(transSums[tId] * 100) / 100),
+              };
+            });
+            return nextTrans;
+          });
+        }
+      }
+
       setFormData((f) => ({
         ...f,
         sourceId: Array.from(next).join(','),
@@ -1413,6 +1486,11 @@ export default function NewVoucherPage() {
                                   {ref.padNumber && ref.padNumber !== 'N/A' && (
                                     <span className="px-2 py-0.5 bg-blue-50 text-blue-700 text-xs font-semibold rounded-md border border-blue-200">
                                       POD: {ref.padNumber}
+                                    </span>
+                                  )}
+                                  {ref.transporterName && (
+                                    <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 text-xs font-semibold rounded-md border border-indigo-200">
+                                      🏢 {ref.transporterName}
                                     </span>
                                   )}
                                   {(ref.driverName || ref.truckPlate) && (

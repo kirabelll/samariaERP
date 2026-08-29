@@ -22,6 +22,11 @@ interface AggregateDelivery {
   shortageVolume: number | null;
   transportRate: number;
   aggregateValue: number;
+  customerPrice?: number | null;
+  supplierPrice?: number | null;
+  customerReceivable?: number | null;
+  supplierPayable?: number | null;
+  netMaterialAmount?: number | null;
   grossTruckFee: number | null;
   shortageDeduction: number | null;
   netTruckPayment: number | null;
@@ -193,6 +198,9 @@ export default function AggregateOperationsPage() {
         'Shortage Volume (m3)',
         'Transport Rate (ETB)',
         'Aggregate Value (ETB)',
+        'Customer Receivable (ETB)',
+        'Supplier Payable (ETB)',
+        'Net Material Amount (ETB)',
         'Gross Truck Fee (ETB)',
         'Shortage Deduction (ETB)',
         'Net Truck Payment (ETB)',
@@ -201,27 +209,40 @@ export default function AggregateOperationsPage() {
         'Status',
       ];
 
-      const rows = records.map((r) => [
-        `"${(r.dispatchNo || '').replace(/"/g, '""')}"`,
-        `"${(r.padNumber || '').replace(/"/g, '""')}"`,
-        `"${(r.customer?.companyName || '').replace(/"/g, '""')}"`,
-        `"${(r.customer?.code || '').replace(/"/g, '""')}"`,
-        `"${(r.supplier?.companyName || '').replace(/"/g, '""')}"`,
-        `"${(r.supplier?.code || '').replace(/"/g, '""')}"`,
-        `"${(r.transporter?.companyName || '').replace(/"/g, '""')}"`,
-        `"${(r.truck?.plateNo || '').replace(/"/g, '""')}"`,
-        r.loadedVolume != null ? r.loadedVolume : '',
-        r.deliveredVolume != null ? r.deliveredVolume : '',
-        r.shortageVolume != null ? r.shortageVolume : '',
-        r.transportRate != null ? r.transportRate : '',
-        r.aggregateValue != null ? r.aggregateValue : '',
-        r.grossTruckFee != null ? r.grossTruckFee : '',
-        r.shortageDeduction != null ? r.shortageDeduction : '',
-        r.netTruckPayment != null ? r.netTruckPayment : '',
-        r.dispatchDate ? new Date(r.dispatchDate).toLocaleDateString() : '',
-        r.deliveryDate ? new Date(r.deliveryDate).toLocaleDateString() : '',
-        `"${(r.status || '').replace(/"/g, '""')}"`,
-      ]);
+      const rows = records.map((r) => {
+        const custPrice = r.customerPrice ?? (r.aggregateValue ? r.aggregateValue * 1.15 : 0);
+        const suppPrice = r.supplierPrice ?? Number(r.aggregateValue || 0);
+        const loadedVol = Number(r.loadedVolume || 0);
+        const deliveredVol = Number(r.deliveredVolume ?? r.loadedVolume ?? 0);
+        const custReceivable = r.customerReceivable != null ? r.customerReceivable : (loadedVol * custPrice);
+        const suppPayable = r.supplierPayable != null ? r.supplierPayable : (deliveredVol * suppPrice);
+        const netMatAmount = r.netMaterialAmount != null ? r.netMaterialAmount : (custReceivable - suppPayable);
+
+        return [
+          `"${(r.dispatchNo || '').replace(/"/g, '""')}"`,
+          `"${(r.padNumber || '').replace(/"/g, '""')}"`,
+          `"${(r.customer?.companyName || '').replace(/"/g, '""')}"`,
+          `"${(r.customer?.code || '').replace(/"/g, '""')}"`,
+          `"${(r.supplier?.companyName || '').replace(/"/g, '""')}"`,
+          `"${(r.supplier?.code || '').replace(/"/g, '""')}"`,
+          `"${(r.transporter?.companyName || '').replace(/"/g, '""')}"`,
+          `"${(r.truck?.plateNo || '').replace(/"/g, '""')}"`,
+          r.loadedVolume != null ? r.loadedVolume : '',
+          r.deliveredVolume != null ? r.deliveredVolume : '',
+          r.shortageVolume != null ? r.shortageVolume : '',
+          r.transportRate != null ? r.transportRate : '',
+          r.aggregateValue != null ? r.aggregateValue : '',
+          custReceivable != null ? Number(custReceivable.toFixed(2)) : '',
+          suppPayable != null ? Number(suppPayable.toFixed(2)) : '',
+          netMatAmount != null ? Number(netMatAmount.toFixed(2)) : '',
+          r.grossTruckFee != null ? r.grossTruckFee : '',
+          r.shortageDeduction != null ? r.shortageDeduction : '',
+          r.netTruckPayment != null ? r.netTruckPayment : '',
+          r.dispatchDate ? new Date(r.dispatchDate).toLocaleDateString() : '',
+          r.deliveryDate ? new Date(r.deliveryDate).toLocaleDateString() : '',
+          `"${(r.status || '').replace(/"/g, '""')}"`,
+        ];
+      });
 
       const csvContent = '\uFEFF' + [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
       const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });

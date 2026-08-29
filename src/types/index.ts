@@ -400,6 +400,11 @@ export interface AggregateDelivery {
   shortageVolume?: number;
   transportRate: number;
   aggregateValue: number;
+  customerPrice?: number;
+  supplierPrice?: number;
+  customerReceivable?: number;
+  supplierPayable?: number;
+  netMaterialAmount?: number;
   grossTruckFee?: number;
   shortageDeduction?: number;
   netTruckPayment?: number;

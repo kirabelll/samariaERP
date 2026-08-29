@@ -100,7 +100,7 @@ export async function GET(request: NextRequest) {
             if (targetId) {
               const priceKey = `${agr.customerId}_${targetId}`;
               if (!customerPriceMap.has(priceKey)) {
-                const unitPrice = Number(item.unitPrice || item.pricePerUnit || 0);
+                const unitPrice = Number(item.unitPrice || item.pricePerUnit || item.amount || item.totalAmount || 0);
                 if (unitPrice > 0) {
                   customerPriceMap.set(priceKey, item.vatIncluded ? unitPrice : unitPrice * 1.15);
                 }
@@ -122,7 +122,7 @@ export async function GET(request: NextRequest) {
             if (targetId) {
               const priceKey = `${agr.supplierId}_${targetId}`;
               if (!supplierPriceMap.has(priceKey)) {
-                const price = Number(item.amount ?? item.totalAmount ?? item.unitPrice ?? 0);
+                const price = Number(item.amount ?? item.totalAmount ?? item.unitPrice ?? item.pricePerUnit ?? 0);
                 if (price > 0) {
                   supplierPriceMap.set(priceKey, price);
                 }
@@ -134,20 +134,22 @@ export async function GET(request: NextRequest) {
     }
 
     const data = records.map((r: any) => {
-      const vol = Number(r.deliveredVolume || r.loadedVolume || 0);
+      const loadedVol = Number(r.loadedVolume || 0);
+      const deliveredVol = Number(r.deliveredVolume ?? r.loadedVolume ?? 0);
 
       // Customer pricing
       const custPriceKey = `${r.customerId}_${r.itemId}`;
       const customerPrice = customerPriceMap.get(custPriceKey) || (r.aggregateValue ? r.aggregateValue * 1.15 : 0);
-      const customerReceivable = vol * customerPrice;
+      const customerReceivable = loadedVol * customerPrice;
 
       // Supplier pricing (Aggregate material supplier)
       const suppPriceKey = `${r.supplierId}_${r.itemId}`;
       const supplierPrice = supplierPriceMap.get(suppPriceKey) || Number(r.aggregateValue || 0);
-      const supplierPayable = vol * supplierPrice;
+      const supplierPayable = deliveredVol * supplierPrice;
 
       // Transporter pricing (Freight delivery cost)
       const transporterPayable = Number(r.netTruckPayment || r.grossTruckFee || 0);
+      const netMaterialAmount = customerReceivable - supplierPayable;
 
       return {
         ...r,
@@ -157,6 +159,7 @@ export async function GET(request: NextRequest) {
         supplierPrice,
         customerReceivable: Math.round(customerReceivable * 100) / 100,
         supplierPayable: Math.round(supplierPayable * 100) / 100,
+        netMaterialAmount: Math.round(netMaterialAmount * 100) / 100,
         transporterPayable: Math.round(transporterPayable * 100) / 100,
       };
     });

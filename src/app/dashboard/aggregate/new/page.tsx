@@ -141,8 +141,10 @@ export default function NewAggregateDispatch() {
   const [trucks, setTrucks] = useState<Truck[]>([]);
   const [items, setItems] = useState<Item[]>([]);
   const [filteredItems, setFilteredItems] = useState<Item[]>([]);
-  // Map: "supplierId_itemId" → aggregate value (unitPrice) from supplier agreements
+  // Supplier item prices map: "agreementId_itemId" → unitPrice
   const [supplierItemPrices, setSupplierItemPrices] = useState<Map<string, number>>(new Map());
+  // Customer item prices map: "agreementId_itemId" or "customerId_itemId" → unitPrice
+  const [customerItemPrices, setCustomerItemPrices] = useState<Map<string, number>>(new Map());
   // Map: customerId → Set of itemIds from their AGGREGATE agreements
   const [customerAgreementItems, setCustomerAgreementItems] = useState<Map<string, Set<string>>>(new Map());
   // Map: supplierId → Set of itemIds from their AGGREGATE supplier agreements
@@ -318,9 +320,10 @@ Check console for detailed breakdown.`);
           setSupplierItemPrices(priceMap);
           setSupplierAgreementItems(suppItemsMap);
 
-          // Also extract items from AGGREGATE customer agreements (e.g. "Aggregate 01")
+          // Also extract items and unit prices from AGGREGATE customer agreements
           // And build customerId → Set<itemId> map to filter items per customer
           const custItemsMap = new Map<string, Set<string>>();
+          const custPricesMap = new Map<string, number>();
           if (custAgreementsRes.ok) {
             const custAgrData = await custAgreementsRes.json();
             (custAgrData.data || []).forEach((agr: any) => {
@@ -335,6 +338,12 @@ Check console for detailed breakdown.`);
                       custItemsMap.set(custId, new Set());
                     }
                     custItemsMap.get(custId)!.add(targetItemId);
+
+                    const price = Number(ai.unitPrice ?? ai.pricePerUnit ?? ai.amount ?? ai.totalAmount ?? 0);
+                    if (price > 0) {
+                      if (agr.id) custPricesMap.set(`${agr.id}_${targetItemId}`, price);
+                      if (custId) custPricesMap.set(`${custId}_${targetItemId}`, price);
+                    }
 
                     const dbItem = dbItemMap.get(targetItemId);
                     if (dbItem && (!itemMap.has(targetItemId) || itemMap.get(targetItemId)?.name === 'Unknown')) {
@@ -352,6 +361,7 @@ Check console for detailed breakdown.`);
             });
           }
           setCustomerAgreementItems(custItemsMap);
+          setCustomerItemPrices(custPricesMap);
           setItems(Array.from(itemMap.values()));
         }
         if (agreementsRes.ok) {
@@ -459,15 +469,31 @@ Check console for detailed breakdown.`);
     console.log('Selected supplier agreement ID:', formData.selectedSupplierAgreementId);
     console.log('Available supplier item prices:', Object.fromEntries(supplierItemPrices));
 
-    // 1. Try transporter agreement items first (has both transportRate + aggregateValue)
-    // 1. Fetch aggregateValue from Supplier Agreement first
-    const suppPriceKey = `${formData.selectedSupplierAgreementId}_${value}`;
-    console.log('Looking for supplier price key:', suppPriceKey);
-    if (supplierItemPrices.has(suppPriceKey)) {
-      newAggregateValue = supplierItemPrices.get(suppPriceKey)!.toString();
-      console.log('Found aggregate value from supplier agreement:', newAggregateValue);
+    // 1. Fetch aggregateValue from Customer Agreement first
+    let custPrice: number | undefined = undefined;
+    if (formData.selectedCustomerAgreementId) {
+      const custPriceKey = `${formData.selectedCustomerAgreementId}_${value}`;
+      if (customerItemPrices.has(custPriceKey)) {
+        custPrice = customerItemPrices.get(custPriceKey);
+      }
+    }
+    if (custPrice === undefined && formData.customerId) {
+      const custPriceKey = `${formData.customerId}_${value}`;
+      if (customerItemPrices.has(custPriceKey)) {
+        custPrice = customerItemPrices.get(custPriceKey);
+      }
+    }
+
+    if (custPrice !== undefined) {
+      newAggregateValue = custPrice.toString();
+      console.log('Found aggregate value from customer agreement:', newAggregateValue);
     } else {
-      console.log('No aggregate value found for key in supplier agreements:', suppPriceKey);
+      // Fallback: Try supplier agreement
+      const suppPriceKey = `${formData.selectedSupplierAgreementId}_${value}`;
+      if (supplierItemPrices.has(suppPriceKey)) {
+        newAggregateValue = supplierItemPrices.get(suppPriceKey)!.toString();
+        console.log('Found aggregate value from supplier agreement fallback:', newAggregateValue);
+      }
     }
 
     // 2. Fetch transportRate (and aggregateValue fallback if needed) from transporter agreement items
@@ -1069,24 +1095,25 @@ Check console for detailed breakdown.`);
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Aggregate Value (ETB/m³) *</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-sm font-medium text-gray-700">Aggregate Value (ETB/m³) *</label>
+                  {formData.aggregateValue && (
+                    <span className="text-[11px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 font-medium">
+                      ✓ Customer Agreement Rate
+                    </span>
+                  )}
+                </div>
                 <input
                   type="number"
                   name="aggregateValue"
                   value={formData.aggregateValue}
-                  readOnly
-                  placeholder="Select supplier and item to auto-fill"
+                  onChange={handleInputChange}
+                  placeholder="Select customer agreement and item to auto-fill"
                   step="0.01"
                   required
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-slate-50 text-slate-700 cursor-not-allowed"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 />
-                <p className="text-xs text-slate-500 mt-1">Auto-filled from supplier agreement — not editable</p>
-                {!formData.aggregateValue && formData.itemId && formData.selectedSupplierAgreementId && (
-                  <p className="text-xs text-amber-600 mt-1">No aggregate value found in supplier agreement for this item. Please check the supplier agreement items.</p>
-                )}
-                {formData.aggregateValue && (
-                  <p className="text-xs text-green-600 mt-1">✓ Value loaded from supplier agreement</p>
-                )}
+                <p className="text-xs text-slate-500 mt-1">Auto-populated from Customer Sales Agreement (editable if necessary)</p>
               </div>
             </div>
           </CardBody>

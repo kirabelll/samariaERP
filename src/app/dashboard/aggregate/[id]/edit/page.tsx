@@ -84,6 +84,8 @@ export default function EditAggregateDispatchPage() {
 
   // Map: customerId → Set of itemIds from their AGGREGATE sales agreements
   const [customerAgreementItems, setCustomerAgreementItems] = useState<Map<string, Set<string>>>(new Map());
+  // Map: `${customerId}_${itemId}` → customer agreement price
+  const [customerAgreementPrices, setCustomerAgreementPrices] = useState<Map<string, number>>(new Map());
   // Map: supplierId → Set of itemIds from their AGGREGATE supplier agreements
   const [supplierAgreementItems, setSupplierAgreementItems] = useState<Map<string, Set<string>>>(new Map());
 
@@ -101,6 +103,7 @@ export default function EditAggregateDispatchPage() {
     deliveredVolume: '',
     transportRate: '',
     aggregateValue: '',
+    customerPrice: '',
     status: 'Dispatched',
     dispatchDate: '',
     deliveryDate: '',
@@ -177,8 +180,9 @@ export default function EditAggregateDispatchPage() {
           });
         }
 
-        // Parse customer agreement items (customerId -> Set of itemIds from Item table)
+        // Parse customer agreement items & prices (customerId -> Set of itemIds from Item table)
         const custItemsMap = new Map<string, Set<string>>();
+        const custPricesMap = new Map<string, number>();
         if (custAgreementsRes.ok) {
           const custAgrData = await custAgreementsRes.json();
           (custAgrData.data || []).forEach((agr: any) => {
@@ -194,12 +198,18 @@ export default function EditAggregateDispatchPage() {
                     custItemsMap.set(custId, new Set());
                   }
                   custItemsMap.get(custId)!.add(targetItemId);
+
+                  const price = Number(ai.unitPrice ?? ai.pricePerUnit ?? ai.amount ?? ai.totalAmount ?? 0);
+                  if (price > 0 && !custPricesMap.has(`${custId}_${targetItemId}`)) {
+                    custPricesMap.set(`${custId}_${targetItemId}`, price);
+                  }
                 }
               });
             } catch { /* ignore */ }
           });
         }
         setCustomerAgreementItems(custItemsMap);
+        setCustomerAgreementPrices(custPricesMap);
 
         // Parse supplier agreement items (supplierId -> Set of itemIds from Item table)
         const suppItemsMap = new Map<string, Set<string>>();
@@ -229,6 +239,12 @@ export default function EditAggregateDispatchPage() {
         setItems(allItemsList);
 
         // Pre-fill form values
+        const initialCustPrice = delivery.customerPrice != null 
+          ? String(delivery.customerPrice) 
+          : (delivery.customerId && delivery.itemId && custPricesMap.has(`${delivery.customerId}_${delivery.itemId}`)
+              ? String(custPricesMap.get(`${delivery.customerId}_${delivery.itemId}`))
+              : (delivery.aggregateValue != null ? String(delivery.aggregateValue) : ''));
+
         setFormData({
           dispatchNo: delivery.dispatchNo || '',
           customerId: delivery.customerId || '',
@@ -242,6 +258,7 @@ export default function EditAggregateDispatchPage() {
           deliveredVolume: delivery.deliveredVolume != null ? String(delivery.deliveredVolume) : '',
           transportRate: delivery.transportRate != null ? String(delivery.transportRate) : '',
           aggregateValue: delivery.aggregateValue != null ? String(delivery.aggregateValue) : '',
+          customerPrice: initialCustPrice,
           status: delivery.status || 'Dispatched',
           dispatchDate: delivery.dispatchDate ? new Date(delivery.dispatchDate).toISOString().split('T')[0] : '',
           deliveryDate: delivery.deliveryDate ? new Date(delivery.deliveryDate).toISOString().split('T')[0] : '',
@@ -301,15 +318,29 @@ export default function EditAggregateDispatchPage() {
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     if (name === 'customerId') {
-      const newCustItemIds = customerAgreementItems.get(value);
+      const newCustId = value;
+      const newCustItemIds = customerAgreementItems.get(newCustId);
       setFormData((prev) => {
         const isItemValid = !prev.itemId || !newCustItemIds || newCustItemIds.has(prev.itemId);
+        const targetItem = isItemValid ? prev.itemId : '';
+        const priceKey = `${newCustId}_${targetItem}`;
+        const autoPrice = customerAgreementPrices.get(priceKey);
         return {
           ...prev,
-          customerId: value,
-          itemId: isItemValid ? prev.itemId : '',
+          customerId: newCustId,
+          itemId: targetItem,
+          customerPrice: autoPrice !== undefined ? String(autoPrice) : prev.customerPrice,
         };
       });
+    } else if (name === 'itemId') {
+      const selectedItemId = value;
+      const priceKey = `${formData.customerId}_${selectedItemId}`;
+      const autoPrice = customerAgreementPrices.get(priceKey);
+      setFormData((prev) => ({
+        ...prev,
+        itemId: selectedItemId,
+        customerPrice: autoPrice !== undefined ? String(autoPrice) : prev.customerPrice,
+      }));
     } else {
       setFormData((prev) => ({ ...prev, [name]: value }));
     }
@@ -321,6 +352,7 @@ export default function EditAggregateDispatchPage() {
     const delivered = formData.deliveredVolume !== '' ? parseFloat(formData.deliveredVolume) : null;
     const rate = parseFloat(formData.transportRate) || 0;
     const aggValue = parseFloat(formData.aggregateValue) || 0;
+    const custValue = parseFloat(formData.customerPrice) || aggValue;
 
     const truck = trucks.find((t) => t.id === formData.truckId);
     const truckCapacity = truck?.capacity ? parseFloat(String(truck.capacity)) : 0;
@@ -337,6 +369,9 @@ export default function EditAggregateDispatchPage() {
     }
 
     const netPayment = grossFee - shortageDeduction;
+    const custReceivable = loaded * custValue;
+    const suppPayable = (delivered !== null ? delivered : loaded) * aggValue;
+    const netProfitAmount = custReceivable - suppPayable - grossFee;
 
     return {
       truckCapacity,
@@ -345,6 +380,9 @@ export default function EditAggregateDispatchPage() {
       shortageVolume,
       shortageDeduction,
       netPayment,
+      custReceivable,
+      suppPayable,
+      netProfitAmount,
     };
   };
 
@@ -383,6 +421,7 @@ export default function EditAggregateDispatchPage() {
           deliveredVolume: formData.deliveredVolume !== '' ? parseFloat(formData.deliveredVolume) : null,
           transportRate: parseFloat(formData.transportRate),
           aggregateValue: parseFloat(formData.aggregateValue),
+          customerPrice: parseFloat(formData.customerPrice || formData.aggregateValue),
           status: formData.status,
           dispatchDate: formData.dispatchDate ? new Date(formData.dispatchDate).toISOString() : undefined,
           deliveryDate: formData.deliveryDate ? new Date(formData.deliveryDate).toISOString() : null,
@@ -403,7 +442,17 @@ export default function EditAggregateDispatchPage() {
     }
   };
 
-  const { truckCapacity, billableVolume, grossFee, shortageVolume, shortageDeduction, netPayment } = calculateValues();
+  const {
+    truckCapacity,
+    billableVolume,
+    grossFee,
+    shortageVolume,
+    shortageDeduction,
+    netPayment,
+    custReceivable,
+    suppPayable,
+    netProfitAmount,
+  } = calculateValues();
 
   if (loading) {
     return (
@@ -642,7 +691,7 @@ export default function EditAggregateDispatchPage() {
             <hr className="border-gray-200 my-4" />
 
             {/* Volumes & Financial Rates */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
               <div>
                 <Input
                   label="Loaded Volume (m³) *"
@@ -677,12 +726,32 @@ export default function EditAggregateDispatchPage() {
                 />
               </div>
               <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-medium text-gray-700">Customer Value (ETB/m³) *</label>
+                  {formData.customerId && formData.itemId && customerAgreementPrices.has(`${formData.customerId}_${formData.itemId}`) && (
+                    <span className="text-[10px] text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 font-medium">
+                      ✓ Agreement
+                    </span>
+                  )}
+                </div>
                 <Input
-                  label="Aggregate Value (ETB/m³) *"
+                  type="number"
+                  step="0.01"
+                  name="customerPrice"
+                  required
+                  placeholder="Customer agreed rate"
+                  value={formData.customerPrice}
+                  onChange={handleInputChange}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Supplier Value (ETB/m³) *</label>
+                <Input
                   type="number"
                   step="0.01"
                   name="aggregateValue"
                   required
+                  placeholder="Supplier material value"
                   value={formData.aggregateValue}
                   onChange={handleInputChange}
                 />
@@ -690,27 +759,48 @@ export default function EditAggregateDispatchPage() {
             </div>
 
             {/* Live Financial Summary Box */}
-            <div className="mt-6 bg-slate-50 border border-slate-200 rounded-xl p-5 space-y-3">
-              <h3 className="text-sm font-semibold text-slate-800 uppercase tracking-wide">Live Financial Calculation Summary</h3>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+            <div className="mt-6 bg-slate-50 border border-slate-200 rounded-xl p-5 space-y-4">
+              <h3 className="text-xs font-semibold text-slate-700 uppercase tracking-wider">Live Financial Calculation Summary</h3>
+              
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4 border-b border-slate-200 pb-4">
+                <div className="bg-emerald-50 p-3 rounded-lg border border-emerald-200">
+                  <span className="text-xs font-medium text-emerald-800 block mb-1">Customer Receivable:</span>
+                  <span className="text-lg font-bold text-emerald-950">ETB {custReceivable.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+                  <span className="text-[11px] text-emerald-700 block mt-0.5">Loaded ({parseFloat(formData.loadedVolume || '0').toFixed(2)} m³) × {parseFloat(formData.customerPrice || '0').toFixed(2)} ETB</span>
+                </div>
+                <div className="bg-amber-50 p-3 rounded-lg border border-amber-200">
+                  <span className="text-xs font-medium text-amber-800 block mb-1">Supplier Payable:</span>
+                  <span className="text-lg font-bold text-amber-950">ETB {suppPayable.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+                  <span className="text-[11px] text-amber-700 block mt-0.5">Delivered × {parseFloat(formData.aggregateValue || '0').toFixed(2)} ETB</span>
+                </div>
+                <div className="bg-indigo-50 p-3 rounded-lg border border-indigo-200">
+                  <span className="text-xs font-medium text-indigo-800 block mb-1">Net Profit Amount:</span>
+                  <span className={`text-lg font-bold ${netProfitAmount >= 0 ? 'text-indigo-950' : 'text-red-600'}`}>
+                    ETB {netProfitAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                  </span>
+                  <span className="text-[11px] text-indigo-700 block mt-0.5">Receivable − Payable − Gross Truck Fee</span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
                 <div>
                   <span className="text-slate-500 block">Gross Truck Fee:</span>
-                  <span className="font-semibold text-slate-900">ETB {grossFee.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+                  <span className="font-semibold text-slate-900 text-sm">ETB {grossFee.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
                   {truckCapacity > 0 && parseFloat(formData.loadedVolume) > truckCapacity && (
-                    <span className="text-xs text-amber-600 block">(Capped at truck cap: {truckCapacity} m³)</span>
+                    <span className="text-[10px] text-amber-600 block">(Capped: {truckCapacity} m³)</span>
                   )}
                 </div>
                 <div>
                   <span className="text-slate-500 block">Shortage Volume:</span>
-                  <span className="font-semibold text-slate-900">{shortageVolume.toFixed(2)} m³</span>
+                  <span className="font-semibold text-slate-900 text-sm">{shortageVolume.toFixed(2)} m³</span>
                 </div>
                 <div>
                   <span className="text-slate-500 block">Shortage Deduction:</span>
-                  <span className="font-semibold text-red-600">ETB {shortageDeduction.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+                  <span className="font-semibold text-red-600 text-sm">ETB {shortageDeduction.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
                 </div>
                 <div>
-                  <span className="text-slate-500 block">Net Payment:</span>
-                  <span className="font-bold text-green-700 text-base">ETB {netPayment.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+                  <span className="text-slate-500 block">Net Truck Payment:</span>
+                  <span className="font-bold text-green-700 text-sm">ETB {netPayment.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
                 </div>
               </div>
             </div>

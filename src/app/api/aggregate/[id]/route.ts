@@ -85,7 +85,8 @@ export async function GET(
     const deliveredVol = delivery.deliveredVolume ?? delivery.loadedVolume ?? 0;
     const customerReceivable = loadedVol * customerPrice;
     const supplierPayable = deliveredVol * supplierPrice;
-    const netAmount = customerReceivable - supplierPayable;
+    const grossTruckFee = Number(delivery.grossTruckFee || 0);
+    const netAmount = customerReceivable - supplierPayable - grossTruckFee;
 
     const data = {
       ...delivery,

@@ -166,7 +166,7 @@ export async function GET(request: NextRequest) {
 
       // Customer pricing
       const custPriceKey = `${r.customerId}_${r.itemId}`;
-      const customerPrice = customerPriceMap.get(custPriceKey) || (r.aggregateValue ? r.aggregateValue * 1.15 : 0);
+      const customerPrice = customerPriceMap.get(custPriceKey) || Number(r.aggregateValue || 0);
       const customerReceivable = loadedVol * customerPrice;
 
       // Supplier pricing (Aggregate material supplier)
@@ -175,8 +175,9 @@ export async function GET(request: NextRequest) {
       const supplierPayable = deliveredVol * supplierPrice;
 
       // Transporter pricing (Freight delivery cost)
+      const grossTruckFee = Number(r.grossTruckFee || 0);
       const transporterPayable = Number(r.netTruckPayment || r.grossTruckFee || 0);
-      const netMaterialAmount = customerReceivable - supplierPayable;
+      const netMaterialAmount = customerReceivable - supplierPayable - grossTruckFee;
 
       return {
         ...r,

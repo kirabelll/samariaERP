@@ -209,7 +209,7 @@ export default function AggregateOperationsPage() {
         'Aggregate Value (ETB)',
         'Customer Receivable (ETB)',
         'Supplier Payable (ETB)',
-        'Net Material Amount (ETB)',
+        'Net Profit Amount (ETB)',
         'Gross Truck Fee (ETB)',
         'Shortage Deduction (ETB)',
         'Net Truck Payment (ETB)',
@@ -225,7 +225,8 @@ export default function AggregateOperationsPage() {
         const deliveredVol = Number(r.deliveredVolume ?? r.loadedVolume ?? 0);
         const custReceivable = r.customerReceivable != null ? r.customerReceivable : (loadedVol * custPrice);
         const suppPayable = r.supplierPayable != null ? r.supplierPayable : (deliveredVol * suppPrice);
-        const netMatAmount = r.netMaterialAmount != null ? r.netMaterialAmount : (custReceivable - suppPayable);
+        const grossTruck = Number(r.grossTruckFee || 0);
+        const netMatAmount = custReceivable - suppPayable - grossTruck;
 
         return [
           `"${(r.dispatchNo || '').replace(/"/g, '""')}"`,

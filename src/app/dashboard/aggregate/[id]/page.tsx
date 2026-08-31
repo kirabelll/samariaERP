@@ -538,7 +538,8 @@ export default function AggregateDetailPage() {
             const deliveredVol = delivery.deliveredVolume ?? delivery.loadedVolume ?? 0;
             const custReceivable = loadedVol * custPrice;
             const suppPayable = deliveredVol * suppPrice;
-            const netMatAmount = custReceivable - suppPayable;
+            const grossTruckFee = Number(delivery.grossTruckFee || 0);
+            const netMatAmount = custReceivable - suppPayable - grossTruckFee;
 
             return (
               <div className="space-y-6">
@@ -580,11 +581,11 @@ export default function AggregateDetailPage() {
                     </div>
 
                     <div className="bg-indigo-50 p-4 rounded-lg border border-indigo-200">
-                      <label className="block text-xs font-medium text-indigo-800 mb-1">Net Material Amount (ETB)</label>
+                      <label className="block text-xs font-medium text-indigo-800 mb-1">Net Profit Amount (ETB)</label>
                       <p className={`text-2xl font-bold ${netMatAmount >= 0 ? 'text-indigo-900' : 'text-red-600'}`}>
                         {netMatAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </p>
-                      <p className="text-xs text-indigo-700 mt-1">Customer Receivable − Supplier Payable</p>
+                      <p className="text-xs text-indigo-700 mt-1">Customer Receivable − Supplier Payable − Gross Truck Fee</p>
                     </div>
                   </div>
                 </div>

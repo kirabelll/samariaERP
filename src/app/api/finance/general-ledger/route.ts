@@ -22,11 +22,20 @@ function getVoucherTypeInfo(refModule?: string | null, voucherNo?: string | null
   if (mod === 'CUSTOMER_PAYMENT' || vNo.startsWith('REC-') || vNo.startsWith('CR-')) {
     return { voucherType: 'Customer Payment', voucherSubtype: 'Receipt Entry' };
   }
-  if (mod === 'VOUCHER' || vNo.startsWith('PV-') || vNo.startsWith('RV-')) {
+  if (mod === 'VOUCHER' || mod === 'PAYMENT_VOUCHER' || vNo.startsWith('PV-') || vNo.startsWith('RV-')) {
     return { voucherType: 'Payment Voucher', voucherSubtype: 'Voucher Entry' };
   }
   if (mod === 'PAYROLL' || vNo.startsWith('PAYROLL-')) {
     return { voucherType: 'Payroll', voucherSubtype: 'Salary Entry' };
+  }
+  if (mod === 'BANK_DEPOSIT' || mod === 'BANK_TRANSACTION_DEPOSIT' || vNo.startsWith('DEP-')) {
+    return { voucherType: 'Bank Deposit', voucherSubtype: 'Banking Entry' };
+  }
+  if (mod === 'BANK_WITHDRAWAL' || mod === 'BANK_TRANSACTION_WITHDRAWAL' || vNo.startsWith('WDL-')) {
+    return { voucherType: 'Bank Withdrawal', voucherSubtype: 'Banking Entry' };
+  }
+  if (mod === 'BANK_TRANSFER' || vNo.startsWith('TRF-')) {
+    return { voucherType: 'Bank Transfer', voucherSubtype: 'Interbank Transfer' };
   }
   return { voucherType: 'Journal Entry', voucherSubtype: 'Journal Voucher' };
 }
@@ -79,7 +88,14 @@ export async function GET(request: NextRequest) {
     if (accountId) {
       targetAccount = accounts.find((a) => a.id === accountId);
     } else if (accountCode) {
-      targetAccount = accounts.find((a) => a.accountCode === accountCode);
+      const cleanTargetCode = accountCode.trim().replace(/^1020-/, '');
+      targetAccount = accounts.find(
+        (a) =>
+          a.accountCode === accountCode ||
+          a.accountCode === `1020-${cleanTargetCode}` ||
+          a.accountCode.includes(cleanTargetCode) ||
+          a.accountName.toLowerCase().includes(accountCode.toLowerCase())
+      );
     }
 
     // Determine date ranges
@@ -145,6 +161,9 @@ export async function GET(request: NextRequest) {
       whereClause.OR = [
         { voucherNo: { contains: voucherNoSearch, mode: 'insensitive' } },
         { description: { contains: voucherNoSearch, mode: 'insensitive' } },
+        { refId: { contains: voucherNoSearch, mode: 'insensitive' } },
+        { account: { accountCode: { contains: voucherNoSearch, mode: 'insensitive' } } },
+        { account: { accountName: { contains: voucherNoSearch, mode: 'insensitive' } } },
       ];
     }
 
@@ -158,11 +177,11 @@ export async function GET(request: NextRequest) {
       orderBy: [{ entryDate: 'asc' }, { id: 'asc' }],
     });
 
-    // Separate INITIAL BALANCE entries into Opening Balance and regular period transactions
+    // When fromDate is active, separate prior initial balances into opening. When viewing all, show all rows.
     const regularEntries: any[] = [];
 
     for (const entry of rawEntries) {
-      if (isInitialBalanceEntry(entry)) {
+      if (fromDate && isInitialBalanceEntry(entry)) {
         // Absorb into this account's Opening Balance
         if (accountOpeningBalances[entry.accountId]) {
           accountOpeningBalances[entry.accountId].debit += Number(entry.debit) || 0;

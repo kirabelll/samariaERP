@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Card, CardHeader, CardBody, Button, Input, Select } from '@/components/ui';
 
@@ -15,12 +15,15 @@ interface BankAccount {
 
 export default function NewBankTransactionPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const initialBankId = searchParams.get('bankAccountId') || '';
+
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
   const [loadingAccounts, setLoadingAccounts] = useState(true);
 
-  const [bankAccountId, setBankAccountId] = useState('');
+  const [bankAccountId, setBankAccountId] = useState(initialBankId);
   const [destinationBankAccountId, setDestinationBankAccountId] = useState('');
-  const [type, setType] = useState('');
+  const [type, setType] = useState('deposit');
   const [amount, setAmount] = useState('');
   const [refNo, setRefNo] = useState('');
   const [description, setDescription] = useState('');
@@ -41,11 +44,17 @@ export default function NewBankTransactionPage() {
     fetch('/api/finance/bank?limit=50&status=Active')
       .then(r => r.json())
       .then(json => {
-        if (json.success) setBankAccounts(json.data || []);
+        if (json.success) {
+          const list = json.data || [];
+          setBankAccounts(list);
+          if (initialBankId && list.some((b: any) => b.id === initialBankId)) {
+            setBankAccountId(initialBankId);
+          }
+        }
       })
       .catch(console.error)
       .finally(() => setLoadingAccounts(false));
-  }, []);
+  }, [initialBankId]);
 
   // Fetch verified aggregate deliveries when linking is enabled
   useEffect(() => {

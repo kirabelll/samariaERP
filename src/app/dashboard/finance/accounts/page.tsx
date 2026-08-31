@@ -66,6 +66,7 @@ export default function ChartOfAccountsPage() {
 
   // Seeding state
   const [seeding, setSeeding] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const [seedResult, setSeedResult] = useState<string | null>(null);
 
   // Modals state
@@ -148,6 +149,26 @@ export default function ChartOfAccountsPage() {
       setSeedResult(`Error: ${err.message}`);
     } finally {
       setSeeding(false);
+    }
+  };
+
+  // Sync Subledgers: Customers (under 1030), Suppliers (under 2010), Banks (under 1020)
+  const handleSyncSubledger = async () => {
+    setSyncing(true);
+    setSeedResult(null);
+    try {
+      const res = await fetch('/api/finance/accounts/sync', { method: 'POST' });
+      const result = await res.json();
+      if (result.success) {
+        setSeedResult(`✓ Subledger Linked: ${result.data?.syncedCustomers || 0} customers (AR), ${result.data?.syncedSuppliers || 0} suppliers (AP), ${result.data?.syncedBanks || 0} banks, and ${result.data?.syncedBankTransactions || 0} bank transactions linked to Chart of Accounts!`);
+        await fetchAccounts();
+      } else {
+        setSeedResult(`Error: ${result.error}`);
+      }
+    } catch (err: any) {
+      setSeedResult(`Error: ${err.message}`);
+    } finally {
+      setSyncing(false);
     }
   };
 
@@ -423,12 +444,27 @@ export default function ChartOfAccountsPage() {
 
             {/* Account Label: Code - Name */}
             <span
-              className={`truncate ${
+              className={`truncate flex items-center gap-1.5 ${
                 isGroup ? 'font-medium text-gray-900' : 'text-gray-700'
               } ${!node.isActive ? 'line-through opacity-60' : ''}`}
             >
-              <span className="font-mono text-gray-600 text-xs font-semibold mr-1.5">{node.accountCode}</span>
+              <span className="font-mono text-gray-600 text-xs font-semibold">{node.accountCode}</span>
               <span>- {node.accountName}</span>
+              {node.accountCode.startsWith('1030-') && (
+                <span className="px-1.5 py-0.2 text-[10px] font-semibold bg-blue-100 text-blue-800 rounded font-sans">
+                  Customer (AR)
+                </span>
+              )}
+              {node.accountCode.startsWith('2010-') && (
+                <span className="px-1.5 py-0.2 text-[10px] font-semibold bg-amber-100 text-amber-800 rounded font-sans">
+                  Supplier (AP)
+                </span>
+              )}
+              {node.accountCode.startsWith('1020-') && (
+                <span className="px-1.5 py-0.2 text-[10px] font-semibold bg-emerald-100 text-emerald-800 rounded font-sans">
+                  Bank
+                </span>
+              )}
             </span>
 
             {/* Inline Action Buttons (Like Frappe screenshot: [Edit] [Delete] [Add Child] [View Ledger]) */}
@@ -505,11 +541,21 @@ export default function ChartOfAccountsPage() {
             Chart of Accounts
           </h1>
           <p className="text-gray-600 text-xs sm:text-sm mt-1">
-            Hierarchical chart of accounts with real-time transaction balances & rollups
+            Hierarchical chart of accounts with linked Customer (AR), Supplier (AP), and Bank sub-accounts
           </p>
         </div>
 
         <div className="flex flex-wrap gap-2 items-center">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleSyncSubledger}
+            isLoading={syncing}
+            icon={<Building2 className="w-3.5 h-3.5 text-blue-600" />}
+          >
+            Sync Customers, Suppliers & Banks
+          </Button>
+
           <Button
             variant="secondary"
             size="sm"
@@ -727,7 +773,24 @@ export default function ChartOfAccountsPage() {
                 {allAccounts.filter(isNodeMatching).map((account) => (
                   <tr key={account.id} className="border-b border-gray-100 hover:bg-gray-50">
                     <td className="px-6 py-3 font-mono font-medium text-gray-900">{account.accountCode}</td>
-                    <td className="px-6 py-3 font-medium text-gray-900">{account.accountName}</td>
+                    <td className="px-6 py-3 font-medium text-gray-900 flex items-center gap-2">
+                      <span>{account.accountName}</span>
+                      {account.accountCode.startsWith('1030-') && (
+                        <span className="px-1.5 py-0.2 text-[10px] font-semibold bg-blue-100 text-blue-800 rounded">
+                          Customer
+                        </span>
+                      )}
+                      {account.accountCode.startsWith('2010-') && (
+                        <span className="px-1.5 py-0.2 text-[10px] font-semibold bg-amber-100 text-amber-800 rounded">
+                          Supplier
+                        </span>
+                      )}
+                      {account.accountCode.startsWith('1020-') && (
+                        <span className="px-1.5 py-0.2 text-[10px] font-semibold bg-emerald-100 text-emerald-800 rounded">
+                          Bank
+                        </span>
+                      )}
+                    </td>
                     <td className="px-6 py-3">
                       <span className="px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-700">
                         {account.accountType}

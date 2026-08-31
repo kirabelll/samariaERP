@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { ensureBankAccount, journalBankTransaction } from '@/lib/accounting';
 
 export const dynamic = 'force-dynamic';
 
@@ -83,8 +84,15 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    // Auto-create child account in Chart of Accounts under Cash in Bank (1020)
+    try {
+      await ensureBankAccount(bankAccount);
+    } catch (coaErr) {
+      console.warn('Could not auto-create COA child account for bank account:', coaErr);
+    }
+
     if (initialAmount > 0) {
-      await prisma.bankTransaction.create({
+      const initTxn = await prisma.bankTransaction.create({
         data: {
           bankAccountId: bankAccount.id,
           type: 'deposit',
@@ -95,6 +103,12 @@ export async function POST(request: NextRequest) {
           reconStatus: 'Reconciled',
         },
       });
+
+      try {
+        await journalBankTransaction(initTxn);
+      } catch (jErr) {
+        console.warn('Auto-journal for bank opening balance failed:', jErr);
+      }
     }
 
     return NextResponse.json(

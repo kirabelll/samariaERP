@@ -1,7 +1,7 @@
 import { prisma } from '@/lib/prisma';
 import { NextRequest, NextResponse } from 'next/server';
 import { notify } from '@/lib/telegram';
-import { createJournalEntries, ACCOUNTS } from '@/lib/accounting';
+import { createJournalEntries, ACCOUNTS, getAccountForBank } from '@/lib/accounting';
 import { requestApproval } from '@/lib/approval-workflow';
 import { updateVoucherLinkedDocument } from '@/lib/voucher-sync';
 
@@ -61,8 +61,20 @@ async function createAutoJournal(voucher: any) {
   const amount = Number(voucher.amount) || 0;
   if (amount <= 0) return { created: false, reason: 'Zero amount' };
 
-  const cashOrBank = voucher.paymentMethod === 'cash' ? ACCOUNTS.CASH : ACCOUNTS.BANK;
-  const cashOrBankName = voucher.paymentMethod === 'cash' ? 'Cash' : 'Bank';
+  let cashOrBankAccountId: string | undefined = undefined;
+  let cashOrBankCode: string = ACCOUNTS.CASH;
+  let cashOrBankName: string = 'Cash on Hand';
+
+  if (voucher.paymentMethod === 'bank' || voucher.bankAccountId) {
+    if (voucher.bankAccountId) {
+      cashOrBankAccountId = await getAccountForBank(voucher.bankAccountId);
+      cashOrBankName = 'Cash in Bank';
+    } else {
+      cashOrBankCode = ACCOUNTS.BANK;
+      cashOrBankName = 'Cash in Bank';
+    }
+  }
+
   let lines: any[] = [];
 
   if (voucher.voucherType === 'PAYMENT') {
@@ -71,17 +83,38 @@ async function createAutoJournal(voucher: any) {
     const debitName = voucher.sourceModule === 'PURCHASE' ? 'Accounts Payable' : 'Operating Expenses';
     lines = [
       { accountCode: debitCode, accountFallbackName: debitName, debit: amount, credit: 0, description: `Payment to ${voucher.payeeName} — ${voucher.voucherNo}` },
-      { accountCode: cashOrBank, accountFallbackName: cashOrBankName, debit: 0, credit: amount, description: `Payment to ${voucher.payeeName} — ${voucher.voucherNo}` },
+      { 
+        accountId: cashOrBankAccountId,
+        accountCode: cashOrBankAccountId ? undefined : cashOrBankCode,
+        accountFallbackName: cashOrBankName, 
+        debit: 0, 
+        credit: amount, 
+        description: `Payment to ${voucher.payeeName} — ${voucher.voucherNo}` 
+      },
     ];
   } else if (voucher.voucherType === 'RECEIPT') {
     lines = [
-      { accountCode: cashOrBank, accountFallbackName: cashOrBankName, debit: amount, credit: 0, description: `Receipt from ${voucher.payeeName} — ${voucher.voucherNo}` },
+      { 
+        accountId: cashOrBankAccountId,
+        accountCode: cashOrBankAccountId ? undefined : cashOrBankCode,
+        accountFallbackName: cashOrBankName, 
+        debit: amount, 
+        credit: 0, 
+        description: `Receipt from ${voucher.payeeName} — ${voucher.voucherNo}` 
+      },
       { accountCode: ACCOUNTS.ACCOUNTS_RECEIVABLE, accountFallbackName: 'Accounts Receivable', debit: 0, credit: amount, description: `Receipt from ${voucher.payeeName} — ${voucher.voucherNo}` },
     ];
   } else if (voucher.voucherType === 'REFUND') {
     lines = [
       { accountCode: ACCOUNTS.OPERATING_EXPENSE, accountFallbackName: 'Operating Expenses', debit: amount, credit: 0, description: `Refund to ${voucher.payeeName} — ${voucher.voucherNo}` },
-      { accountCode: cashOrBank, accountFallbackName: cashOrBankName, debit: 0, credit: amount, description: `Refund to ${voucher.payeeName} — ${voucher.voucherNo}` },
+      { 
+        accountId: cashOrBankAccountId,
+        accountCode: cashOrBankAccountId ? undefined : cashOrBankCode,
+        accountFallbackName: cashOrBankName, 
+        debit: 0, 
+        credit: amount, 
+        description: `Refund to ${voucher.payeeName} — ${voucher.voucherNo}` 
+      },
     ];
   }
 

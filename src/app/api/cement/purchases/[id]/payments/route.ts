@@ -1,7 +1,7 @@
 import { prisma } from '@/lib/prisma';
 import { NextRequest, NextResponse } from 'next/server';
 import { notify } from '@/lib/telegram';
-import { createJournalEntries, ACCOUNTS } from '@/lib/accounting';
+import { createJournalEntries, ACCOUNTS, getAccountForBank } from '@/lib/accounting';
 
 export const dynamic = 'force-dynamic';
 
@@ -242,8 +242,9 @@ export async function POST(
       },
     });
 
-    // Auto-create double-entry journal: Debit Accounts Payable, Credit Bank
+    // Auto-create double-entry journal: Debit Accounts Payable, Credit specific Bank account
     try {
+      const bankAccountId = await getAccountForBank(resolvedBankAccountId);
       const journalResult = await createJournalEntries({
         lines: [
           {
@@ -254,8 +255,7 @@ export async function POST(
             description: `Cement purchase payment — ${purchase.purchaseNo} — ${purchase.factory?.name || 'Factory'}`,
           },
           {
-            accountCode: ACCOUNTS.BANK,
-            accountFallbackName: 'Bank',
+            accountId: bankAccountId,
             debit: 0,
             credit: paymentAmount,
             description: `Cement purchase payment — ${purchase.purchaseNo} — ${purchase.factory?.name || 'Factory'}`,

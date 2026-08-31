@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { journalBankTransaction } from '@/lib/accounting';
 
 export const dynamic = 'force-dynamic';
 
@@ -132,7 +133,7 @@ export async function PATCH(
           data: { amount: initialBalance },
         });
       } else if (initialBalance > 0) {
-        await prisma.bankTransaction.create({
+        const createdInitTxn = await prisma.bankTransaction.create({
           data: {
             bankAccountId: params.id,
             type: 'deposit',
@@ -144,6 +145,11 @@ export async function PATCH(
             transDate: account.createdAt,
           },
         });
+        try {
+          await journalBankTransaction(createdInitTxn);
+        } catch (jErr) {
+          console.warn('Auto journal for bank initial balance failed:', jErr);
+        }
       }
     } else if (initialTxn) {
       initialBalance = Number(initialTxn.amount);
@@ -154,7 +160,7 @@ export async function PATCH(
 
       if (implicitInitial > 0) {
         initialBalance = implicitInitial;
-        await prisma.bankTransaction.create({
+        const createdImplicitTxn = await prisma.bankTransaction.create({
           data: {
             bankAccountId: params.id,
             type: 'deposit',
@@ -166,6 +172,11 @@ export async function PATCH(
             transDate: account.createdAt,
           },
         });
+        try {
+          await journalBankTransaction(createdImplicitTxn);
+        } catch (jErr) {
+          console.warn('Auto journal for bank implicit initial balance failed:', jErr);
+        }
       }
     }
 

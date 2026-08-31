@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { notify } from '@/lib/telegram';
-import { createJournalEntries, ACCOUNTS } from '@/lib/accounting';
+import { createJournalEntries, ACCOUNTS, journalCustomerPayment } from '@/lib/accounting';
 
 export const dynamic = 'force-dynamic';
 
@@ -139,33 +139,12 @@ export async function PUT(
         console.error('Failed to update daily cash:', cashErr);
       }
 
-      // Create journal entries: Debit Bank (1020), Credit Accounts Receivable (1030)
+      // Create journal entries: Debit specific Bank/Cash, Credit customer-specific AR sub-account
       const paymentAmount = Number(updatedRecord.amount);
-      const paymentDesc = `Customer payment ${updatedRecord.receiptNo} - ${updatedRecord.invoice?.invoiceNo || 'General'}`;
       try {
-        const journalResult = await createJournalEntries({
-          lines: [
-            {
-              accountCode: ACCOUNTS.BANK,
-              accountFallbackName: 'Bank',
-              debit: paymentAmount,
-              credit: 0,
-              description: paymentDesc,
-            },
-            {
-              accountCode: ACCOUNTS.ACCOUNTS_RECEIVABLE,
-              accountFallbackName: 'Accounts Receivable',
-              debit: 0,
-              credit: paymentAmount,
-              description: paymentDesc,
-            },
-          ],
-          refModule: 'CUSTOMER_PAYMENT',
-          refId: params.id,
-          postedBy: 'system',
-        });
+        const journalResult = await journalCustomerPayment(updatedRecord);
 
-        if (journalResult.created) {
+        if (journalResult && journalResult.created) {
           notify({
             module: 'FINANCE',
             event: 'auto_journal_posted',

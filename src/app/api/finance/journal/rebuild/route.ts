@@ -5,6 +5,7 @@ import {
   journalSalesInvoice,
   journalCementLifting,
   journalSupplierPayment,
+  journalBankTransaction,
   createJournalEntries,
   ACCOUNTS,
 } from '@/lib/accounting';
@@ -26,6 +27,7 @@ export async function POST(request: NextRequest) {
       cementLiftings: { processed: 0, created: 0, skipped: 0, errors: 0 },
       cementPurchasePayments: { processed: 0, created: 0, skipped: 0, errors: 0 },
       customerPayments: { processed: 0, created: 0, skipped: 0, errors: 0 },
+      bankTransactions: { processed: 0, created: 0, skipped: 0, errors: 0 },
     };
 
     // Helper: check if journal entries already exist for a record
@@ -291,6 +293,43 @@ export async function POST(request: NextRequest) {
       } catch (err) {
         console.error(`[Rebuild] Customer payment ${cp.receiptNo} error:`, err);
         results.customerPayments.errors++;
+      }
+    }
+
+    // ============================================================
+    // 7. Bank Transactions (Deposits, Withdrawals, Initial Balances)
+    // ============================================================
+    const bankTxns = await prisma.bankTransaction.findMany({
+      orderBy: { transDate: 'asc' },
+    });
+
+    for (const txn of bankTxns) {
+      results.bankTransactions.processed++;
+      const existingCount = await prisma.journalEntry.count({
+        where: {
+          OR: [
+            { refId: txn.id },
+            ...(txn.refId ? [{ refId: txn.refId }] : []),
+          ],
+        },
+      });
+
+      if (existingCount > 0) {
+        results.bankTransactions.skipped++;
+        continue;
+      }
+
+      try {
+        if (txn.type === 'deposit' || txn.type === 'withdrawal') {
+          const result = await journalBankTransaction(txn);
+          if (result && result.created) results.bankTransactions.created++;
+          else results.bankTransactions.skipped++;
+        } else {
+          results.bankTransactions.skipped++;
+        }
+      } catch (err) {
+        console.error(`[Rebuild] Bank transaction ${txn.id} error:`, err);
+        results.bankTransactions.errors++;
       }
     }
 

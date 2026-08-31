@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { generateCustomerCode } from '@/lib/utils';
+import { ensureCustomerAccount } from '@/lib/accounting';
 
 export const dynamic = 'force-dynamic';
 
@@ -118,6 +119,13 @@ export async function POST(request: NextRequest) {
         medicalApproved: medicalApproved !== undefined ? Boolean(medicalApproved) : false,
       },
     });
+
+    // Auto-create child account in Chart of Accounts under Accounts Receivable (1030)
+    try {
+      await ensureCustomerAccount(customer);
+    } catch (coaErr) {
+      console.warn('Could not auto-create COA child account for customer:', coaErr);
+    }
 
     return NextResponse.json(
       { success: true, data: customer },

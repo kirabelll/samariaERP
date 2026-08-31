@@ -153,6 +153,9 @@ function GeneralLedgerContent() {
       if (json.success && json.data) {
         setAccounts(json.data.accounts || []);
         setCurrentAccount(json.data.account || null);
+        if (json.data.account && !selectedAccountId) {
+          setSelectedAccountId(json.data.account.id);
+        }
         setOpening(json.data.opening || { debit: 0, credit: 0, balance: 0, balanceType: 'Dr' });
         setTransactions(json.data.transactions || []);
         setSummary(json.data.summary || {
@@ -175,7 +178,7 @@ function GeneralLedgerContent() {
 
   useEffect(() => {
     fetchLedgerData();
-  }, [selectedAccountId, selectedAccountCode, fromDate, toDate, voucherType]);
+  }, [selectedAccountId, selectedAccountCode, fromDate, toDate, voucherType, searchTerm]);
 
   // Rebuild Journal Entries
   const handleRebuildJournal = async () => {
@@ -441,6 +444,9 @@ function GeneralLedgerContent() {
                 <option value="Payment Voucher">Payment Voucher</option>
                 <option value="Supplier Payment">Supplier Payment</option>
                 <option value="Customer Payment">Customer Payment</option>
+                <option value="Bank Deposit">Bank Deposit</option>
+                <option value="Bank Withdrawal">Bank Withdrawal</option>
+                <option value="Bank Transfer">Bank Transfer</option>
                 <option value="Payroll">Payroll</option>
               </select>
             </div>

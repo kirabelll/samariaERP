@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { notify } from '@/lib/telegram';
+import { journalGoodsReceive } from '@/lib/accounting';
 
 export const dynamic = 'force-dynamic';
 
@@ -226,6 +227,19 @@ export async function POST(request: NextRequest) {
           console.error(`Error updating stock balance for item ${itemId}:`, stockErr);
         }
       }
+    }
+
+    // Auto-create double-entry journal (Debit Inventory, Credit Supplier's AP Account)
+    try {
+      if (calculatedTotal > 0) {
+        await journalGoodsReceive({
+          ...grv,
+          division,
+          totalAmount: calculatedTotal,
+        });
+      }
+    } catch (journalErr) {
+      console.warn('Auto-journal creation for GRV skipped/failed:', journalErr);
     }
 
     notify({ module: 'PURCHASING', event: 'grv_received', details: { grvNo: grv.grvNo, totalAmount: grv.totalAmount } });

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { generateSupplierCode } from '@/lib/utils';
+import { ensureSupplierAccount } from '@/lib/accounting';
 
 export const dynamic = 'force-dynamic';
 
@@ -122,6 +123,13 @@ export async function POST(request: NextRequest) {
 
       return newSupplier;
     });
+
+    // Auto-create child account in Chart of Accounts under Accounts Payable (2010)
+    try {
+      await ensureSupplierAccount(supplier);
+    } catch (coaErr) {
+      console.warn('Could not auto-create COA child account for supplier:', coaErr);
+    }
 
     return NextResponse.json(
       { success: true, data: supplier },

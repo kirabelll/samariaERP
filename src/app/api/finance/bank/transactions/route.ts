@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { notify } from '@/lib/telegram';
+import { journalBankTransaction, journalBankTransfer } from '@/lib/accounting';
 
 export const dynamic = 'force-dynamic';
 
@@ -192,6 +193,21 @@ export async function POST(request: NextRequest) {
         return { withdrawal: withdrawalTxn, deposit: depositTxn };
       });
 
+      // Post auto-journal for transfer: Debit Dest Bank sub-account, Credit Source Bank sub-account
+      try {
+        await journalBankTransfer({
+          sourceBankAccountId: bankAccountId,
+          destinationBankAccountId,
+          amount: txnAmount,
+          refNo: transferRefNo,
+          description: transferDesc,
+          refId: result.withdrawal.id,
+          createdBy,
+        });
+      } catch (jErr) {
+        console.warn('Auto-journal for bank transfer failed:', jErr);
+      }
+
       return NextResponse.json(
         { success: true, data: result },
         { status: 201 }
@@ -239,6 +255,13 @@ export async function POST(request: NextRequest) {
         where: { id: bankAccountId },
         data: { balance: { decrement: txnAmount } },
       });
+    }
+
+    // Auto-create double-entry journal for deposit / withdrawal
+    try {
+      await journalBankTransaction(transaction);
+    } catch (jErr) {
+      console.warn('Auto-journal for bank transaction failed:', jErr);
     }
 
     // Auto-settle aggregate deliveries when bank payment is made

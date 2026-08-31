@@ -180,9 +180,9 @@ function GeneralLedgerContent() {
     fetchLedgerData();
   }, [selectedAccountId, selectedAccountCode, fromDate, toDate, voucherType, searchTerm]);
 
-  // Rebuild Journal Entries
+  // Rebuild Journal Entries (Including Bank Accounts, Vouchers, Invoices & Payments)
   const handleRebuildJournal = async () => {
-    if (!confirm('This will synchronize and regenerate journal entries from all source vouchers and invoices. Continue?')) {
+    if (!confirm('This will synchronize and regenerate ledger entries for all Bank Accounts, Invoices, Vouchers, and Payments. Continue?')) {
       return;
     }
     setRebuilding(true);
@@ -191,7 +191,7 @@ function GeneralLedgerContent() {
       const res = await fetch('/api/finance/journal/rebuild', { method: 'POST' });
       const result = await res.json();
       if (result.success) {
-        setRebuildMsg('Journal entries synchronized successfully');
+        setRebuildMsg(result.message || 'Ledger entries, Bank Accounts, and Transactions synchronized successfully!');
         await fetchLedgerData();
       } else {
         setRebuildMsg(`Error: ${result.error}`);
@@ -343,7 +343,7 @@ function GeneralLedgerContent() {
             isLoading={rebuilding}
             icon={<RotateCcw className="w-3.5 h-3.5" />}
           >
-            Sync Ledger
+            Sync All & Banks
           </Button>
 
           <Button

@@ -6,6 +6,7 @@ import {
   journalCementLifting,
   journalSupplierPayment,
   journalBankTransaction,
+  syncAllSubledgerAccounts,
   createJournalEntries,
   ACCOUNTS,
 } from '@/lib/accounting';
@@ -14,13 +15,22 @@ export const dynamic = 'force-dynamic';
 
 /**
  * POST /api/finance/journal/rebuild
- * Rebuilds all journal entries from existing transactions.
- * Only creates entries for records that don't already have journal entries.
+ * Rebuilds and synchronizes all journal entries from existing transactions across:
+ * - Bank Accounts & Bank Transactions (Deposits, Withdrawals, Transfers, Initial Balances)
+ * - Sales Invoices
+ * - Customer Payments & Receipts
+ * - Payment & Receipt Vouchers
+ * - Cement Purchases & Payments
+ * - Cement Liftings
  * Safe to run multiple times — skips records that already have entries.
  */
 export async function POST(request: NextRequest) {
   try {
+    // 0. Ensure base Chart of Accounts and link all Bank Accounts, Customers, and Suppliers first
+    const syncResult = await syncAllSubledgerAccounts();
+
     const results: any = {
+      subledgerSync: syncResult,
       postedVouchers: { processed: 0, created: 0, skipped: 0, errors: 0 },
       cementPurchases: { processed: 0, created: 0, skipped: 0, errors: 0 },
       salesInvoices: { processed: 0, created: 0, skipped: 0, errors: 0 },

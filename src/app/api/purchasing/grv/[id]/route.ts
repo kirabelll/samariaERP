@@ -11,10 +11,9 @@ export async function GET(
     const record = await prisma.goodsReceive.findUnique({
       where: { id: params.id },
       include: {
-        supplier: {
-          select: {
-            companyName: true,
-          },
+        supplier: true,
+        purchaseOrder: {
+          include: { supplier: true },
         },
       },
     });

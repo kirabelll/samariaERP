@@ -101,6 +101,90 @@ export async function POST(request: NextRequest) {
       include: { customer: true, proforma: true },
     });
 
+    // Deduct stock balance for ordered items
+    const parsedItems = typeof items === 'string' ? JSON.parse(items) : items;
+    if (Array.isArray(parsedItems)) {
+      const warehouse = safeDivision === 'MEDICAL' ? 'medical_store' : 'main';
+      for (const item of parsedItems) {
+        const orderedQty = Number(item.qty || item.quantity || 0);
+        if (orderedQty <= 0) continue;
+
+        let itemId = item.itemId || item.id;
+        if (!itemId || typeof itemId !== 'string' || itemId.startsWith('temp-')) {
+          const searchName = item.item || item.name || item.itemName;
+          const searchCode = item.code || item.itemCode;
+          if (searchName || searchCode) {
+            const match = await prisma.item.findFirst({
+              where: {
+                OR: [
+                  ...(searchCode ? [{ code: { equals: searchCode, mode: 'insensitive' as const } }] : []),
+                  ...(searchName ? [{ name: { equals: searchName, mode: 'insensitive' as const } }] : []),
+                ],
+              },
+            });
+            if (match) itemId = match.id;
+          }
+        }
+
+        if (itemId) {
+          try {
+            // Deduct from StockBalance
+            const existingStock = await prisma.stockBalance.findUnique({
+              where: {
+                itemId_warehouse: {
+                  itemId,
+                  warehouse,
+                },
+              },
+            });
+
+            if (existingStock) {
+              const newQty = Math.max(0, existingStock.quantity - orderedQty);
+              await prisma.stockBalance.update({
+                where: { id: existingStock.id },
+                data: {
+                  quantity: newQty,
+                  lastUpdated: new Date(),
+                },
+              });
+            } else {
+              await prisma.stockBalance.create({
+                data: {
+                  itemId,
+                  warehouse,
+                  quantity: 0,
+                  lastUpdated: new Date(),
+                },
+              });
+            }
+
+            // If batch is specified, deduct from MedicalBatch
+            if (item.batchNo) {
+              const existingBatch = await prisma.medicalBatch.findFirst({
+                where: {
+                  itemId,
+                  batchNo: item.batchNo,
+                },
+              });
+
+              if (existingBatch) {
+                const newBatchQty = Math.max(0, existingBatch.quantity - orderedQty);
+                await prisma.medicalBatch.update({
+                  where: { id: existingBatch.id },
+                  data: {
+                    quantity: newBatchQty,
+                    status: newBatchQty <= 0 ? 'Exhausted' : existingBatch.status,
+                  },
+                });
+              }
+            }
+          } catch (stockErr) {
+            console.error(`Error deducting stock balance for sales order item ${itemId}:`, stockErr);
+          }
+        }
+      }
+    }
+
     notify({ module: 'SALES', event: 'order_created', details: { orderNo: order.orderNo, customer: order.customer?.companyName, totalAmount: order.totalAmount, division: order.division } });
 
     return NextResponse.json(

@@ -10,7 +10,9 @@ import { useApiList } from '@/hooks/useApi';
 interface GoodsReceive {
   id: string;
   grvNo: string;
-  purchaseOrder: { poNo: string; supplier: { companyName: string } } | null;
+  supplier?: { companyName: string } | null;
+  purchaseOrder?: { poNo: string; supplier: { companyName: string } } | null;
+  totalAmount?: number;
   receivedDate: string;
   status: string;
   receivedBy: string;
@@ -34,13 +36,18 @@ export default function GoodsReceivingPage() {
     { header: 'GRV No', accessor: 'grvNo', sortable: true },
     {
       header: 'Supplier',
-      accessor: 'purchaseOrder',
-      render: (_val, row) => row.purchaseOrder?.supplier?.companyName || '-',
+      accessor: 'supplier',
+      render: (_val, row) => row.supplier?.companyName || row.purchaseOrder?.supplier?.companyName || '-',
     },
     {
       header: 'PO No',
       accessor: 'purchaseOrder',
       render: (_val, row) => row.purchaseOrder?.poNo || '-',
+    },
+    {
+      header: 'Total Amount',
+      accessor: 'totalAmount',
+      render: (val) => val ? `ETB ${Number(val).toLocaleString('en-US', { minimumFractionDigits: 2 })}` : '-',
     },
     {
       header: 'Received Date',

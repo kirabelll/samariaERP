@@ -45,7 +45,7 @@ export default function DeliveryDetailPage() {
   };
 
   const handleDelete = async () => {
-    if (!window.confirm(`Are you sure you want to delete delivery ${data?.deliveryNo}? This will also restore the inventory items to stock.`)) {
+    if (!window.confirm(`Are you sure you want to permanently delete delivery ${data?.deliveryNo}? This will also restore the inventory items to stock.`)) {
       return;
     }
     setDeleting(true);
@@ -57,10 +57,10 @@ export default function DeliveryDetailPage() {
       if (!response.ok || !result.success) {
         throw new Error(result.error || 'Failed to delete delivery');
       }
-      alert('Delivery deleted and stock restored successfully.');
+      alert('Delivery permanently deleted and stock restored successfully.');
       router.push('/dashboard/sales/deliveries');
     } catch (err: any) {
-      alert(err.message || 'Failed to delete delivery');
+      alert(err.message || 'Failed to permanently delete delivery');
     } finally {
       setDeleting(false);
     }
@@ -167,7 +167,7 @@ export default function DeliveryDetailPage() {
                 <span className="text-gray-500">Driver:</span> {data.driverName || (isMedical ? 'Direct Release / Store Issue' : 'Self-Transport')}
               </p>
               <p className="text-sm font-medium text-gray-900">
-                <span className="text-gray-500">Truck / Plate:</span> {data.truckPlateNo || 'N/A'}
+                <span className="text-gray-500">Truck / Plate:</span> {data.  truckPlateNo || 'N/A'}
               </p>
               <p className="text-xs text-gray-500">
                 Division: <span className="font-semibold text-gray-700">{data.division}</span>

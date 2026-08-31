@@ -154,13 +154,12 @@ export async function DELETE(
       }
     }
 
-    // Soft delete - set status to Inactive/Cancelled
-    const deletedRecord = await prisma.delivery.update({
+    // Permanently delete delivery record
+    const deletedRecord = await prisma.delivery.delete({
       where: { id: params.id },
-      data: { status: 'Inactive' },
     });
 
-    return NextResponse.json({ success: true, message: 'Record deleted and stock restored successfully', data: deletedRecord });
+    return NextResponse.json({ success: true, message: 'Record permanently deleted and stock restored successfully', data: deletedRecord });
   } catch (error: any) {
     console.error('Error deleting record:', error);
     return NextResponse.json(

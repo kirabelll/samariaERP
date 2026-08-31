@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Card, CardHeader, CardBody, Button, Badge } from '@/components/ui';
 import { useRouter } from 'next/navigation';
-import { Plus, Eye, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Plus, Eye, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react';
 
 interface StoreIssue {
   id: string;
@@ -214,6 +214,32 @@ export default function MedicalStoreIssues() {
                             title="View"
                           >
                             <Eye className="w-4 h-4 text-[#007AFF]" />
+                          </button>
+                          <button
+                            onClick={async () => {
+                              if (
+                                !window.confirm(
+                                  `Are you sure you want to delete Store Issue "${issue.issueNo}"?\n\nThis will restore the deducted inventory batches back to available stock.`
+                                )
+                              ) {
+                                return;
+                              }
+                              try {
+                                const res = await fetch(`/api/medical/store-issues/${issue.id}`, { method: 'DELETE' });
+                                const result = await res.json();
+                                if (!res.ok || !result.success) {
+                                  throw new Error(result.error || 'Failed to delete store issue');
+                                }
+                                alert(result.message || 'Store issue deleted successfully and batch quantities restored.');
+                                fetchIssues(pagination.page);
+                              } catch (err: any) {
+                                alert(err.message || 'Failed to delete store issue');
+                              }
+                            }}
+                            className="p-2 hover:bg-red-50 text-red-600 rounded-lg transition-colors"
+                            title="Delete"
+                          >
+                            <Trash2 className="w-4 h-4" />
                           </button>
                         </div>
                       </td>

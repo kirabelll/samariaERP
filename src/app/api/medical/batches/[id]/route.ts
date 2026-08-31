@@ -83,11 +83,15 @@ export async function PUT(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> | { id: string } }
 ) {
   try {
+    const { id } = await (params as any);
+    const searchParams = request.nextUrl?.searchParams;
+    const isPermanent = searchParams?.get('permanent') === 'true';
+
     const record = await prisma.medicalBatch.findUnique({
-      where: { id: params.id },
+      where: { id },
     });
 
     if (!record) {
@@ -97,13 +101,31 @@ export async function DELETE(
       );
     }
 
-    // Soft delete - set status to Inactive/Cancelled
-    const deletedRecord = await prisma.medicalBatch.update({
-      where: { id: params.id },
+    // Permanently purge from database if already Inactive or explicitly requested
+    if (record.status === 'Inactive' || isPermanent) {
+      await prisma.medicalBatch.delete({
+        where: { id },
+      });
+
+      return NextResponse.json({
+        success: true,
+        message: 'Stock batch permanently deleted from database.',
+        permanent: true,
+      });
+    }
+
+    // Otherwise mark status as Inactive
+    const updatedRecord = await prisma.medicalBatch.update({
+      where: { id },
       data: { status: 'Inactive' },
     });
 
-    return NextResponse.json({ success: true, message: 'Record deleted successfully', data: deletedRecord });
+    return NextResponse.json({
+      success: true,
+      message: 'Batch marked as Inactive. Delete again to permanently remove.',
+      data: updatedRecord,
+      permanent: false,
+    });
   } catch (error: any) {
     console.error('Error deleting record:', error);
     return NextResponse.json(

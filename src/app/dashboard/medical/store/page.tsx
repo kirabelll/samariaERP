@@ -22,6 +22,7 @@ import {
   Clock,
   Filter,
   RefreshCw,
+  Trash2,
 } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
 import { Card, CardBody, Table, Badge, Button, Input } from '@/components/ui';
@@ -152,16 +153,18 @@ export default function MedicalStorePage() {
       threeMonths.setMonth(threeMonths.getMonth() + 3);
 
       if (statusFilter === 'Available') {
-        result = result.filter((b) => b.quantity > 0 && new Date(b.expiryDate) >= now);
+        result = result.filter((b) => b.quantity > 0 && new Date(b.expiryDate) >= now && b.status !== 'Inactive');
       } else if (statusFilter === 'Exhausted') {
-        result = result.filter((b) => b.quantity <= 0);
+        result = result.filter((b) => b.quantity <= 0 && b.status !== 'Inactive');
       } else if (statusFilter === 'Expired') {
-        result = result.filter((b) => new Date(b.expiryDate) < now);
+        result = result.filter((b) => new Date(b.expiryDate) < now && b.status !== 'Inactive');
       } else if (statusFilter === 'NearExpiry') {
         result = result.filter((b) => {
           const exp = new Date(b.expiryDate);
-          return exp >= now && exp <= threeMonths;
+          return exp >= now && exp <= threeMonths && b.status !== 'Inactive';
         });
+      } else if (statusFilter === 'Inactive') {
+        result = result.filter((b) => b.status === 'Inactive');
       }
     }
 
@@ -204,6 +207,68 @@ export default function MedicalStorePage() {
         i.issuedBy?.toLowerCase().includes(q)
     );
   }, [issueList, searchTerm]);
+
+  // Delete Handlers
+  const handleDeleteIssue = async (issueId: string, issueNo: string) => {
+    if (
+      !window.confirm(
+        `Are you sure you want to delete Store Issue "${issueNo}"?\n\nThis will restore the deducted inventory batches back to available stock.`
+      )
+    ) {
+      return;
+    }
+    try {
+      const res = await fetch(`/api/medical/store-issues/${issueId}`, { method: 'DELETE' });
+      const result = await res.json();
+      if (!res.ok || !result.success) {
+        throw new Error(result.error || 'Failed to delete store issue');
+      }
+      alert(result.message || 'Store issue deleted successfully and batch quantities restored.');
+      fetchStoreData();
+    } catch (err: any) {
+      alert(err.message || 'Failed to delete store issue');
+    }
+  };
+
+  const handleDeleteBatch = async (batchId: string, batchNo: string, currentStatus?: string) => {
+    const isInactive = currentStatus === 'Inactive';
+    const confirmPrompt = isInactive
+      ? `This batch "${batchNo}" is INACTIVE.\n\nDo you want to PERMANENTLY delete it from the database? This action cannot be undone.`
+      : `Are you sure you want to delete Batch "${batchNo}"?\n\nIt will be marked as Inactive (or deleted permanently if already inactive).`;
+
+    if (!window.confirm(confirmPrompt)) {
+      return;
+    }
+    try {
+      const url = isInactive ? `/api/medical/batches/${batchId}?permanent=true` : `/api/medical/batches/${batchId}`;
+      const res = await fetch(url, { method: 'DELETE' });
+      const result = await res.json();
+      if (!res.ok || !result.success) {
+        throw new Error(result.error || 'Failed to delete batch');
+      }
+      alert(result.message || (result.permanent ? 'Batch permanently purged from database.' : 'Batch marked as Inactive.'));
+      fetchStoreData();
+    } catch (err: any) {
+      alert(err.message || 'Failed to delete batch');
+    }
+  };
+
+  const handleDeleteGRV = async (grvId: string, grvNo: string) => {
+    if (!window.confirm(`Are you sure you want to delete GRV "${grvNo}"?`)) {
+      return;
+    }
+    try {
+      const res = await fetch(`/api/purchasing/grv/${grvId}`, { method: 'DELETE' });
+      const result = await res.json();
+      if (!res.ok || !result.success) {
+        throw new Error(result.error || 'Failed to delete GRV');
+      }
+      alert(result.message || 'GRV deleted successfully.');
+      fetchStoreData();
+    } catch (err: any) {
+      alert(err.message || 'Failed to delete GRV');
+    }
+  };
 
   // KPI Metrics
   const totalAvailableStockQty = useMemo(() => {
@@ -354,6 +419,15 @@ export default function MedicalStorePage() {
             title="Quick View"
           >
             View
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300"
+            onClick={() => handleDeleteBatch(row.id, row.batchNo, row.status)}
+            title={row.status === 'Inactive' ? 'Permanently Delete Batch' : 'Delete / Deactivate Batch'}
+          >
+            {row.status === 'Inactive' ? 'Purge' : 'Delete'}
           </Button>
         </div>
       ),
@@ -564,6 +638,7 @@ export default function MedicalStorePage() {
                     <option value="NearExpiry">⏳ Near Expiry (&lt; 3 Months)</option>
                     <option value="Expired">⚠️ Expired</option>
                     <option value="Exhausted">Out of Stock (0 Qty)</option>
+                    <option value="Inactive">🗑️ Inactive (Ready to Purge)</option>
                   </select>
                 </div>
               </div>
@@ -651,11 +726,21 @@ export default function MedicalStorePage() {
                             </Badge>
                           </td>
                           <td className="px-4 py-3 text-center">
-                            <Link href={`/dashboard/purchasing/grv/${g.id}`}>
-                              <Button size="sm" variant="outline">
-                                View GRV
+                            <div className="flex items-center justify-center gap-1.5">
+                              <Link href={`/dashboard/purchasing/grv/${g.id}`}>
+                                <Button size="sm" variant="outline">
+                                  View GRV
+                                </Button>
+                              </Link>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300"
+                                onClick={() => handleDeleteGRV(g.id, g.grvNo)}
+                              >
+                                Delete
                               </Button>
-                            </Link>
+                            </div>
                           </td>
                         </tr>
                       ))
@@ -732,11 +817,21 @@ export default function MedicalStorePage() {
                             </Badge>
                           </td>
                           <td className="px-4 py-3 text-center">
-                            <Link href={`/dashboard/medical/store-issues/${i.id}`}>
-                              <Button size="sm" variant="outline">
-                                View Issue
+                            <div className="flex items-center justify-center gap-1.5">
+                              <Link href={`/dashboard/medical/store-issues/${i.id}`}>
+                                <Button size="sm" variant="outline">
+                                  View Issue
+                                </Button>
+                              </Link>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300"
+                                onClick={() => handleDeleteIssue(i.id, i.issueNo)}
+                              >
+                                Delete
                               </Button>
-                            </Link>
+                            </div>
                           </td>
                         </tr>
                       ))

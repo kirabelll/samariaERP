@@ -172,16 +172,52 @@ export async function DELETE(
   try {
     const { id } = await params;
 
-    const storeIssue = await prisma.medicalStoreIssue.update({
+    const storeIssue = await prisma.medicalStoreIssue.findUnique({
       where: { id },
-      data: {
-        status: 'Cancelled',
-      },
+    });
+
+    if (!storeIssue) {
+      return NextResponse.json(
+        { success: false, error: 'Store issue not found' },
+        { status: 404 }
+      );
+    }
+
+    // Restore batch quantities
+    if (storeIssue.items) {
+      try {
+        const items = typeof storeIssue.items === 'string' ? JSON.parse(storeIssue.items) : storeIssue.items;
+        if (Array.isArray(items)) {
+          for (const item of items) {
+            const batchId = item.batchId || item.id;
+            const qty = Number(item.quantity || item.qty || 0);
+            if (qty > 0) {
+              if (batchId) {
+                await prisma.medicalBatch.updateMany({
+                  where: { id: batchId },
+                  data: { quantity: { increment: qty } },
+                });
+              } else if (item.batchNo && item.itemId) {
+                await prisma.medicalBatch.updateMany({
+                  where: { batchNo: item.batchNo, itemId: item.itemId },
+                  data: { quantity: { increment: qty } },
+                });
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Error restoring batch quantities on issue deletion:', err);
+      }
+    }
+
+    await prisma.medicalStoreIssue.delete({
+      where: { id },
     });
 
     return NextResponse.json({
       success: true,
-      data: storeIssue,
+      message: 'Medical store issue deleted and batch quantities restored successfully.',
     });
   } catch (error: any) {
     console.error('Error deleting medical store issue:', error);

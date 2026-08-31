@@ -87,12 +87,15 @@ export async function GET(request: NextRequest) {
       prisma.aggregateDelivery.count({ where: whereClause }),
     ]);
 
-    // Resolve customer and supplier names from their IDs
+    // Resolve customer, supplier, and item names from their IDs
     const customerIds = Array.from(new Set(records.map((r: any) => r.customerId).filter(Boolean))) as string[];
     const supplierIds = Array.from(new Set(records.map((r: any) => r.supplierId).filter(Boolean))) as string[];
-    const [customers, suppliers, customerAgreements, supplierAgreements] = await Promise.all([
+    const itemIds = Array.from(new Set(records.map((r: any) => r.itemId).filter(Boolean))) as string[];
+
+    const [customers, suppliers, items, customerAgreements, supplierAgreements] = await Promise.all([
       customerIds.length > 0 ? prisma.customer.findMany({ where: { id: { in: customerIds } }, select: { id: true, companyName: true, code: true } }) : [],
       supplierIds.length > 0 ? prisma.supplier.findMany({ where: { id: { in: supplierIds } }, select: { id: true, companyName: true, code: true } }) : [],
+      itemIds.length > 0 ? prisma.item.findMany({ where: { id: { in: itemIds } }, select: { id: true, name: true, code: true, category: true, unit: true } }) : [],
       customerIds.length > 0 ? prisma.salesAgreement.findMany({
         where: { customerId: { in: customerIds }, status: { notIn: ['Void', 'Cancelled'] } },
         select: { customerId: true, items: true },
@@ -106,6 +109,7 @@ export async function GET(request: NextRequest) {
     ]);
     const customerMap = Object.fromEntries(customers.map((c: any) => [c.id, c]));
     const supplierMap = Object.fromEntries(suppliers.map((s: any) => [s.id, s]));
+    const itemMap = Object.fromEntries(items.map((i: any) => [i.id, i]));
 
     // Build customer price map (customerId_itemId -> price per m3)
     const customerPriceMap = new Map<string, number>();
@@ -173,6 +177,7 @@ export async function GET(request: NextRequest) {
         ...r,
         customer: customerMap[r.customerId] || null,
         supplier: supplierMap[r.supplierId] || null,
+        item: itemMap[r.itemId] || null,
         customerPrice,
         supplierPrice,
         customerReceivable: Math.round(customerReceivable * 100) / 100,

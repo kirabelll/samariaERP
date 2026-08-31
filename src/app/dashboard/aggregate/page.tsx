@@ -37,6 +37,7 @@ interface AggregateDelivery {
   supplier: { companyName: string; code: string } | null;
   transporter: { companyName: string } | null;
   truck: { plateNo: string; truckType: string | null } | null;
+  item?: { id: string; name: string; code?: string | null; category?: string | null; unit?: string | null } | null;
 }
 
 export default function AggregateOperationsPage() {
@@ -89,6 +90,11 @@ export default function AggregateOperationsPage() {
       header: 'Pad / Receipt No',
       accessor: 'padNumber',
       render: (_val, row) => row.padNumber || '-',
+    },
+    {
+      header: 'Item / Material',
+      accessor: 'item',
+      render: (_val, row) => row.item?.name || '-',
     },
     {
       header: 'Customer',
@@ -187,6 +193,9 @@ export default function AggregateOperationsPage() {
       const headers = [
         'Dispatch No',
         'Pad / Receipt No',
+        'Item Name',
+        'Item Code',
+        'Item Category',
         'Customer Name',
         'Customer Code',
         'Supplier Name',
@@ -221,6 +230,9 @@ export default function AggregateOperationsPage() {
         return [
           `"${(r.dispatchNo || '').replace(/"/g, '""')}"`,
           `"${(r.padNumber || '').replace(/"/g, '""')}"`,
+          `"${(r.item?.name || '').replace(/"/g, '""')}"`,
+          `"${(r.item?.code || '').replace(/"/g, '""')}"`,
+          `"${(r.item?.category || '').replace(/"/g, '""')}"`,
           `"${(r.customer?.companyName || '').replace(/"/g, '""')}"`,
           `"${(r.customer?.code || '').replace(/"/g, '""')}"`,
           `"${(r.supplier?.companyName || '').replace(/"/g, '""')}"`,

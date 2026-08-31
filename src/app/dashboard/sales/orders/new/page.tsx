@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { Card, CardHeader, CardBody, Button, Input, Badge } from '@/components/ui';
+import { Card, CardHeader, CardBody, Button, Input } from '@/components/ui';
 
 interface OrderItem {
   id: number;
@@ -12,6 +12,8 @@ interface OrderItem {
   unit: string;
   unitPrice: number;
   total: number;
+  batchNo?: string;
+  expiryDate?: string;
 }
 
 interface CustomerOption {
@@ -37,6 +39,17 @@ interface SystemItem {
   unit?: string | { name: string };
   category?: string;
   division?: string;
+  currentStock?: number;
+  totalStock?: number;
+}
+
+interface MedicalBatch {
+  id: string;
+  itemId: string;
+  batchNo: string;
+  expiryDate: string;
+  quantity: number;
+  status: string;
 }
 
 const DIVISIONS = [
@@ -52,16 +65,19 @@ export default function NewSalesOrderPage() {
   const [division, setDivision] = useState<string>('CONSTRUCTION');
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>('');
   const [items, setItems] = useState<OrderItem[]>([
-    { id: 1, item: '', itemId: '', qty: 1, unit: '', unitPrice: 0, total: 0 },
+    { id: 1, item: '', itemId: '', qty: 1, unit: '', unitPrice: 0, total: 0, batchNo: '', expiryDate: '' },
   ]);
 
   const [customers, setCustomers] = useState<CustomerOption[]>([]);
   const [systemItems, setSystemItems] = useState<SystemItem[]>([]);
+  const [medicalBatches, setMedicalBatches] = useState<MedicalBatch[]>([]);
   const [loadingCustomers, setLoadingCustomers] = useState<boolean>(true);
   const [loadingItems, setLoadingItems] = useState<boolean>(false);
   const [submitting, setSubmitting] = useState<boolean>(false);
 
-  // Fetch customers and items whenever division changes
+  const isMedical = division === 'MEDICAL';
+
+  // Fetch customers, items, and batch availability whenever division changes
   useEffect(() => {
     let isCancelled = false;
 
@@ -72,12 +88,14 @@ export default function NewSalesOrderPage() {
 
       try {
         if (division === 'MEDICAL') {
-          // Fetch licensed medical customers
-          const res = await fetch('/api/customers?division=MEDICAL&limit=500');
-          const data = await res.json();
+          // Fetch licensed medical customers & active batches
+          const [custRes, batchRes] = await Promise.all([
+            fetch('/api/customers?division=MEDICAL&limit=500').then((r) => r.json()).catch(() => ({ success: false, data: [] })),
+            fetch('/api/medical/batches?limit=1000').then((r) => r.json()).catch(() => ({ success: false, data: [] })),
+          ]);
 
-          if (!isCancelled && data.success && Array.isArray(data.data)) {
-            const medicalCustomers: CustomerOption[] = data.data.map((c: any) => {
+          if (!isCancelled && custRes.success && Array.isArray(custRes.data)) {
+            const medicalCustomers: CustomerOption[] = custRes.data.map((c: any) => {
               const hasExpiry = Boolean(c.licenseExpiry);
               const isExpired = hasExpiry ? new Date(c.licenseExpiry) < new Date() : false;
               const licenseStatus: 'Valid' | 'Expired' | 'N/A' = !c.licenseNo
@@ -102,7 +120,12 @@ export default function NewSalesOrderPage() {
 
             setCustomers(medicalCustomers);
           }
+
+          if (!isCancelled && batchRes.success && Array.isArray(batchRes.data)) {
+            setMedicalBatches(batchRes.data);
+          }
         } else {
+          setMedicalBatches([]);
           // For other divisions: Fetch agreement customers + general customers for that division
           const agreementUrl = division
             ? `/api/sales/agreements/customers?division=${division}`
@@ -163,7 +186,7 @@ export default function NewSalesOrderPage() {
           }
         }
 
-        // Fetch division-filtered items
+        // Fetch division-filtered items with stock
         const itemsUrl = division ? `/api/items?division=${division}&limit=500` : '/api/items?limit=500';
         const itemsRes = await fetch(itemsUrl);
         const itemsData = await itemsRes.json();
@@ -194,7 +217,7 @@ export default function NewSalesOrderPage() {
 
   const handleAddItem = () => {
     const newId = Math.max(...items.map((i) => i.id), 0) + 1;
-    setItems([...items, { id: newId, item: '', itemId: '', qty: 1, unit: '', unitPrice: 0, total: 0 }]);
+    setItems([...items, { id: newId, item: '', itemId: '', qty: 1, unit: '', unitPrice: 0, total: 0, batchNo: '', expiryDate: '' }]);
   };
 
   const handleRemoveItem = (id: number) => {
@@ -208,7 +231,7 @@ export default function NewSalesOrderPage() {
         if (item.id === id) {
           const updated = { ...item, [field]: value };
 
-          // If selecting from catalog, auto-fill price and unit
+          // If selecting from catalog, auto-fill price, unit, and batch
           if (field === 'itemId' && value) {
             const catalogItem = systemItems.find((si) => si.id === value);
             if (catalogItem) {
@@ -219,7 +242,26 @@ export default function NewSalesOrderPage() {
                 : typeof catalogItem.unit === 'string'
                 ? catalogItem.unit
                 : '';
-              updated.unit = unitName;
+              updated.unit = unitName || updated.unit || 'pcs';
+
+              // Auto-detect first available batch for medical items
+              if (isMedical) {
+                const itemBatches = medicalBatches.filter(
+                  (b) => b.itemId === value && (b.status === 'Available' || Number(b.quantity) > 0)
+                );
+                if (itemBatches.length > 0) {
+                  updated.batchNo = itemBatches[0].batchNo;
+                  updated.expiryDate = itemBatches[0].expiryDate ? itemBatches[0].expiryDate.split('T')[0] : '';
+                }
+              }
+            }
+          }
+
+          if (field === 'batchNo') {
+            // When user picks a batch, update expiry date from batches list
+            const matchedBatch = medicalBatches.find((b) => b.batchNo === value && b.itemId === item.itemId);
+            if (matchedBatch?.expiryDate) {
+              updated.expiryDate = matchedBatch.expiryDate.split('T')[0];
             }
           }
 
@@ -272,6 +314,8 @@ export default function NewSalesOrderPage() {
         quantity: Number(i.qty) || 1,
         unitPrice: Number(i.unitPrice) || 0,
         total: Number(i.total) || 0,
+        batchNo: i.batchNo || null,
+        expiryDate: i.expiryDate || null,
       };
     });
 
@@ -313,7 +357,7 @@ export default function NewSalesOrderPage() {
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Create Sales Order</h1>
           <p className="text-sm text-gray-500 mt-1">
-            Generate and submit a sales order by division with verified customer licensing.
+            Generate and submit a sales order with batch tracking, stock availability, and verified customer licensing.
           </p>
         </div>
         <div className="flex gap-2">
@@ -354,7 +398,7 @@ export default function NewSalesOrderPage() {
               </select>
               <p className="text-xs text-gray-500 mt-1.5">
                 {division === 'MEDICAL'
-                  ? '🏥 Medical division fetches licensed healthcare providers and pharmaceutical customers.'
+                  ? '🏥 Medical division fetches licensed healthcare providers and pharmaceutical batch inventory.'
                   : `📦 Fetching agreement and registered customers for ${division} division.`}
               </p>
             </div>
@@ -461,14 +505,16 @@ export default function NewSalesOrderPage() {
         </CardBody>
       </Card>
 
-      {/* Items Section */}
+      {/* Items Section with Batch Numbers & Stock Availability */}
       <Card>
         <CardHeader>
           <div className="flex justify-between items-center">
             <div>
               <h2 className="text-lg font-semibold text-gray-900">2. Order Items</h2>
               <p className="text-xs text-gray-500 mt-0.5">
-                {loadingItems ? 'Loading division catalog...' : `Catalog filtered by ${division} division (${systemItems.length} products available)`}
+                {isMedical
+                  ? `Medical batch tracking active (${medicalBatches.length} batch records indexed)`
+                  : `Catalog filtered by ${division} division (${systemItems.length} products available)`}
               </p>
             </div>
             <Button variant="secondary" size="sm" onClick={handleAddItem}>
@@ -481,93 +527,202 @@ export default function NewSalesOrderPage() {
             <table className="w-full border-collapse">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-200 text-xs font-semibold text-gray-600 uppercase tracking-wider text-left">
-                  <th className="py-3 px-4 w-[40%]">Item Description</th>
-                  <th className="py-3 px-4 w-[15%]">Qty</th>
-                  <th className="py-3 px-4 w-[15%]">Unit</th>
-                  <th className="py-3 px-4 w-[15%]">Unit Price (ETB)</th>
+                  <th className="py-3 px-4 w-[35%]">Item Description</th>
+                  {isMedical && (
+                    <>
+                      <th className="py-3 px-3 w-[20%]">Batch Number</th>
+                      <th className="py-3 px-3 w-[15%]">Expiry Date</th>
+                    </>
+                  )}
+                  <th className="py-3 px-3 w-[12%]">Qty</th>
+                  <th className="py-3 px-3 w-[10%]">Unit</th>
+                  <th className="py-3 px-3 w-[13%]">Unit Price (ETB)</th>
                   <th className="py-3 px-4 w-[15%] text-right">Total (ETB)</th>
-                  <th className="py-3 px-4 w-[5%] text-center">Action</th>
+                  <th className="py-3 px-3 w-[5%] text-center">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {items.map((item, idx) => (
-                  <tr key={item.id} className="hover:bg-gray-50/50 transition-colors">
-                    <td className="py-3 px-4">
-                      {systemItems.length > 0 ? (
-                        <div className="space-y-1.5">
-                          <select
-                            value={item.itemId}
-                            onChange={(e) => handleItemChange(item.id, 'itemId', e.target.value)}
-                            className="w-full rounded-md border border-gray-300 shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 px-2.5 py-1.5 text-sm bg-white"
-                          >
-                            <option value="">-- Select from {division} catalog --</option>
-                            {systemItems.map((si) => (
-                              <option key={si.id} value={si.id}>
-                                {si.code ? `[${si.code}] ` : ''}{si.name}
-                              </option>
-                            ))}
-                          </select>
-                          {!item.itemId && (
+                {items.map((item) => {
+                  const availableItemBatches = medicalBatches.filter((b) => b.itemId === item.itemId);
+                  const selectedMaster = systemItems.find((m) => m.id === item.itemId);
+                  const matchedBatch = medicalBatches.find(
+                    (b) => b.itemId === item.itemId && b.batchNo === item.batchNo
+                  );
+
+                  const availableStock = isMedical && matchedBatch
+                    ? Number(matchedBatch.quantity)
+                    : selectedMaster?.currentStock != null
+                    ? Number(selectedMaster.currentStock)
+                    : null;
+
+                  const remainingStock = availableStock != null ? availableStock - (Number(item.qty) || 0) : null;
+
+                  return (
+                    <tr key={item.id} className="hover:bg-gray-50/50 transition-colors">
+                      {/* Item Selector / Name */}
+                      <td className="py-3 px-4">
+                        {systemItems.length > 0 ? (
+                          <div className="space-y-1.5">
+                            <select
+                              value={item.itemId}
+                              onChange={(e) => handleItemChange(item.id, 'itemId', e.target.value)}
+                              className="w-full rounded-md border border-gray-300 shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 px-2.5 py-1.5 text-sm bg-white"
+                            >
+                              <option value="">-- Select from {division} catalog --</option>
+                              {systemItems.map((si) => (
+                                <option key={si.id} value={si.id}>
+                                  {si.code ? `[${si.code}] ` : ''}{si.name}
+                                  {si.currentStock != null ? ` (Stock: ${si.currentStock})` : ''}
+                                </option>
+                              ))}
+                            </select>
+                            {!item.itemId && (
+                              <Input
+                                placeholder="Or type custom item name"
+                                value={item.item}
+                                onChange={(e) => handleItemChange(item.id, 'item', e.target.value)}
+                                className="text-xs"
+                              />
+                            )}
+
+                            {availableStock != null && (
+                              <div className="flex flex-wrap items-center gap-2 text-[11px] pt-0.5">
+                                <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-700 font-medium">
+                                  📦 Available: <b className="text-slate-900">{availableStock}</b> {item.unit}
+                                </span>
+                                {remainingStock != null && (
+                                  <span
+                                    className={`px-2 py-0.5 rounded font-medium ${
+                                      remainingStock < 0
+                                        ? 'bg-red-50 text-red-700 font-bold border border-red-200'
+                                        : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                    }`}
+                                  >
+                                    📊 Remaining: <b>{remainingStock}</b> {item.unit}
+                                    {remainingStock < 0 && ' (Low Stock)'}
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <Input
+                            placeholder="Enter item description"
+                            value={item.item}
+                            onChange={(e) => handleItemChange(item.id, 'item', e.target.value)}
+                          />
+                        )}
+                      </td>
+
+                      {/* Batch Number (Medical) */}
+                      {isMedical && (
+                        <td className="py-3 px-3">
+                          {availableItemBatches.length > 0 ? (
+                            <div className="space-y-1">
+                              <select
+                                value={item.batchNo || ''}
+                                onChange={(e) => handleItemChange(item.id, 'batchNo', e.target.value)}
+                                className="w-full rounded-md border border-gray-300 shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 px-2 py-1.5 text-xs bg-white font-mono"
+                              >
+                                <option value="">-- Select Batch --</option>
+                                {availableItemBatches.map((b) => (
+                                  <option key={b.id} value={b.batchNo}>
+                                    {b.batchNo} (Qty: {b.quantity}, Exp: {b.expiryDate ? b.expiryDate.split('T')[0] : 'N/A'})
+                                  </option>
+                                ))}
+                              </select>
+                              <Input
+                                placeholder="Or custom batch no"
+                                value={item.batchNo || ''}
+                                onChange={(e) => handleItemChange(item.id, 'batchNo', e.target.value)}
+                                className="text-xs font-mono"
+                              />
+                            </div>
+                          ) : (
                             <Input
-                              placeholder="Or type custom item name"
-                              value={item.item}
-                              onChange={(e) => handleItemChange(item.id, 'item', e.target.value)}
-                              className="text-xs"
+                              placeholder="Batch Number"
+                              value={item.batchNo || ''}
+                              onChange={(e) => handleItemChange(item.id, 'batchNo', e.target.value)}
+                              className="text-xs font-mono"
                             />
                           )}
-                        </div>
-                      ) : (
-                        <Input
-                          placeholder="Enter item description"
-                          value={item.item}
-                          onChange={(e) => handleItemChange(item.id, 'item', e.target.value)}
-                        />
+                        </td>
                       )}
-                    </td>
-                    <td className="py-3 px-4">
-                      <input
-                        type="number"
-                        min="1"
-                        value={item.qty}
-                        onChange={(e) => handleItemChange(item.id, 'qty', e.target.value)}
-                        className="w-full rounded-md border border-gray-300 shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 px-2.5 py-1.5 text-sm"
-                      />
-                    </td>
-                    <td className="py-3 px-4">
-                      <input
-                        type="text"
-                        placeholder="e.g. pcs, box, ton"
-                        value={item.unit}
-                        onChange={(e) => handleItemChange(item.id, 'unit', e.target.value)}
-                        className="w-full rounded-md border border-gray-300 shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 px-2.5 py-1.5 text-sm"
-                      />
-                    </td>
-                    <td className="py-3 px-4">
-                      <input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        value={item.unitPrice}
-                        onChange={(e) => handleItemChange(item.id, 'unitPrice', e.target.value)}
-                        className="w-full rounded-md border border-gray-300 shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 px-2.5 py-1.5 text-sm"
-                      />
-                    </td>
-                    <td className="py-3 px-4 text-right font-semibold text-gray-900 text-sm">
-                      ETB {item.total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </td>
-                    <td className="py-3 px-4 text-center">
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveItem(item.id)}
-                        disabled={items.length <= 1}
-                        className="text-gray-400 hover:text-red-600 disabled:opacity-30 transition-colors p-1"
-                        title="Remove item"
-                      >
-                        ✕
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+
+                      {/* Expiry Date (Medical) */}
+                      {isMedical && (
+                        <td className="py-3 px-3">
+                          <input
+                            type="date"
+                            value={item.expiryDate || ''}
+                            onChange={(e) => handleItemChange(item.id, 'expiryDate', e.target.value)}
+                            className="w-full rounded-md border border-gray-300 shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 px-2 py-1.5 text-xs"
+                          />
+                          {item.expiryDate && new Date(item.expiryDate) < new Date() && (
+                            <span className="text-[10px] text-red-600 font-bold block mt-0.5">⚠️ Expired</span>
+                          )}
+                        </td>
+                      )}
+
+                      {/* Quantity */}
+                      <td className="py-3 px-3">
+                        <input
+                          type="number"
+                          min="0.01"
+                          step="any"
+                          value={item.qty}
+                          onChange={(e) => handleItemChange(item.id, 'qty', e.target.value)}
+                          className={`w-full rounded-md border shadow-sm focus:ring-1 px-2.5 py-1.5 text-sm ${
+                            remainingStock != null && remainingStock < 0
+                              ? 'border-red-400 focus:border-red-500 focus:ring-red-500 bg-red-50/40 text-red-900 font-semibold'
+                              : 'border-gray-300 focus:border-blue-500 focus:ring-blue-500'
+                          }`}
+                        />
+                      </td>
+
+                      {/* Unit */}
+                      <td className="py-3 px-3">
+                        <input
+                          type="text"
+                          placeholder="e.g. pcs, box"
+                          value={item.unit}
+                          onChange={(e) => handleItemChange(item.id, 'unit', e.target.value)}
+                          className="w-full rounded-md border border-gray-300 shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 px-2.5 py-1.5 text-sm"
+                        />
+                      </td>
+
+                      {/* Unit Price */}
+                      <td className="py-3 px-3">
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={item.unitPrice}
+                          onChange={(e) => handleItemChange(item.id, 'unitPrice', e.target.value)}
+                          className="w-full rounded-md border border-gray-300 shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 px-2.5 py-1.5 text-sm"
+                        />
+                      </td>
+
+                      {/* Total */}
+                      <td className="py-3 px-4 text-right font-semibold text-gray-900 text-sm">
+                        ETB {item.total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </td>
+
+                      {/* Remove Line */}
+                      <td className="py-3 px-3 text-center">
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveItem(item.id)}
+                          disabled={items.length <= 1}
+                          className="text-gray-400 hover:text-red-600 disabled:opacity-30 transition-colors p-1"
+                          title="Remove item"
+                        >
+                          ✕
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -578,24 +733,13 @@ export default function NewSalesOrderPage() {
             </Button>
             <div className="text-right">
               <span className="text-xs text-gray-500 uppercase tracking-wider block font-semibold">Total Order Amount</span>
-              <span className="text-2xl font-black text-gray-900">
+              <span className="text-xl sm:text-2xl font-mono font-bold text-gray-900">
                 ETB {totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </span>
             </div>
           </div>
         </CardBody>
       </Card>
-
-      {/* Action Footer */}
-      <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
-        <Button variant="outline" size="lg" onClick={handleCancel}>
-          Cancel
-        </Button>
-        <Button variant="primary" size="lg" onClick={handleSave} disabled={submitting}>
-          {submitting ? 'Submitting Order...' : 'Save & Submit Sales Order'}
-        </Button>
-      </div>
     </div>
   );
 }
-

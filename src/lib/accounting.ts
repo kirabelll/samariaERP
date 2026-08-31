@@ -48,13 +48,8 @@ export const ACCOUNTS = {
   TRANSPORT_EXPENSE:   '5060',
 };
 
-// ============================================================
-// Account Lookup
-// ============================================================
 
-/**
- * Find a ChartOfAccount by exact code. Returns the account ID or null.
- */
+
 export async function findAccountByCode(code: string): Promise<string | null> {
   const account = await prisma.chartOfAccount.findFirst({
     where: { accountCode: code, isActive: true },
@@ -81,7 +76,7 @@ export async function requireAccount(code: string, fallbackName?: string): Promi
     if (account) return account.id;
   }
 
-  // If standard account is missing, ensure base chart of accounts and retry
+
   await ensureBaseChartOfAccounts();
 
   account = await prisma.chartOfAccount.findFirst({
@@ -92,13 +87,6 @@ export async function requireAccount(code: string, fallbackName?: string): Promi
   throw new Error(`Chart of Account not found: code=${code}, name=${fallbackName || 'N/A'}`);
 }
 
-// ============================================================
-// Subledger Linking: Customers, Suppliers & Bank Accounts
-// ============================================================
-
-/**
- * Ensure base parent accounts exist in Chart of Accounts
- */
 export async function ensureBaseChartOfAccounts() {
   // 1. Create top-level parent accounts
   const parentAccounts = CHART_OF_ACCOUNTS_SEED.filter((a) => !('parentCode' in a) || !a.parentCode);
@@ -122,9 +110,6 @@ export async function ensureBaseChartOfAccounts() {
   }
 }
 
-/**
- * Ensure or create a Customer's Sub-Account under Accounts Receivable (1030)
- */
 export async function ensureCustomerAccount(customer: {
   id: string;
   code?: string;

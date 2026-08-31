@@ -849,7 +849,7 @@ export default function NewDeliveryPage() {
               + Add Line
             </Button>
             <span className="text-xs text-gray-500 font-medium">
-              Total {items.length} line item{items.length !== 1 ? 's' : ''}
+              Total {items.length} line item{items.length !== 1 ?   's' : ''}
             </span>
           </div>
         </CardBody>

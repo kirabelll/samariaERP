@@ -56,13 +56,16 @@ export async function GET(
       }),
     ]);
 
-    let customerPrice = delivery.aggregateValue;
+    let customerPrice = Number(delivery.aggregateValue || 0);
     if (salesAgr?.items) {
       try {
         const parsed = typeof salesAgr.items === 'string' ? JSON.parse(salesAgr.items) : (salesAgr.items as any[] || []);
         const matched = parsed.find((i: any) => (i.itemId || i.id) === delivery.itemId);
         if (matched) {
-          customerPrice = matched.unitPrice ?? matched.amount ?? matched.totalAmount ?? customerPrice;
+          const unitPrice = Number(matched.unitPrice ?? matched.pricePerUnit ?? matched.amount ?? matched.totalAmount ?? 0);
+          if (unitPrice > 0) {
+            customerPrice = unitPrice;
+          }
         }
       } catch { /* ignore */ }
     }

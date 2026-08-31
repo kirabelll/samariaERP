@@ -219,8 +219,8 @@ export default function AggregateOperationsPage() {
       ];
 
       const rows = records.map((r) => {
-        const custPrice = r.customerPrice ?? (r.aggregateValue ? r.aggregateValue * 1.15 : 0);
-        const suppPrice = r.supplierPrice ?? Number(r.aggregateValue || 0);
+        const custPrice = Number(r.customerPrice ?? r.aggregateValue ?? 0);
+        const suppPrice = Number(r.supplierPrice ?? r.aggregateValue ?? 0);
         const loadedVol = Number(r.loadedVolume || 0);
         const deliveredVol = Number(r.deliveredVolume ?? r.loadedVolume ?? 0);
         const custReceivable = r.customerReceivable != null ? r.customerReceivable : (loadedVol * custPrice);

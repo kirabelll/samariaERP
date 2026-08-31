@@ -122,9 +122,14 @@ export async function GET(request: NextRequest) {
             if (targetId) {
               const priceKey = `${agr.customerId}_${targetId}`;
               if (!customerPriceMap.has(priceKey)) {
-                const unitPrice = Number(item.unitPrice || item.pricePerUnit || item.amount || item.totalAmount || 0);
+                const qty = Number(item.qty || item.quantity || 1);
+                const unitPrice = Number(item.unitPrice || item.pricePerUnit || 0);
                 if (unitPrice > 0) {
-                  customerPriceMap.set(priceKey, item.vatIncluded ? unitPrice : unitPrice * 1.15);
+                  customerPriceMap.set(priceKey, unitPrice);
+                } else if (item.amount || item.totalAmount || item.total) {
+                  const total = Number(item.amount || item.totalAmount || item.total);
+                  const basePrice = qty > 0 ? total / qty : total;
+                  customerPriceMap.set(priceKey, basePrice);
                 }
               }
             }

@@ -532,8 +532,8 @@ export default function AggregateDetailPage() {
         </CardHeader>
         <CardBody>
           {(() => {
-            const custPrice = delivery.customerPrice ?? delivery.aggregateValue;
-            const suppPrice = delivery.supplierPrice ?? delivery.aggregateValue;
+            const custPrice = delivery.customerPrice ?? Number(delivery.aggregateValue || 0);
+            const suppPrice = delivery.supplierPrice ?? Number(delivery.aggregateValue || 0);
             const loadedVol = delivery.loadedVolume || 0;
             const deliveredVol = delivery.deliveredVolume ?? delivery.loadedVolume ?? 0;
             const custReceivable = loadedVol * custPrice;

@@ -57,8 +57,10 @@ export async function GET(
       }),
     ]);
 
+    // Use dispatch-specific rate from aggregateValue, fallback to sales agreement if 0
     let customerPrice = Number(delivery.aggregateValue || 0);
-    if (salesAgr?.items) {
+
+    if (customerPrice <= 0 && salesAgr?.items) {
       try {
         const parsed = typeof salesAgr.items === 'string' ? JSON.parse(salesAgr.items) : (salesAgr.items as any[] || []);
         const matched = parsed.find((i: any) => (i.itemId || i.id) === delivery.itemId);
@@ -148,9 +150,10 @@ export async function PUT(
       ? parseFloat(updateData.transportRate)
       : delivery.transportRate;
 
-    const aggregateValue = updateData.aggregateValue !== undefined && updateData.aggregateValue !== '' && !isNaN(parseFloat(updateData.aggregateValue))
-      ? parseFloat(updateData.aggregateValue)
-      : delivery.aggregateValue;
+    // Save dispatch-specific customer rate into aggregateValue
+    const effectiveAggregateValue = updateData.customerPrice !== undefined && updateData.customerPrice !== '' && !isNaN(parseFloat(updateData.customerPrice))
+      ? parseFloat(updateData.customerPrice)
+      : (updateData.aggregateValue !== undefined && updateData.aggregateValue !== '' && !isNaN(parseFloat(updateData.aggregateValue)) ? parseFloat(updateData.aggregateValue) : delivery.aggregateValue);
 
     // Enforce mandatory Delivery Pad / Receipt Number when setting status to Verified
     if (updateData.status === 'Verified') {
@@ -178,7 +181,7 @@ export async function PUT(
     let shortageDeduction: number | null = null;
     if (deliveredVolume !== null && deliveredVolume !== undefined) {
       shortageVolume = Math.max(0, loadedVolume - deliveredVolume);
-      shortageDeduction = shortageVolume * aggregateValue;
+      shortageDeduction = shortageVolume * effectiveAggregateValue;
     }
 
     const netTruckPayment = grossTruckFee - (shortageDeduction || 0);
@@ -194,7 +197,7 @@ export async function PUT(
       loadedVolume,
       deliveredVolume,
       transportRate,
-      aggregateValue,
+      aggregateValue: effectiveAggregateValue,
       grossTruckFee,
       shortageVolume,
       shortageDeduction,
@@ -224,7 +227,7 @@ export async function PUT(
       dataToSave.deliveryDate = updateData.deliveryDate ? new Date(updateData.deliveryDate) : null;
     }
 
-    // Force update the aggregate delivery record
+    // Force update the aggregate delivery record with its own dispatch-specific customerPrice
     const updatedDelivery = await prisma.aggregateDelivery.update({
       where: { id: params.id },
       data: dataToSave,
@@ -233,40 +236,6 @@ export async function PUT(
         truck: true,
       },
     });
-
-    // If customer price was explicitly updated in the edit form, synchronize with active sales agreement
-    if (updateData.customerPrice !== undefined && updateData.customerPrice !== null && updateData.customerPrice !== '') {
-      const custPriceNum = parseFloat(updateData.customerPrice);
-      if (!isNaN(custPriceNum) && custPriceNum > 0) {
-        const activeSalesAgr = await prisma.salesAgreement.findFirst({
-          where: {
-            customerId: dataToSave.customerId,
-            status: { notIn: ['Void', 'Cancelled'] },
-          },
-          orderBy: { createdAt: 'desc' },
-        });
-
-        if (activeSalesAgr && activeSalesAgr.items) {
-          try {
-            const itemsList = typeof activeSalesAgr.items === 'string' ? JSON.parse(activeSalesAgr.items) : (activeSalesAgr.items as any[] || []);
-            let changed = false;
-            const updatedItems = itemsList.map((it: any) => {
-              if ((it.itemId || it.id) === dataToSave.itemId) {
-                changed = true;
-                return { ...it, unitPrice: custPriceNum, pricePerUnit: custPriceNum };
-              }
-              return it;
-            });
-            if (changed) {
-              await prisma.salesAgreement.update({
-                where: { id: activeSalesAgr.id },
-                data: { items: JSON.stringify(updatedItems) },
-              });
-            }
-          } catch { /* ignore */ }
-        }
-      }
-    }
 
     // Resolve customer and supplier names
     const [customerData, supplierData, itemData] = await Promise.all([
@@ -289,9 +258,9 @@ export async function PUT(
       customer: customerData,
       supplier: supplierData,
       item: itemData,
-      customerPrice: updateData.customerPrice !== undefined && !isNaN(parseFloat(updateData.customerPrice))
-        ? parseFloat(updateData.customerPrice)
-        : Number(updatedDelivery.aggregateValue || 0),
+      customerPrice: updatedDelivery.aggregateValue != null
+        ? Number(updatedDelivery.aggregateValue)
+        : 0,
     };
 
     return NextResponse.json(

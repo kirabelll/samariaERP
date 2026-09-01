@@ -729,18 +729,16 @@ export default function EditAggregateDispatchPage() {
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <label className="block text-xs font-medium text-gray-700">Customer Value (ETB/m³) *</label>
-                  {formData.customerId && formData.itemId && customerAgreementPrices.has(`${formData.customerId}_${formData.itemId}`) && (
-                    <span className="text-[10px] text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 font-medium">
-                      ✓ Agreement
-                    </span>
-                  )}
+                  <span className="text-[10px] text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200 font-medium">
+                    Specific to this dispatch
+                  </span>
                 </div>
                 <Input
                   type="number"
                   step="0.01"
                   name="customerPrice"
                   required
-                  placeholder="Customer agreed rate"
+                  placeholder="Customer agreed rate for this dispatch"
                   value={formData.customerPrice}
                   onChange={handleInputChange}
                 />

@@ -196,8 +196,10 @@ export async function GET(request: NextRequest) {
       const itemId = delivery.itemId;
       const groupKey = `${custId}_${itemId}`;
 
-      // Get the agreement price (Inc. VAT) for this specific customer + item combo
-      const agreementPrice = customerPriceMap.get(groupKey) || (delivery.aggregateValue ? delivery.aggregateValue * 1.15 : 0);
+      // Use dispatch-specific customer rate from aggregateValue, otherwise fallback to sales agreement
+      const agreementPrice = (Number(delivery.aggregateValue || 0) > 0)
+        ? Number(delivery.aggregateValue)
+        : (customerPriceMap.get(groupKey) || 0);
 
       if (!customerReceivablesMap.has(groupKey)) {
         customerReceivablesMap.set(groupKey, {
@@ -206,7 +208,7 @@ export async function GET(request: NextRequest) {
           itemId: itemId,
           itemName: itemMap[itemId]?.name || 'Unknown',
           totalDeliveredVolume: 0,
-          aggregateValue: agreementPrice, // Direct from sales agreement (Inc. VAT)
+          aggregateValue: agreementPrice, // Dispatch specific or sales agreement (Inc. VAT)
           totalReceivable: 0,
         });
       }

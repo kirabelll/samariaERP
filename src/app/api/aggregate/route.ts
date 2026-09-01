@@ -166,7 +166,9 @@ export async function GET(request: NextRequest) {
 
       // Customer pricing
       const custPriceKey = `${r.customerId}_${r.itemId}`;
-      const customerPrice = customerPriceMap.get(custPriceKey) || Number(r.aggregateValue || 0);
+      const customerPrice = Number(r.aggregateValue || 0) > 0
+        ? Number(r.aggregateValue)
+        : (customerPriceMap.get(custPriceKey) || 0);
       const customerReceivable = loadedVol * customerPrice;
 
       // Supplier pricing (Aggregate material supplier)
@@ -273,7 +275,7 @@ export async function POST(request: NextRequest) {
     // Convert to numbers
     const loaded = parseFloat(loadedVolume as any);
     const transported = parseFloat(transportRate as any);
-    const aggValue = parseFloat(aggregateValue as any);
+    const aggValue = parseFloat((body.customerPrice || aggregateValue) as any);
     const delivered = deliveredVolume ? parseFloat(deliveredVolume as any) : null;
 
     // Cap billable volume at truck capacity — net pay never exceeds truck capacity × rate

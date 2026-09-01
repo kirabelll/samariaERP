@@ -180,18 +180,13 @@ export async function POST(request: NextRequest) {
             });
           }
 
-          // 2. Create or update MedicalBatch (for medical store or if batchNo specified or medical division)
-          let batchNo = item.batchNo ? String(item.batchNo).trim() : null;
-          if (!batchNo && (rowWarehouse === 'medical_store' || division === 'MEDICAL')) {
-            const rowIdx = parsedItems.indexOf(item) + 1;
-            batchNo = `GRV-${grvNo.replace('GRV-', '')}-${String(rowIdx).padStart(2, '0')}`;
-          }
+          // 2. Create or update MedicalBatch (consolidate and update stock when items are the same)
+          const expiryDate = item.expiryDate
+            ? new Date(item.expiryDate)
+            : new Date(Date.now() + 2 * 365 * 24 * 60 * 60 * 1000); // 2 years default
+          const batchNo = item.batchNo ? String(item.batchNo).trim() : null;
 
           if (batchNo) {
-            const expiryDate = item.expiryDate
-              ? new Date(item.expiryDate)
-              : new Date(Date.now() + 2 * 365 * 24 * 60 * 60 * 1000); // 2 years default
-
             const existingBatch = await prisma.medicalBatch.findUnique({
               where: {
                 itemId_batchNo_warehouse: {
@@ -218,6 +213,42 @@ export async function POST(request: NextRequest) {
                 data: {
                   itemId,
                   batchNo,
+                  expiryDate,
+                  quantity: receivedQty,
+                  costPrice: unitCost,
+                  warehouse: rowWarehouse,
+                  status: item.condition === 'Damaged' || item.condition === 'Defective' ? 'Damaged' : 'Available',
+                  supplierId,
+                },
+              });
+            }
+          } else {
+            // When batchNo is not specified, find existing batch for the same item in this warehouse to update stock
+            const existingSameItemBatch = await prisma.medicalBatch.findFirst({
+              where: {
+                itemId,
+                warehouse: rowWarehouse,
+              },
+              orderBy: { expiryDate: 'desc' },
+            });
+
+            if (existingSameItemBatch) {
+              await prisma.medicalBatch.update({
+                where: { id: existingSameItemBatch.id },
+                data: {
+                  quantity: existingSameItemBatch.quantity + receivedQty,
+                  costPrice: unitCost > 0 ? unitCost : existingSameItemBatch.costPrice,
+                  expiryDate,
+                  supplierId: supplierId || existingSameItemBatch.supplierId,
+                  status: item.condition === 'Damaged' || item.condition === 'Defective' ? 'Damaged' : 'Available',
+                },
+              });
+            } else {
+              const defaultBatchNo = `BATCH-${itemId.slice(-6).toUpperCase()}`;
+              await prisma.medicalBatch.create({
+                data: {
+                  itemId,
+                  batchNo: defaultBatchNo,
                   expiryDate,
                   quantity: receivedQty,
                   costPrice: unitCost,

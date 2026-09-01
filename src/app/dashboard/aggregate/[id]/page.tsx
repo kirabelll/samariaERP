@@ -113,7 +113,7 @@ export default function AggregateDetailPage() {
 
     const fetchDelivery = async () => {
       try {
-        const res = await fetch(`/api/aggregate/${id}`);
+        const res = await fetch(`/api/aggregate/${id}`, { cache: 'no-store' });
         const data = await res.json();
 
         if (data.success) {

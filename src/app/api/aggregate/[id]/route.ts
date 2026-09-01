@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { notify } from '@/lib/telegram';
 
 export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 export async function GET(
   request: NextRequest,
@@ -20,7 +21,7 @@ export async function GET(
     if (!delivery) {
       return NextResponse.json(
         { success: false, error: 'Aggregate delivery not found' },
-        { status: 404 }
+        { status: 404, headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate' } }
       );
     }
 
@@ -100,12 +101,15 @@ export async function GET(
       netAmount,
     };
 
-    return NextResponse.json({ success: true, data });
+    return NextResponse.json(
+      { success: true, data },
+      { headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate' } }
+    );
   } catch (error: any) {
     console.error('Error fetching aggregate delivery:', error);
     return NextResponse.json(
       { success: false, error: error.message },
-      { status: 500 }
+      { status: 500, headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate' } }
     );
   }
 }
@@ -122,22 +126,31 @@ export async function PUT(
     if (!delivery) {
       return NextResponse.json(
         { success: false, error: 'Aggregate delivery not found' },
-        { status: 404 }
+        { status: 404, headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate' } }
       );
     }
 
     const body = await request.json();
 
-    // Safe destructuring - strip protected fields
-    const { id, createdAt, transporter, truck, customer, supplier, item, ...updateData } = body;
+    // Safe destructuring - strip protected / relation object fields
+    const { id, createdAt, updatedAt, transporter, truck, customer, supplier, item, ...updateData } = body;
 
-    // Recalculate derived financial fields if volume or rate parameters are present
-    const loadedVolume = updateData.loadedVolume !== undefined ? parseFloat(updateData.loadedVolume) : delivery.loadedVolume;
+    // Parse and sanitize volume and rate parameters
+    const loadedVolume = updateData.loadedVolume !== undefined && updateData.loadedVolume !== '' && !isNaN(parseFloat(updateData.loadedVolume))
+      ? parseFloat(updateData.loadedVolume)
+      : delivery.loadedVolume;
+
     const deliveredVolume = updateData.deliveredVolume !== undefined
-      ? (updateData.deliveredVolume !== null && updateData.deliveredVolume !== '' ? parseFloat(updateData.deliveredVolume) : null)
+      ? (updateData.deliveredVolume !== null && updateData.deliveredVolume !== '' && !isNaN(parseFloat(updateData.deliveredVolume)) ? parseFloat(updateData.deliveredVolume) : null)
       : delivery.deliveredVolume;
-    const transportRate = updateData.transportRate !== undefined ? parseFloat(updateData.transportRate) : delivery.transportRate;
-    const aggregateValue = updateData.aggregateValue !== undefined ? parseFloat(updateData.aggregateValue) : delivery.aggregateValue;
+
+    const transportRate = updateData.transportRate !== undefined && updateData.transportRate !== '' && !isNaN(parseFloat(updateData.transportRate))
+      ? parseFloat(updateData.transportRate)
+      : delivery.transportRate;
+
+    const aggregateValue = updateData.aggregateValue !== undefined && updateData.aggregateValue !== '' && !isNaN(parseFloat(updateData.aggregateValue))
+      ? parseFloat(updateData.aggregateValue)
+      : delivery.aggregateValue;
 
     // Enforce mandatory Delivery Pad / Receipt Number when setting status to Verified
     if (updateData.status === 'Verified') {
@@ -145,7 +158,7 @@ export async function PUT(
       if (!effectivePadNumber || !effectivePadNumber.trim()) {
         return NextResponse.json(
           { success: false, error: 'Cannot verify: Delivery Pad / Receipt Number is mandatory before verifying an aggregate dispatch.' },
-          { status: 400 }
+          { status: 400, headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate' } }
         );
       }
     }
@@ -157,6 +170,7 @@ export async function PUT(
       if (truckRec?.capacity) truckCapacity = parseFloat(String(truckRec.capacity));
     }
 
+    // Force recalculate all financial / fee values accurately
     const billableVolume = (truckCapacity > 0 && loadedVolume > truckCapacity) ? truckCapacity : loadedVolume;
     const grossTruckFee = billableVolume * transportRate;
 
@@ -169,20 +183,48 @@ export async function PUT(
 
     const netTruckPayment = grossTruckFee - (shortageDeduction || 0);
 
-    const dataToSave = {
-      ...updateData,
+    const dataToSave: any = {
+      customerId: updateData.customerId !== undefined ? updateData.customerId : delivery.customerId,
+      supplierId: updateData.supplierId !== undefined ? updateData.supplierId : delivery.supplierId,
+      transporterId: updateData.transporterId !== undefined ? updateData.transporterId : delivery.transporterId,
+      truckId: truckIdToUse,
+      itemId: updateData.itemId !== undefined ? updateData.itemId : delivery.itemId,
+      driverName: updateData.driverName !== undefined ? (updateData.driverName || null) : delivery.driverName,
+      padNumber: updateData.padNumber !== undefined ? (updateData.padNumber ? String(updateData.padNumber).trim() : null) : delivery.padNumber,
       loadedVolume,
       deliveredVolume,
       transportRate,
       aggregateValue,
-      grossTruckFee: updateData.grossTruckFee !== undefined ? parseFloat(updateData.grossTruckFee) : grossTruckFee,
-      shortageVolume: updateData.shortageVolume !== undefined ? (updateData.shortageVolume !== null ? parseFloat(updateData.shortageVolume) : null) : shortageVolume,
-      shortageDeduction: updateData.shortageDeduction !== undefined ? (updateData.shortageDeduction !== null ? parseFloat(updateData.shortageDeduction) : null) : shortageDeduction,
-      netTruckPayment: updateData.netTruckPayment !== undefined ? parseFloat(updateData.netTruckPayment) : netTruckPayment,
-      ...(updateData.dispatchDate ? { dispatchDate: new Date(updateData.dispatchDate) } : {}),
-      ...(updateData.deliveryDate ? { deliveryDate: new Date(updateData.deliveryDate) } : {}),
+      grossTruckFee,
+      shortageVolume,
+      shortageDeduction,
+      netTruckPayment,
+      status: updateData.status !== undefined ? updateData.status : delivery.status,
     };
 
+    if (updateData.agreementId !== undefined) {
+      dataToSave.agreementId = updateData.agreementId || null;
+    }
+    if (updateData.telegramProof !== undefined) {
+      dataToSave.telegramProof = updateData.telegramProof || null;
+    }
+    if (updateData.signedInvoice !== undefined) {
+      dataToSave.signedInvoice = updateData.signedInvoice || null;
+    }
+    if (updateData.verifiedBy !== undefined) {
+      dataToSave.verifiedBy = updateData.verifiedBy || null;
+    }
+    if (updateData.registeredBy !== undefined) {
+      dataToSave.registeredBy = updateData.registeredBy || null;
+    }
+    if (updateData.dispatchDate !== undefined) {
+      dataToSave.dispatchDate = updateData.dispatchDate ? new Date(updateData.dispatchDate) : delivery.dispatchDate;
+    }
+    if (updateData.deliveryDate !== undefined) {
+      dataToSave.deliveryDate = updateData.deliveryDate ? new Date(updateData.deliveryDate) : null;
+    }
+
+    // Force update the aggregate delivery record
     const updatedDelivery = await prisma.aggregateDelivery.update({
       where: { id: params.id },
       data: dataToSave,
@@ -191,6 +233,40 @@ export async function PUT(
         truck: true,
       },
     });
+
+    // If customer price was explicitly updated in the edit form, synchronize with active sales agreement
+    if (updateData.customerPrice !== undefined && updateData.customerPrice !== null && updateData.customerPrice !== '') {
+      const custPriceNum = parseFloat(updateData.customerPrice);
+      if (!isNaN(custPriceNum) && custPriceNum > 0) {
+        const activeSalesAgr = await prisma.salesAgreement.findFirst({
+          where: {
+            customerId: dataToSave.customerId,
+            status: { notIn: ['Void', 'Cancelled'] },
+          },
+          orderBy: { createdAt: 'desc' },
+        });
+
+        if (activeSalesAgr && activeSalesAgr.items) {
+          try {
+            const itemsList = typeof activeSalesAgr.items === 'string' ? JSON.parse(activeSalesAgr.items) : (activeSalesAgr.items as any[] || []);
+            let changed = false;
+            const updatedItems = itemsList.map((it: any) => {
+              if ((it.itemId || it.id) === dataToSave.itemId) {
+                changed = true;
+                return { ...it, unitPrice: custPriceNum, pricePerUnit: custPriceNum };
+              }
+              return it;
+            });
+            if (changed) {
+              await prisma.salesAgreement.update({
+                where: { id: activeSalesAgr.id },
+                data: { items: JSON.stringify(updatedItems) },
+              });
+            }
+          } catch { /* ignore */ }
+        }
+      }
+    }
 
     // Resolve customer and supplier names
     const [customerData, supplierData, itemData] = await Promise.all([
@@ -213,14 +289,20 @@ export async function PUT(
       customer: customerData,
       supplier: supplierData,
       item: itemData,
+      customerPrice: updateData.customerPrice !== undefined && !isNaN(parseFloat(updateData.customerPrice))
+        ? parseFloat(updateData.customerPrice)
+        : Number(updatedDelivery.aggregateValue || 0),
     };
 
-    return NextResponse.json({ success: true, data });
+    return NextResponse.json(
+      { success: true, data },
+      { headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate' } }
+    );
   } catch (error: any) {
     console.error('Error updating aggregate delivery:', error);
     return NextResponse.json(
       { success: false, error: error.message },
-      { status: 500 }
+      { status: 500, headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate' } }
     );
   }
 }

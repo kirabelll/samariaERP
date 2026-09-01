@@ -431,6 +431,7 @@ export default function EditAggregateDispatchPage() {
       const data = await res.json();
       if (res.ok && data.success) {
         alert('Aggregate dispatch updated successfully!');
+        router.refresh();
         router.push(`/dashboard/aggregate/${id}`);
       } else {
         alert(data.error || 'Failed to update aggregate dispatch');

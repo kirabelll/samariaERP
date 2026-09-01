@@ -113,9 +113,9 @@ export default function MedicalStorePage() {
     try {
       setRefreshing(true);
       const [batchesRes, grvRes, issuesRes] = await Promise.all([
-        fetch('/api/medical/batches?limit=1000').then((r) => r.json()).catch(() => ({ success: false, data: [] })),
-        fetch('/api/purchasing/grv?limit=200').then((r) => r.json()).catch(() => ({ success: false, data: [] })),
-        fetch('/api/medical/store-issues?limit=200').then((r) => r.json()).catch(() => ({ success: false, data: [] })),
+        fetch('/api/medical/batches?limit=1000', { cache: 'no-store' }).then((r) => r.json()).catch(() => ({ success: false, data: [] })),
+        fetch('/api/purchasing/grv?limit=200', { cache: 'no-store' }).then((r) => r.json()).catch(() => ({ success: false, data: [] })),
+        fetch('/api/medical/store-issues?limit=200', { cache: 'no-store' }).then((r) => r.json()).catch(() => ({ success: false, data: [] })),
       ]);
 
       if (batchesRes.success && Array.isArray(batchesRes.data)) {

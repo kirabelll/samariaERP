@@ -203,6 +203,56 @@ export async function DELETE(
       );
     }
 
+    // Restore inventory when cancelling or deleting an active sales order
+    if (record.status !== 'Cancelled') {
+      try {
+        const parsedItems = typeof record.items === 'string' ? JSON.parse(record.items) : record.items;
+        if (Array.isArray(parsedItems)) {
+          const warehouse = record.division === 'MEDICAL' ? 'medical_store' : 'main';
+          for (const item of parsedItems) {
+            const qty = Number(item.qty || item.quantity || 0);
+            const itemId = item.itemId || item.id;
+            if (qty > 0 && itemId) {
+              const existingStock = await prisma.stockBalance.findUnique({
+                where: { itemId_warehouse: { itemId, warehouse } },
+              });
+              if (existingStock) {
+                await prisma.stockBalance.update({
+                  where: { id: existingStock.id },
+                  data: { quantity: existingStock.quantity + qty, lastUpdated: new Date() },
+                });
+              }
+
+              if (item.batchNo) {
+                const batch = await prisma.medicalBatch.findFirst({
+                  where: { itemId, batchNo: item.batchNo },
+                });
+                if (batch) {
+                  await prisma.medicalBatch.update({
+                    where: { id: batch.id },
+                    data: { quantity: batch.quantity + qty, status: 'Available' },
+                  });
+                }
+              } else {
+                const batch = await prisma.medicalBatch.findFirst({
+                  where: { itemId, warehouse },
+                  orderBy: { expiryDate: 'desc' },
+                });
+                if (batch) {
+                  await prisma.medicalBatch.update({
+                    where: { id: batch.id },
+                    data: { quantity: batch.quantity + qty, status: 'Available' },
+                  });
+                }
+              }
+            }
+          }
+        }
+      } catch (stockErr) {
+        console.error('Error restoring sales order stock:', stockErr);
+      }
+    }
+
     if (record.status === 'Cancelled' || isPermanent) {
       const counts = record._count;
       const linked: string[] = [];
@@ -231,7 +281,7 @@ export async function DELETE(
 
       return NextResponse.json({
         success: true,
-        message: 'Sales Order permanently deleted from database',
+        message: 'Sales Order permanently deleted and inventory restored',
       });
     }
 
@@ -243,7 +293,7 @@ export async function DELETE(
 
     return NextResponse.json({
       success: true,
-      message: 'Sales Order cancelled successfully (status set to Cancelled)',
+      message: 'Sales Order cancelled successfully and inventory restored',
       data: deletedRecord,
     });
   } catch (error: any) {

@@ -87,13 +87,53 @@ export async function DELETE(
       );
     }
 
+    if (record.status !== 'Inactive' && record.status !== 'Cancelled') {
+      try {
+        const parsedItems = typeof record.items === 'string' ? JSON.parse(record.items) : record.items;
+        if (Array.isArray(parsedItems)) {
+          for (const item of parsedItems) {
+            const qty = Number(item.receivedQty !== undefined ? item.receivedQty : (item.quantity !== undefined ? item.quantity : (item.qty || 0)));
+            const itemId = item.itemId || item.id;
+            const warehouse = item.warehouse || 'medical_store';
+            if (qty > 0 && itemId) {
+              const existingStock = await prisma.stockBalance.findUnique({
+                where: { itemId_warehouse: { itemId, warehouse } },
+              });
+              if (existingStock) {
+                const newQty = Math.max(0, existingStock.quantity - qty);
+                await prisma.stockBalance.update({
+                  where: { id: existingStock.id },
+                  data: { quantity: newQty, lastUpdated: new Date() },
+                });
+              }
+
+              if (item.batchNo) {
+                const batch = await prisma.medicalBatch.findFirst({
+                  where: { itemId, batchNo: item.batchNo, warehouse },
+                });
+                if (batch) {
+                  const newBatchQty = Math.max(0, batch.quantity - qty);
+                  await prisma.medicalBatch.update({
+                    where: { id: batch.id },
+                    data: { quantity: newBatchQty, status: newBatchQty <= 0 ? 'Exhausted' : batch.status },
+                  });
+                }
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Error reversing GRV stock:', err);
+      }
+    }
+
     // Soft delete - set status to Inactive/Cancelled
     const deletedRecord = await prisma.goodsReceive.update({
       where: { id: params.id },
       data: { status: 'Inactive' },
     });
 
-    return NextResponse.json({ success: true, message: 'Record deleted successfully', data: deletedRecord });
+    return NextResponse.json({ success: true, message: 'GRV deactivated and inventory balances updated successfully', data: deletedRecord });
   } catch (error: any) {
     console.error('Error deleting record:', error);
     return NextResponse.json(

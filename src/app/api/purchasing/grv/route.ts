@@ -180,8 +180,13 @@ export async function POST(request: NextRequest) {
             });
           }
 
-          // 2. If batch tracked or batchNo specified, create or update MedicalBatch
-          const batchNo = item.batchNo ? String(item.batchNo).trim() : null;
+          // 2. Create or update MedicalBatch (for medical store or if batchNo specified or medical division)
+          let batchNo = item.batchNo ? String(item.batchNo).trim() : null;
+          if (!batchNo && (rowWarehouse === 'medical_store' || division === 'MEDICAL')) {
+            const rowIdx = parsedItems.indexOf(item) + 1;
+            batchNo = `GRV-${grvNo.replace('GRV-', '')}-${String(rowIdx).padStart(2, '0')}`;
+          }
+
           if (batchNo) {
             const expiryDate = item.expiryDate
               ? new Date(item.expiryDate)
@@ -205,7 +210,7 @@ export async function POST(request: NextRequest) {
                   costPrice: unitCost > 0 ? unitCost : existingBatch.costPrice,
                   expiryDate,
                   supplierId: supplierId || existingBatch.supplierId,
-                  status: item.condition === 'Damaged' ? 'Damaged' : 'Available',
+                  status: item.condition === 'Damaged' || item.condition === 'Defective' ? 'Damaged' : 'Available',
                 },
               });
             } else {
@@ -217,7 +222,7 @@ export async function POST(request: NextRequest) {
                   quantity: receivedQty,
                   costPrice: unitCost,
                   warehouse: rowWarehouse,
-                  status: item.condition === 'Damaged' ? 'Damaged' : 'Available',
+                  status: item.condition === 'Damaged' || item.condition === 'Defective' ? 'Damaged' : 'Available',
                   supplierId,
                 },
               });

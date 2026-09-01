@@ -158,7 +158,7 @@ export async function POST(request: NextRequest) {
               });
             }
 
-            // If batch is specified, deduct from MedicalBatch
+            // Deduct from MedicalBatch (specific batch if provided, otherwise FEFO)
             if (item.batchNo) {
               const existingBatch = await prisma.medicalBatch.findFirst({
                 where: {
@@ -176,6 +176,31 @@ export async function POST(request: NextRequest) {
                     status: newBatchQty <= 0 ? 'Exhausted' : existingBatch.status,
                   },
                 });
+              }
+            } else {
+              // FEFO deduction: First Expiry First Out across active available batches
+              const availableBatches = await prisma.medicalBatch.findMany({
+                where: {
+                  itemId,
+                  quantity: { gt: 0 },
+                  status: { notIn: ['Expired', 'Damaged', 'Quarantine', 'Inactive'] },
+                },
+                orderBy: { expiryDate: 'asc' },
+              });
+
+              let remainingToDeduct = orderedQty;
+              for (const b of availableBatches) {
+                if (remainingToDeduct <= 0) break;
+                const deductAmount = Math.min(b.quantity, remainingToDeduct);
+                const newBQty = b.quantity - deductAmount;
+                await prisma.medicalBatch.update({
+                  where: { id: b.id },
+                  data: {
+                    quantity: newBQty,
+                    status: newBQty <= 0 ? 'Exhausted' : b.status,
+                  },
+                });
+                remainingToDeduct -= deductAmount;
               }
             }
           } catch (stockErr) {

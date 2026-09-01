@@ -88,6 +88,8 @@ export default function EditAggregateDispatchPage() {
   const [customerAgreementPrices, setCustomerAgreementPrices] = useState<Map<string, number>>(new Map());
   // Map: supplierId → Set of itemIds from their AGGREGATE supplier agreements
   const [supplierAgreementItems, setSupplierAgreementItems] = useState<Map<string, Set<string>>>(new Map());
+  // Map: `${supplierId}_${itemId}` → supplier agreement price
+  const [supplierAgreementPrices, setSupplierAgreementPrices] = useState<Map<string, number>>(new Map());
 
   // Form state
   const [formData, setFormData] = useState({
@@ -142,45 +144,31 @@ export default function EditAggregateDispatchPage() {
 
         const delivery = deliveryData.data;
 
-        // Populate customers list
         if (customersRes.ok) {
-          const custData = await customersRes.json();
-          setCustomers(custData.data || []);
+          const cData = await customersRes.json();
+          setCustomers(cData.data || []);
         }
-
-        // Populate suppliers list
         if (suppliersRes.ok) {
-          const suppData = await suppliersRes.json();
-          setSuppliers(suppData.data || []);
+          const sData = await suppliersRes.json();
+          setSuppliers(sData.data || []);
         }
-
-        // Populate transporters and trucks
         if (transportersRes.ok) {
-          const transData = await transportersRes.json();
-          const allTransporters: Transporter[] = transData.data || [];
-          setTransporters(allTransporters);
-
-          const selTransporter = allTransporters.find((t) => t.id === delivery.transporterId);
-          if (selTransporter?.trucks) {
-            setTrucks(selTransporter.trucks);
-          }
+          const tData = await transportersRes.json();
+          setTransporters(tData.data || []);
+          const currentTransporter = (tData.data || []).find((t: Transporter) => t.id === delivery.transporterId);
+          setTrucks(currentTransporter?.trucks || []);
         }
 
-        // Populate items database map
+        // Database items map (strictly Item table)
         const dbItemMap = new Map<string, Item>();
         if (itemsRes.ok) {
-          const itemData = await itemsRes.json();
-          (itemData.data || []).forEach((dbItem: any) => {
-            dbItemMap.set(dbItem.id, {
-              id: dbItem.id,
-              name: dbItem.name || 'Unknown',
-              code: dbItem.code || '',
-              unit: dbItem.unit || 'm3',
-            });
+          const iData = await itemsRes.json();
+          (iData.data || []).forEach((i: Item) => {
+            dbItemMap.set(i.id, i);
           });
         }
 
-        // Parse customer agreement items & prices (customerId -> Set of itemIds from Item table)
+        // Parse customer agreement items (customerId -> Set of itemIds from Item table)
         const custItemsMap = new Map<string, Set<string>>();
         const custPricesMap = new Map<string, number>();
         if (custAgreementsRes.ok) {
@@ -191,7 +179,6 @@ export default function EditAggregateDispatchPage() {
             try {
               const agrItems = typeof agr.items === 'string' ? JSON.parse(agr.items) : (agr.items || []);
               agrItems.forEach((ai: any) => {
-                // Strictly use ai.itemId (or ai.id if it matches a valid Item.id in dbItemMap)
                 const targetItemId = ai.itemId || (ai.id && dbItemMap.has(ai.id) ? ai.id : null);
                 if (targetItemId && dbItemMap.has(targetItemId)) {
                   if (!custItemsMap.has(custId)) {
@@ -211,8 +198,9 @@ export default function EditAggregateDispatchPage() {
         setCustomerAgreementItems(custItemsMap);
         setCustomerAgreementPrices(custPricesMap);
 
-        // Parse supplier agreement items (supplierId -> Set of itemIds from Item table)
+        // Parse supplier agreement items & prices (supplierId -> Set of itemIds and prices)
         const suppItemsMap = new Map<string, Set<string>>();
+        const suppPricesMap = new Map<string, number>();
         if (suppAgreementsRes.ok) {
           const suppAgrData = await suppAgreementsRes.json();
           (suppAgrData.data || []).forEach((agr: any) => {
@@ -227,12 +215,18 @@ export default function EditAggregateDispatchPage() {
                     suppItemsMap.set(suppId, new Set());
                   }
                   suppItemsMap.get(suppId)!.add(targetItemId);
+
+                  const price = Number(ai.amount ?? ai.totalAmount ?? ai.unitPrice ?? ai.pricePerUnit ?? 0);
+                  if (price > 0 && !suppPricesMap.has(`${suppId}_${targetItemId}`)) {
+                    suppPricesMap.set(`${suppId}_${targetItemId}`, price);
+                  }
                 }
               });
             } catch { /* ignore */ }
           });
         }
         setSupplierAgreementItems(suppItemsMap);
+        setSupplierAgreementPrices(suppPricesMap);
 
         // Final items list strictly contains items from the Item database table
         const allItemsList = Array.from(dbItemMap.values());
@@ -244,6 +238,10 @@ export default function EditAggregateDispatchPage() {
           : (delivery.customerId && delivery.itemId && custPricesMap.has(`${delivery.customerId}_${delivery.itemId}`)
               ? String(custPricesMap.get(`${delivery.customerId}_${delivery.itemId}`))
               : (delivery.aggregateValue != null ? String(delivery.aggregateValue) : ''));
+
+        const initialSuppPrice = delivery.supplierId && delivery.itemId && suppPricesMap.has(`${delivery.supplierId}_${delivery.itemId}`)
+          ? String(suppPricesMap.get(`${delivery.supplierId}_${delivery.itemId}`))
+          : (delivery.supplierPrice != null ? String(delivery.supplierPrice) : (delivery.aggregateValue != null ? String(delivery.aggregateValue) : ''));
 
         setFormData({
           dispatchNo: delivery.dispatchNo || '',
@@ -257,7 +255,7 @@ export default function EditAggregateDispatchPage() {
           loadedVolume: delivery.loadedVolume != null ? String(delivery.loadedVolume) : '',
           deliveredVolume: delivery.deliveredVolume != null ? String(delivery.deliveredVolume) : '',
           transportRate: delivery.transportRate != null ? String(delivery.transportRate) : '',
-          aggregateValue: delivery.aggregateValue != null ? String(delivery.aggregateValue) : '',
+          aggregateValue: initialSuppPrice,
           customerPrice: initialCustPrice,
           status: delivery.status || 'Dispatched',
           dispatchDate: delivery.dispatchDate ? new Date(delivery.dispatchDate).toISOString().split('T')[0] : '',
@@ -325,21 +323,36 @@ export default function EditAggregateDispatchPage() {
         const targetItem = isItemValid ? prev.itemId : '';
         const priceKey = `${newCustId}_${targetItem}`;
         const autoPrice = customerAgreementPrices.get(priceKey);
+        const suppPriceKey = `${prev.supplierId}_${targetItem}`;
+        const autoSuppPrice = supplierAgreementPrices.get(suppPriceKey);
         return {
           ...prev,
           customerId: newCustId,
           itemId: targetItem,
           customerPrice: autoPrice !== undefined ? String(autoPrice) : prev.customerPrice,
+          aggregateValue: autoSuppPrice !== undefined ? String(autoSuppPrice) : prev.aggregateValue,
         };
       });
+    } else if (name === 'supplierId') {
+      const newSuppId = value;
+      const suppPriceKey = `${newSuppId}_${formData.itemId}`;
+      const autoSuppPrice = supplierAgreementPrices.get(suppPriceKey);
+      setFormData((prev) => ({
+        ...prev,
+        supplierId: newSuppId,
+        aggregateValue: autoSuppPrice !== undefined ? String(autoSuppPrice) : prev.aggregateValue,
+      }));
     } else if (name === 'itemId') {
       const selectedItemId = value;
       const priceKey = `${formData.customerId}_${selectedItemId}`;
       const autoPrice = customerAgreementPrices.get(priceKey);
+      const suppPriceKey = `${formData.supplierId}_${selectedItemId}`;
+      const autoSuppPrice = supplierAgreementPrices.get(suppPriceKey);
       setFormData((prev) => ({
         ...prev,
         itemId: selectedItemId,
         customerPrice: autoPrice !== undefined ? String(autoPrice) : prev.customerPrice,
+        aggregateValue: autoSuppPrice !== undefined ? String(autoSuppPrice) : prev.aggregateValue,
       }));
     } else {
       setFormData((prev) => ({ ...prev, [name]: value }));
@@ -730,7 +743,7 @@ export default function EditAggregateDispatchPage() {
                 <div className="flex items-center justify-between mb-1">
                   <label className="block text-xs font-medium text-gray-700">Customer Value (ETB/m³) *</label>
                   <span className="text-[10px] text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200 font-medium">
-                    Specific to this dispatch
+                    From Sales Agr / Per-Dispatch
                   </span>
                 </div>
                 <Input
@@ -738,19 +751,24 @@ export default function EditAggregateDispatchPage() {
                   step="0.01"
                   name="customerPrice"
                   required
-                  placeholder="Customer agreed rate for this dispatch"
+                  placeholder="Customer rate for this dispatch"
                   value={formData.customerPrice}
                   onChange={handleInputChange}
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Supplier Value (ETB/m³) *</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-medium text-gray-700">Supplier Value (ETB/m³) *</label>
+                  <span className="text-[10px] text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 font-medium">
+                    From Supplier Agr / Per-Dispatch
+                  </span>
+                </div>
                 <Input
                   type="number"
                   step="0.01"
                   name="aggregateValue"
                   required
-                  placeholder="Supplier material value"
+                  placeholder="Supplier rate for this dispatch"
                   value={formData.aggregateValue}
                   onChange={handleInputChange}
                 />

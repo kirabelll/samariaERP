@@ -57,8 +57,34 @@ export async function GET(
       }),
     ]);
 
-    // Use dispatch-specific rate from aggregateValue, fallback to sales agreement if 0
-    let customerPrice = Number(delivery.aggregateValue || 0);
+    // 1. Resolve Supplier Price (from Supplier Agreement or dispatch override in aggregateValue)
+    let supplierPrice = Number(delivery.aggregateValue || 0);
+    if (suppAgr?.items) {
+      try {
+        const parsed = typeof suppAgr.items === 'string' ? JSON.parse(suppAgr.items) : (suppAgr.items as any[] || []);
+        const matched = parsed.find((i: any) => (i.itemId || i.id) === delivery.itemId);
+        if (matched) {
+          const unitPrice = Number(matched.amount ?? matched.totalAmount ?? matched.unitPrice ?? matched.pricePerUnit ?? 0);
+          if (unitPrice > 0) {
+            supplierPrice = unitPrice;
+          }
+        }
+      } catch { /* ignore */ }
+    }
+    if (Number(delivery.aggregateValue || 0) > 0) {
+      supplierPrice = Number(delivery.aggregateValue);
+    }
+
+    // 2. Resolve Customer Price (from dispatch override in registeredBy or Customer Sales Agreement)
+    let customerPrice = 0;
+    if (delivery.registeredBy && typeof delivery.registeredBy === 'string' && delivery.registeredBy.startsWith('{')) {
+      try {
+        const meta = JSON.parse(delivery.registeredBy);
+        if (meta.customerPrice && Number(meta.customerPrice) > 0) {
+          customerPrice = Number(meta.customerPrice);
+        }
+      } catch {}
+    }
 
     if (customerPrice <= 0 && salesAgr?.items) {
       try {
@@ -73,15 +99,8 @@ export async function GET(
       } catch { /* ignore */ }
     }
 
-    let supplierPrice = delivery.aggregateValue;
-    if (suppAgr?.items) {
-      try {
-        const parsed = typeof suppAgr.items === 'string' ? JSON.parse(suppAgr.items) : (suppAgr.items as any[] || []);
-        const matched = parsed.find((i: any) => (i.itemId || i.id) === delivery.itemId);
-        if (matched) {
-          supplierPrice = matched.amount ?? matched.totalAmount ?? matched.unitPrice ?? supplierPrice;
-        }
-      } catch { /* ignore */ }
+    if (customerPrice <= 0) {
+      customerPrice = supplierPrice;
     }
 
     const loadedVol = delivery.loadedVolume || 0;
@@ -150,10 +169,28 @@ export async function PUT(
       ? parseFloat(updateData.transportRate)
       : delivery.transportRate;
 
-    // Save dispatch-specific customer rate into aggregateValue
-    const effectiveAggregateValue = updateData.customerPrice !== undefined && updateData.customerPrice !== '' && !isNaN(parseFloat(updateData.customerPrice))
+    // Supplier material rate (saved in aggregateValue)
+    const supplierPrice = updateData.aggregateValue !== undefined && updateData.aggregateValue !== '' && !isNaN(parseFloat(updateData.aggregateValue))
+      ? parseFloat(updateData.aggregateValue)
+      : delivery.aggregateValue;
+
+    // Customer selling rate (saved in registeredBy metadata)
+    const customerPrice = updateData.customerPrice !== undefined && updateData.customerPrice !== '' && !isNaN(parseFloat(updateData.customerPrice))
       ? parseFloat(updateData.customerPrice)
-      : (updateData.aggregateValue !== undefined && updateData.aggregateValue !== '' && !isNaN(parseFloat(updateData.aggregateValue)) ? parseFloat(updateData.aggregateValue) : delivery.aggregateValue);
+      : null;
+
+    let registeredByStr = updateData.registeredBy !== undefined ? updateData.registeredBy : delivery.registeredBy;
+    let existingMeta: any = {};
+    if (registeredByStr && typeof registeredByStr === 'string' && registeredByStr.startsWith('{')) {
+      try { existingMeta = JSON.parse(registeredByStr); } catch {}
+    } else if (registeredByStr) {
+      existingMeta = { user: registeredByStr };
+    }
+
+    if (customerPrice !== null) {
+      existingMeta.customerPrice = customerPrice;
+      registeredByStr = JSON.stringify(existingMeta);
+    }
 
     // Enforce mandatory Delivery Pad / Receipt Number when setting status to Verified
     if (updateData.status === 'Verified') {
@@ -181,7 +218,7 @@ export async function PUT(
     let shortageDeduction: number | null = null;
     if (deliveredVolume !== null && deliveredVolume !== undefined) {
       shortageVolume = Math.max(0, loadedVolume - deliveredVolume);
-      shortageDeduction = shortageVolume * effectiveAggregateValue;
+      shortageDeduction = shortageVolume * supplierPrice;
     }
 
     const netTruckPayment = grossTruckFee - (shortageDeduction || 0);
@@ -197,7 +234,8 @@ export async function PUT(
       loadedVolume,
       deliveredVolume,
       transportRate,
-      aggregateValue: effectiveAggregateValue,
+      aggregateValue: supplierPrice,
+      registeredBy: registeredByStr,
       grossTruckFee,
       shortageVolume,
       shortageDeduction,
@@ -217,9 +255,6 @@ export async function PUT(
     if (updateData.verifiedBy !== undefined) {
       dataToSave.verifiedBy = updateData.verifiedBy || null;
     }
-    if (updateData.registeredBy !== undefined) {
-      dataToSave.registeredBy = updateData.registeredBy || null;
-    }
     if (updateData.dispatchDate !== undefined) {
       dataToSave.dispatchDate = updateData.dispatchDate ? new Date(updateData.dispatchDate) : delivery.dispatchDate;
     }
@@ -227,7 +262,7 @@ export async function PUT(
       dataToSave.deliveryDate = updateData.deliveryDate ? new Date(updateData.deliveryDate) : null;
     }
 
-    // Force update the aggregate delivery record with its own dispatch-specific customerPrice
+    // Force update the aggregate delivery record with its own dispatch-specific customerPrice and supplierPrice
     const updatedDelivery = await prisma.aggregateDelivery.update({
       where: { id: params.id },
       data: dataToSave,
@@ -253,14 +288,21 @@ export async function PUT(
       }),
     ]);
 
+    const effectiveCustPrice = customerPrice !== null && customerPrice > 0 ? customerPrice : supplierPrice;
+    const effectiveCustReceivable = loadedVolume * effectiveCustPrice;
+    const effectiveSuppPayable = (deliveredVolume !== null ? deliveredVolume : loadedVolume) * supplierPrice;
+    const effectiveNetAmount = effectiveCustReceivable - effectiveSuppPayable - grossTruckFee;
+
     const data = {
       ...updatedDelivery,
       customer: customerData,
       supplier: supplierData,
       item: itemData,
-      customerPrice: updatedDelivery.aggregateValue != null
-        ? Number(updatedDelivery.aggregateValue)
-        : 0,
+      customerPrice: effectiveCustPrice,
+      supplierPrice,
+      customerReceivable: effectiveCustReceivable,
+      supplierPayable: effectiveSuppPayable,
+      netAmount: effectiveNetAmount,
     };
 
     return NextResponse.json(

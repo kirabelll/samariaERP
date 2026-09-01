@@ -164,17 +164,26 @@ export async function GET(request: NextRequest) {
       const loadedVol = Number(r.loadedVolume || 0);
       const deliveredVol = Number(r.deliveredVolume ?? r.loadedVolume ?? 0);
 
-      // Customer pricing
-      const custPriceKey = `${r.customerId}_${r.itemId}`;
-      const customerPrice = Number(r.aggregateValue || 0) > 0
-        ? Number(r.aggregateValue)
-        : (customerPriceMap.get(custPriceKey) || 0);
-      const customerReceivable = loadedVol * customerPrice;
-
-      // Supplier pricing (Aggregate material supplier)
+      // Supplier pricing (from Supplier Agreement or dispatch aggregateValue)
       const suppPriceKey = `${r.supplierId}_${r.itemId}`;
       const supplierPrice = supplierPriceMap.get(suppPriceKey) || Number(r.aggregateValue || 0);
       const supplierPayable = deliveredVol * supplierPrice;
+
+      // Customer pricing (from dispatch metadata override or Customer Agreement)
+      let customerPrice = 0;
+      if (r.registeredBy && typeof r.registeredBy === 'string' && r.registeredBy.startsWith('{')) {
+        try {
+          const meta = JSON.parse(r.registeredBy);
+          if (meta.customerPrice && Number(meta.customerPrice) > 0) {
+            customerPrice = Number(meta.customerPrice);
+          }
+        } catch {}
+      }
+      if (customerPrice <= 0) {
+        const custPriceKey = `${r.customerId}_${r.itemId}`;
+        customerPrice = customerPriceMap.get(custPriceKey) || supplierPrice;
+      }
+      const customerReceivable = loadedVol * customerPrice;
 
       // Transporter pricing (Freight delivery cost)
       const grossTruckFee = Number(r.grossTruckFee || 0);

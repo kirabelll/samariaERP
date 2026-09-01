@@ -196,10 +196,20 @@ export async function GET(request: NextRequest) {
       const itemId = delivery.itemId;
       const groupKey = `${custId}_${itemId}`;
 
-      // Use dispatch-specific customer rate from aggregateValue, otherwise fallback to sales agreement
-      const agreementPrice = (Number(delivery.aggregateValue || 0) > 0)
-        ? Number(delivery.aggregateValue)
-        : (customerPriceMap.get(groupKey) || 0);
+      // Use dispatch-specific customer rate from metadata override, otherwise fallback to sales agreement
+      let customerPrice = 0;
+      if (delivery.registeredBy && typeof delivery.registeredBy === 'string' && delivery.registeredBy.startsWith('{')) {
+        try {
+          const meta = JSON.parse(delivery.registeredBy);
+          if (meta.customerPrice && Number(meta.customerPrice) > 0) {
+            customerPrice = Number(meta.customerPrice);
+          }
+        } catch {}
+      }
+      if (customerPrice <= 0) {
+        customerPrice = customerPriceMap.get(groupKey) || (delivery.aggregateValue ? delivery.aggregateValue * 1.15 : 0);
+      }
+      const agreementPrice = customerPrice;
 
       if (!customerReceivablesMap.has(groupKey)) {
         customerReceivablesMap.set(groupKey, {
@@ -287,8 +297,10 @@ export async function GET(request: NextRequest) {
       const itemId = delivery.itemId;
       const groupKey = `${suppId}_${itemId}`;
 
-      // Get the agreement price (Inc. VAT) for this specific supplier + item combo
-      const agreementPrice = supplierPriceMap.get(groupKey) || (delivery.aggregateValue ? delivery.aggregateValue * 1.15 : 0);
+      // Get the agreement price (Inc. VAT) for this specific supplier + item combo (or dispatch aggregateValue)
+      const agreementPrice = (Number(delivery.aggregateValue || 0) > 0)
+        ? Number(delivery.aggregateValue)
+        : (supplierPriceMap.get(groupKey) || 0);
 
       if (!supplierPayablesMap.has(groupKey)) {
         supplierPayablesMap.set(groupKey, {

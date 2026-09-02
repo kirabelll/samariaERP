@@ -181,11 +181,12 @@ export default function SalesAgreementsPage() {
             />
             <Select
               options={[
-                { value: '', label: 'All Agreements (Including Void)' },
+                { value: '', label: 'All Agreements (Including Void & Deactivated)' },
                 { value: 'Active', label: 'Active Only' },
                 { value: 'Draft', label: 'Draft Only' },
                 { value: 'Expired', label: 'Expired Only' },
                 { value: 'Cancelled', label: 'Cancelled Only' },
+                { value: 'Deactivated', label: 'Deactivated Only' },
                 { value: 'Void', label: 'Void Only' },
                 { value: 'EXCLUDE_VOID', label: 'All Active Statuses (Exclude Void)' },
               ]}

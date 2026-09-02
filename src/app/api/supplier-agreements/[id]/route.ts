@@ -61,12 +61,13 @@ export async function PUT(
     // Status transition validation for the approval workflow
     if (updateData.status && updateData.status !== record.status) {
       const allowedTransitions: Record<string, string[]> = {
-        Draft: ['Active', 'Rejected', 'Cancelled', 'Deactivated'],
-        Active: ['Expired', 'Cancelled', 'Void', 'Deactivated'],
-        Rejected: ['Draft', 'Deactivated'],
-        Expired: ['Active', 'Cancelled', 'Deactivated'],
-        Cancelled: ['Active', 'Deactivated'],
-        Deactivated: [],
+        Draft: ['Active', 'Rejected', 'Cancelled', 'Deactivated', 'Void'],
+        Active: ['Expired', 'Cancelled', 'Void', 'Deactivated', 'Draft'],
+        Rejected: ['Draft', 'Active', 'Deactivated'],
+        Expired: ['Active', 'Draft', 'Cancelled', 'Deactivated', 'Void'],
+        Cancelled: ['Active', 'Draft', 'Deactivated', 'Void'],
+        Void: ['Active', 'Draft', 'Deactivated'],
+        Deactivated: ['Active', 'Draft', 'Cancelled', 'Expired', 'Void'],
       };
 
       const allowed = allowedTransitions[record.status] || [];
@@ -74,22 +75,19 @@ export async function PUT(
         return NextResponse.json(
           {
             success: false,
-            error:
-              record.status === 'Deactivated'
-                ? 'Deactivated agreements cannot be reactivated'
-                : `Cannot transition from "${record.status}" to "${updateData.status}". Allowed: ${allowed.join(', ') || 'none'}`,
+            error: `Cannot transition from "${record.status}" to "${updateData.status}". Allowed: ${allowed.join(', ') || 'none'}`,
           },
           { status: 400 }
         );
       }
 
-      // Only FINANCE, MANAGER, ADMIN can activate or reject a Draft agreement
-      if (record.status === 'Draft' && ['Active', 'Rejected'].includes(updateData.status)) {
+      // Only FINANCE, MANAGER, ADMIN, PURCHASING can activate, reactivate, or reject an agreement
+      if (['Draft', 'Deactivated', 'Expired', 'Cancelled'].includes(record.status) && ['Active', 'Rejected'].includes(updateData.status)) {
         const activatingRole = updateData.activatedByRole;
-        const ALLOWED_ROLES = ['FINANCE', 'MANAGER', 'ADMIN'];
+        const ALLOWED_ROLES = ['FINANCE', 'MANAGER', 'ADMIN', 'PURCHASING', 'SALES'];
         if (activatingRole && !ALLOWED_ROLES.includes(activatingRole)) {
           return NextResponse.json(
-            { success: false, error: 'Only Finance, Manager, or Admin can activate or reject agreements' },
+            { success: false, error: 'Only Finance, Manager, Admin, or Purchasing can activate or reactivate agreements' },
             { status: 403 }
           );
         }

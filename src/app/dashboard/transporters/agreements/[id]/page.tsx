@@ -145,7 +145,7 @@ export default function AgreementDetailsPage() {
   }
 
   const handleDeactivate = async () => {
-    if (!confirm('Are you sure you want to deactivate this agreement? Once deactivated, it CANNOT be reactivated.')) return;
+    if (!confirm('Are you sure you want to deactivate this agreement?')) return;
     try {
       const res = await fetch(`/api/transporters/agreements/${agreementId}`, {
         method: 'PUT',
@@ -160,6 +160,25 @@ export default function AgreementDetailsPage() {
       }
     } catch {
       alert('Failed to deactivate agreement');
+    }
+  };
+
+  const handleReactivate = async () => {
+    if (!confirm('Are you sure you want to reactivate this agreement?')) return;
+    try {
+      const res = await fetch(`/api/transporters/agreements/${agreementId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'Active' }),
+      });
+      const result = await res.json();
+      if (result.success) {
+        setAgreement((prev) => (prev ? { ...prev, status: 'Active' } : prev));
+      } else {
+        alert(result.error || 'Failed to reactivate agreement');
+      }
+    } catch {
+      alert('Failed to reactivate agreement');
     }
   };
 
@@ -203,7 +222,15 @@ export default function AgreementDetailsPage() {
             <Button variant="primary" size="lg" onClick={() => router.push(`/dashboard/transporters/agreements/${agreementId}/edit`)}>
               Edit
             </Button>
-            {agreement.status !== 'Deactivated' && (
+            {agreement.status === 'Deactivated' ? (
+              <Button
+                variant="primary"
+                size="lg"
+                onClick={handleReactivate}
+              >
+                Reactivate
+              </Button>
+            ) : (
               <Button
                 variant="outline"
                 size="lg"
@@ -220,8 +247,8 @@ export default function AgreementDetailsPage() {
         </CardHeader>
 
         {agreement.status === 'Deactivated' && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-3 mx-6 mt-4 text-sm text-red-800 font-medium">
-            This agreement is deactivated and cannot be reactivated.
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mx-6 mt-4 text-sm text-amber-800 font-medium">
+            ⚠️ This agreement is currently deactivated. Click &quot;Reactivate&quot; to restore it to Active status.
           </div>
         )}
 

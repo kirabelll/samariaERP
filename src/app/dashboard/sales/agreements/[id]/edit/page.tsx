@@ -259,26 +259,20 @@ export default function SalesAgreementEditPage() {
                   name="status"
                   value={formData.status || ''}
                   onChange={handleChange}
-                  disabled={formData.status === 'Deactivated'}
-                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-900 disabled:bg-slate-100 disabled:text-slate-500"
+                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-900"
                 >
-                  {formData.status === 'Deactivated' ? (
-                    <option value="Deactivated">Deactivated</option>
-                  ) : (
-                    <>
-                      <option value="Draft">Draft</option>
-                      <option value="Active">Active</option>
-                      <option value="Expired">Expired</option>
-                      <option value="Cancelled">Cancelled</option>
-                      <option value="Deactivated">Deactivated</option>
-                    </>
-                  )}
+                  <option value="Draft">Draft</option>
+                  <option value="Active">Active</option>
+                  <option value="Expired">Expired</option>
+                  <option value="Cancelled">Cancelled</option>
+                  <option value="Deactivated">Deactivated</option>
+                  <option value="Void">Void</option>
                 </select>
-                {formData.status === 'Deactivated' ? (
-                  <p className="text-xs text-red-600 font-semibold mt-1">
-                    This agreement is deactivated and cannot be reactivated.
+                {formData.status === 'Deactivated' && (
+                  <p className="text-xs text-amber-700 font-medium mt-1">
+                    ⚠️ This agreement is currently Deactivated. Select "Active" to reactivate it.
                   </p>
-                ) : null}
+                )}
               </div>
             </div>
 

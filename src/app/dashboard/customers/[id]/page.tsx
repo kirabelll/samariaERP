@@ -80,6 +80,30 @@ export default function CustomerDetails() {
     router.push('/dashboard/customers');
   };
 
+  const handleToggleStatus = async () => {
+    if (!customer) return;
+    const newStatus = customer.status === 'Active' ? 'Inactive' : 'Active';
+    const actionLabel = newStatus === 'Active' ? 'reactivate' : 'deactivate';
+    if (!confirm(`Are you sure you want to ${actionLabel} this customer account?`)) return;
+
+    try {
+      const response = await fetch(`/api/customers/${customerId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      const result = await response.json();
+      if (result.success) {
+        setCustomer((prev) => prev ? { ...prev, status: newStatus } : prev);
+        alert(`Customer account successfully ${newStatus === 'Active' ? 'reactivated' : 'deactivated'}.`);
+      } else {
+        alert(result.message || 'Failed to update customer status');
+      }
+    } catch {
+      alert('Failed to update customer status');
+    }
+  };
+
   const getCustomerName = (customer: Customer) => {
     if (customer.customerType === 'COMPANY') {
       return customer.companyName || 'N/A';
@@ -153,7 +177,16 @@ export default function CustomerDetails() {
             </Badge>
           </div>
           <div className="flex gap-3">
-            <Button variant="primary" size="lg" onClick={handleEdit}>
+            {customer.status === 'Active' ? (
+              <Button variant="outline" size="lg" onClick={handleToggleStatus} className="text-red-600 border-red-300 hover:bg-red-50">
+                Deactivate Account
+              </Button>
+            ) : (
+              <Button variant="primary" size="lg" onClick={handleToggleStatus}>
+                Reactivate Account
+              </Button>
+            )}
+            <Button variant="outline" size="lg" onClick={handleEdit}>
               Edit
             </Button>
             <Button variant="outline" size="lg" onClick={handleBack}>

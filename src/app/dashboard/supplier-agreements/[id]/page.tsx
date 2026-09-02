@@ -395,8 +395,8 @@ export default function SupplierAgreementDetailPage() {
               </div>
             )}
             {data.status === 'Deactivated' && (
-              <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4 text-sm text-red-800 font-medium">
-                This agreement is deactivated and cannot be reactivated.
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4 text-sm text-amber-800 font-medium">
+                ⚠️ This agreement is currently deactivated. You can reactivate it whenever needed.
               </div>
             )}
           </div>
@@ -456,15 +456,25 @@ export default function SupplierAgreementDetailPage() {
                   </Button>
                 </>
               )}
-              {(data.status === 'Expired' || data.status === 'Cancelled') && canApprove && (
-                <Button
-                  variant="primary"
-                  size="md"
-                  onClick={() => handleStatusChange('Active')}
-                  isLoading={updatingStatus}
-                >
-                  Reactivate Agreement
-                </Button>
+              {(data.status === 'Expired' || data.status === 'Cancelled' || data.status === 'Deactivated' || data.status === 'Void') && (
+                <>
+                  <Button
+                    variant="primary"
+                    size="md"
+                    onClick={() => handleStatusChange('Active')}
+                    isLoading={updatingStatus}
+                  >
+                    Reactivate Agreement
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="md"
+                    onClick={() => handleStatusChange('Draft')}
+                    isLoading={updatingStatus}
+                  >
+                    Reset to Draft
+                  </Button>
+                </>
               )}
               {data.status !== 'Deactivated' && (
                 <Button

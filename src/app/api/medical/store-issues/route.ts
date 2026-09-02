@@ -186,8 +186,8 @@ export async function POST(request: NextRequest) {
           const deductQty = Math.min(batch.quantity, remainingQty);
           const newQuantity = batch.quantity - deductQty;
 
-          // Set status to 'Depleted' if quantity reaches 0, otherwise 'Reserved'
-          const newStatus = newQuantity === 0 ? 'Depleted' : 'Reserved';
+          // Set status to 'Exhausted' if quantity reaches 0, otherwise keep 'Available'
+          const newStatus = newQuantity === 0 ? 'Exhausted' : 'Available';
 
           await prisma.medicalBatch.update({
             where: { id: batch.id },
@@ -198,6 +198,25 @@ export async function POST(request: NextRequest) {
           });
 
           remainingQty -= deductQty;
+        }
+
+        // Also update StockBalance
+        try {
+          const warehouse = 'medical_store';
+          const stock = await prisma.stockBalance.findUnique({
+            where: { itemId_warehouse: { itemId, warehouse } },
+          });
+          if (stock) {
+            await prisma.stockBalance.update({
+              where: { id: stock.id },
+              data: {
+                quantity: Math.max(0, stock.quantity - qty),
+                lastUpdated: new Date(),
+              },
+            });
+          }
+        } catch (sErr) {
+          console.error('Error updating stock balance for store issue:', sErr);
         }
       }
     }

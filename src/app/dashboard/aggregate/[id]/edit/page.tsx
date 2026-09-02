@@ -729,7 +729,7 @@ export default function EditAggregateDispatchPage() {
                 />
               </div>
               <div>
-                <Input
+                <Input    
                   label="Transport Rate (ETB/m³) *"
                   type="number"
                   step="0.01"
@@ -842,7 +842,7 @@ export default function EditAggregateDispatchPage() {
                 Cancel
               </Button>
               <Button
-                type="submit"
+                type="submit" 
                 variant="primary"
                 disabled={isSubmitting || isDeleting}
                 isLoading={isSubmitting}

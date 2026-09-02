@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { notify } from '@/lib/telegram';
+import { deductInventory } from '@/lib/inventory';
 
 export const dynamic = 'force-dynamic';
 
@@ -127,75 +128,23 @@ export async function POST(request: NextRequest) {
       include: { customer: true, salesOrder: true },
     });
 
-    // Deduct inventory stock balance and medical batches for delivered items
-    const warehouse = division === 'MEDICAL' ? 'medical_store' : 'main';
-    for (const item of parsedItems) {
-      const deliveredQty = Number(item.qty || item.quantity || 0);
-      if (deliveredQty <= 0) continue;
-
-      let itemId = item.itemId;
-      if (!itemId && item.itemName) {
-        const matchedItem = await prisma.item.findFirst({
-          where: { name: { equals: item.itemName, mode: 'insensitive' } },
-        });
-        if (matchedItem) itemId = matchedItem.id;
+    // If delivery is linked to a salesOrderId, the sales order already deducted inventory.
+    // If it's a standalone delivery without a sales order, deduct from inventory now.
+    if (!salesOrderId) {
+      try {
+        await deductInventory(parsedItems, division, { orderNo: delivery.deliveryNo });
+      } catch (stockErr) {
+        console.error(`Error updating stock balance for direct delivery:`, stockErr);
       }
-
-      if (itemId) {
-        try {
-          // 1. Deduct from StockBalance
-          const existingStock = await prisma.stockBalance.findUnique({
-            where: {
-              itemId_warehouse: {
-                itemId,
-                warehouse,
-              },
-            },
-          });
-
-          if (existingStock) {
-            const newQty = Math.max(0, existingStock.quantity - deliveredQty);
-            await prisma.stockBalance.update({
-              where: { id: existingStock.id },
-              data: {
-                quantity: newQty,
-                lastUpdated: new Date(),
-              },
-            });
-          } else {
-            await prisma.stockBalance.create({
-              data: {
-                itemId,
-                warehouse,
-                quantity: 0,
-                lastUpdated: new Date(),
-              },
-            });
-          }
-
-          // 2. Deduct from MedicalBatch if batch is specified or if medical division
-          if (item.batchNo) {
-            const existingBatch = await prisma.medicalBatch.findFirst({
-              where: {
-                itemId,
-                batchNo: item.batchNo,
-              },
-            });
-
-            if (existingBatch) {
-              const newBatchQty = Math.max(0, existingBatch.quantity - deliveredQty);
-              await prisma.medicalBatch.update({
-                where: { id: existingBatch.id },
-                data: {
-                  quantity: newBatchQty,
-                  status: newBatchQty <= 0 ? 'Exhausted' : existingBatch.status,
-                },
-              });
-            }
-          }
-        } catch (stockErr) {
-          console.error(`Error updating stock balance for item ${itemId}:`, stockErr);
-        }
+    } else {
+      // Linked to a sales order -> update the sales order status to InProgress or Delivered
+      try {
+        await prisma.salesOrder.update({
+          where: { id: salesOrderId },
+          data: { status: 'Delivered' },
+        });
+      } catch (soErr) {
+        console.warn('Could not update linked sales order status:', soErr);
       }
     }
 

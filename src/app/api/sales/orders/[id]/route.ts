@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requestApproval } from '@/lib/approval-workflow';
+import { deductInventory, restoreInventory, reconcileInventory } from '@/lib/inventory';
 
 export const dynamic = 'force-dynamic';
 
@@ -161,6 +162,32 @@ export async function PUT(
       return NextResponse.json({ success: true, data: updatedRecord });
     }
 
+    // Handle status transition to Cancelled -> restore inventory
+    if (updateData.status === 'Cancelled' && record.status !== 'Cancelled') {
+      try {
+        await restoreInventory(record.items, record.division, { orderNo: record.orderNo });
+      } catch (invErr) {
+        console.error('Error restoring inventory on order cancellation:', invErr);
+      }
+    } else if (record.status === 'Cancelled' && updateData.status && updateData.status !== 'Cancelled') {
+      // Re-activating a cancelled order -> deduct inventory
+      try {
+        await deductInventory(updateData.items || record.items, updateData.division || record.division, { orderNo: record.orderNo });
+      } catch (invErr) {
+        console.error('Error deducting inventory on order reactivation:', invErr);
+      }
+    } else if (updateData.items && record.status !== 'Cancelled' && updateData.status !== 'Cancelled') {
+      // Items were modified -> reconcile difference
+      try {
+        const targetDivision = updateData.division || record.division;
+        const serializedNewItems = typeof updateData.items === 'string' ? updateData.items : JSON.stringify(updateData.items);
+        await reconcileInventory(record.items, serializedNewItems, targetDivision, { orderNo: record.orderNo });
+        updateData.items = serializedNewItems;
+      } catch (invErr) {
+        console.error('Error reconciling inventory on order update:', invErr);
+      }
+    }
+
     const updatedRecord = await prisma.salesOrder.update({
       where: { id: params.id },
       data: updateData,
@@ -206,50 +233,9 @@ export async function DELETE(
     // Restore inventory when cancelling or deleting an active sales order
     if (record.status !== 'Cancelled') {
       try {
-        const parsedItems = typeof record.items === 'string' ? JSON.parse(record.items) : record.items;
-        if (Array.isArray(parsedItems)) {
-          const warehouse = record.division === 'MEDICAL' ? 'medical_store' : 'main';
-          for (const item of parsedItems) {
-            const qty = Number(item.qty || item.quantity || 0);
-            const itemId = item.itemId || item.id;
-            if (qty > 0 && itemId) {
-              const existingStock = await prisma.stockBalance.findUnique({
-                where: { itemId_warehouse: { itemId, warehouse } },
-              });
-              if (existingStock) {
-                await prisma.stockBalance.update({
-                  where: { id: existingStock.id },
-                  data: { quantity: existingStock.quantity + qty, lastUpdated: new Date() },
-                });
-              }
-
-              if (item.batchNo) {
-                const batch = await prisma.medicalBatch.findFirst({
-                  where: { itemId, batchNo: item.batchNo },
-                });
-                if (batch) {
-                  await prisma.medicalBatch.update({
-                    where: { id: batch.id },
-                    data: { quantity: batch.quantity + qty, status: 'Available' },
-                  });
-                }
-              } else {
-                const batch = await prisma.medicalBatch.findFirst({
-                  where: { itemId, warehouse },
-                  orderBy: { expiryDate: 'desc' },
-                });
-                if (batch) {
-                  await prisma.medicalBatch.update({
-                    where: { id: batch.id },
-                    data: { quantity: batch.quantity + qty, status: 'Available' },
-                  });
-                }
-              }
-            }
-          }
-        }
+        await restoreInventory(record.items, record.division, { orderNo: record.orderNo });
       } catch (stockErr) {
-        console.error('Error restoring sales order stock:', stockErr);
+        console.error('Error restoring sales order stock on delete:', stockErr);
       }
     }
 

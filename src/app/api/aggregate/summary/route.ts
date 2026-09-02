@@ -92,7 +92,6 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    // Get unique customer, supplier, item, and transporter IDs
     const uniqueCustomerIds = Array.from(new Set(aggregateDeliveries.map((d) => d.customerId).filter(Boolean))) as string[];
     const uniqueSupplierIds = Array.from(new Set(aggregateDeliveries.map((d) => d.supplierId).filter(Boolean))) as string[];
     const uniqueItemIds = Array.from(new Set(aggregateDeliveries.map((d) => d.itemId).filter(Boolean))) as string[];
@@ -147,7 +146,6 @@ export async function GET(request: NextRequest) {
       orderBy: { createdAt: 'desc' },
     });
 
-    // customerPriceMap: "customerId_itemId" → unitPrice INCLUDING 15% VAT (latest agreement per customer+item)
     const customerPriceMap = new Map<string, number>();
     for (const agr of customerAgreements) {
       try {

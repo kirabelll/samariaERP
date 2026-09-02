@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { notify } from '@/lib/telegram';
+import { deductInventory } from '@/lib/inventory';
 
 export const dynamic = 'force-dynamic';
 
@@ -101,113 +102,11 @@ export async function POST(request: NextRequest) {
       include: { customer: true, proforma: true },
     });
 
-    // Deduct stock balance for ordered items
-    const parsedItems = typeof items === 'string' ? JSON.parse(items) : items;
-    if (Array.isArray(parsedItems)) {
-      const warehouse = safeDivision === 'MEDICAL' ? 'medical_store' : 'main';
-      for (const item of parsedItems) {
-        const orderedQty = Number(item.qty || item.quantity || 0);
-        if (orderedQty <= 0) continue;
-
-        let itemId = item.itemId || item.id;
-        if (!itemId || typeof itemId !== 'string' || itemId.startsWith('temp-')) {
-          const searchName = item.item || item.name || item.itemName;
-          const searchCode = item.code || item.itemCode;
-          if (searchName || searchCode) {
-            const match = await prisma.item.findFirst({
-              where: {
-                OR: [
-                  ...(searchCode ? [{ code: { equals: searchCode, mode: 'insensitive' as const } }] : []),
-                  ...(searchName ? [{ name: { equals: searchName, mode: 'insensitive' as const } }] : []),
-                ],
-              },
-            });
-            if (match) itemId = match.id;
-          }
-        }
-
-        if (itemId) {
-          try {
-            // Deduct from StockBalance
-            const existingStock = await prisma.stockBalance.findUnique({
-              where: {
-                itemId_warehouse: {
-                  itemId,
-                  warehouse,
-                },
-              },
-            });
-
-            if (existingStock) {
-              const newQty = Math.max(0, existingStock.quantity - orderedQty);
-              await prisma.stockBalance.update({
-                where: { id: existingStock.id },
-                data: {
-                  quantity: newQty,
-                  lastUpdated: new Date(),
-                },
-              });
-            } else {
-              await prisma.stockBalance.create({
-                data: {
-                  itemId,
-                  warehouse,
-                  quantity: 0,
-                  lastUpdated: new Date(),
-                },
-              });
-            }
-
-            // Deduct from MedicalBatch (specific batch if provided, otherwise FEFO)
-            if (item.batchNo) {
-              const existingBatch = await prisma.medicalBatch.findFirst({
-                where: {
-                  itemId,
-                  batchNo: item.batchNo,
-                },
-              });
-
-              if (existingBatch) {
-                const newBatchQty = Math.max(0, existingBatch.quantity - orderedQty);
-                await prisma.medicalBatch.update({
-                  where: { id: existingBatch.id },
-                  data: {
-                    quantity: newBatchQty,
-                    status: newBatchQty <= 0 ? 'Exhausted' : existingBatch.status,
-                  },
-                });
-              }
-            } else {
-              // FEFO deduction: First Expiry First Out across active available batches
-              const availableBatches = await prisma.medicalBatch.findMany({
-                where: {
-                  itemId,
-                  quantity: { gt: 0 },
-                  status: { notIn: ['Expired', 'Damaged', 'Quarantine', 'Inactive'] },
-                },
-                orderBy: { expiryDate: 'asc' },
-              });
-
-              let remainingToDeduct = orderedQty;
-              for (const b of availableBatches) {
-                if (remainingToDeduct <= 0) break;
-                const deductAmount = Math.min(b.quantity, remainingToDeduct);
-                const newBQty = b.quantity - deductAmount;
-                await prisma.medicalBatch.update({
-                  where: { id: b.id },
-                  data: {
-                    quantity: newBQty,
-                    status: newBQty <= 0 ? 'Exhausted' : b.status,
-                  },
-                });
-                remainingToDeduct -= deductAmount;
-              }
-            }
-          } catch (stockErr) {
-            console.error(`Error deducting stock balance for sales order item ${itemId}:`, stockErr);
-          }
-        }
-      }
+    // Deduct stock balance and batches for ordered items
+    try {
+      await deductInventory(items, safeDivision, { orderNo: order.orderNo });
+    } catch (invErr) {
+      console.error('Error deducting inventory for sales order:', invErr);
     }
 
     notify({ module: 'SALES', event: 'order_created', details: { orderNo: order.orderNo, customer: order.customer?.companyName, totalAmount: order.totalAmount, division: order.division } });

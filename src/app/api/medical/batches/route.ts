@@ -67,35 +67,13 @@ async function syncStockFromReceivedGRVs() {
           },
         });
 
-        if (existingBatch) {
-          if (existingBatch.quantity <= 0) {
-            await prisma.medicalBatch.update({
-              where: { id: existingBatch.id },
-              data: {
-                quantity: qty,
-                costPrice: unitCost > 0 ? unitCost : existingBatch.costPrice,
-                expiryDate,
-                status: 'Available',
-              },
-            });
-          }
-        } else {
+        if (!existingBatch) {
           // Check if any batch exists for this same item in warehouse
           const anyItemBatch = await prisma.medicalBatch.findFirst({
             where: { itemId, warehouse },
           });
 
-          if (anyItemBatch && anyItemBatch.quantity <= 0) {
-            await prisma.medicalBatch.update({
-              where: { id: anyItemBatch.id },
-              data: {
-                quantity: qty,
-                costPrice: unitCost > 0 ? unitCost : anyItemBatch.costPrice,
-                expiryDate,
-                status: 'Available',
-              },
-            });
-          } else if (!anyItemBatch) {
+          if (!anyItemBatch) {
             await prisma.medicalBatch.create({
               data: {
                 itemId,
@@ -111,18 +89,11 @@ async function syncStockFromReceivedGRVs() {
           }
         }
 
-        // Update StockBalance
+        // Update StockBalance if it does not exist yet
         const stock = await prisma.stockBalance.findUnique({
           where: { itemId_warehouse: { itemId, warehouse } },
         });
-        if (stock) {
-          if (stock.quantity <= 0) {
-            await prisma.stockBalance.update({
-              where: { id: stock.id },
-              data: { quantity: qty, avgCost: unitCost > 0 ? unitCost : stock.avgCost, lastUpdated: new Date() },
-            });
-          }
-        } else {
+        if (!stock) {
           await prisma.stockBalance.create({
             data: { itemId, warehouse, quantity: qty, avgCost: unitCost, lastUpdated: new Date() },
           });

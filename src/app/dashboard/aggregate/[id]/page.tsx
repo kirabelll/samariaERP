@@ -11,7 +11,7 @@ import { uploadDocument, fetchDocuments } from '@/lib/upload-helper';
 const KNOWN_SUBROUTES = ['commission', 'recoveries', 'daily', 'new', 'proofs', 'summary', 'shortage'];
 
 interface DeliveryData {
-  id: string;
+  id: string; 
   dispatchNo: string;
   customerId: string;
   supplierId: string;

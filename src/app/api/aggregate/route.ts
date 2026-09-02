@@ -123,13 +123,22 @@ export async function GET(request: NextRequest) {
               const priceKey = `${agr.customerId}_${targetId}`;
               if (!customerPriceMap.has(priceKey)) {
                 const qty = Number(item.qty || item.quantity || 1);
-                const unitPrice = Number(item.unitPrice || item.pricePerUnit || 0);
-                if (unitPrice > 0) {
-                  customerPriceMap.set(priceKey, unitPrice);
-                } else if (item.amount || item.totalAmount || item.total) {
-                  const total = Number(item.amount || item.totalAmount || item.total);
-                  const basePrice = qty > 0 ? total / qty : total;
-                  customerPriceMap.set(priceKey, basePrice);
+                const unitPrice = Number(item.unitPrice || item.pricePerUnit || item.price || 0);
+                const totalAmt = Number(item.totalAmount || item.amount || item.total || 0);
+                let finalPrice = 0;
+
+                if (totalAmt > 0 && qty > 0) {
+                  finalPrice = totalAmt / qty;
+                } else if (unitPrice > 0) {
+                  if (item.priceType === 'incl' || item.vatIncluded === true || item.priceType === 'inclusive') {
+                    finalPrice = unitPrice * 1.15;
+                  } else {
+                    finalPrice = unitPrice;
+                  }
+                }
+
+                if (finalPrice > 0) {
+                  customerPriceMap.set(priceKey, finalPrice);
                 }
               }
             }
@@ -149,9 +158,23 @@ export async function GET(request: NextRequest) {
             if (targetId) {
               const priceKey = `${agr.supplierId}_${targetId}`;
               if (!supplierPriceMap.has(priceKey)) {
-                const price = Number(item.amount ?? item.totalAmount ?? item.unitPrice ?? item.pricePerUnit ?? 0);
-                if (price > 0) {
-                  supplierPriceMap.set(priceKey, price);
+                const qty = Number(item.qty || item.quantity || 1);
+                const unitPrice = Number(item.unitPrice || item.pricePerUnit || item.price || 0);
+                const totalAmt = Number(item.totalAmount || item.amount || item.total || 0);
+                let finalPrice = 0;
+
+                if (totalAmt > 0 && qty > 0) {
+                  finalPrice = totalAmt / qty;
+                } else if (unitPrice > 0) {
+                  if (item.priceType === 'incl' || item.vatIncluded === true || item.priceType === 'inclusive') {
+                    finalPrice = unitPrice * 1.15;
+                  } else {
+                    finalPrice = unitPrice;
+                  }
+                }
+
+                if (finalPrice > 0) {
+                  supplierPriceMap.set(priceKey, finalPrice);
                 }
               }
             }

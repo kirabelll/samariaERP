@@ -299,12 +299,28 @@ Check console for detailed breakdown.`);
                     });
                   }
 
-                  // Store price per agreement+item combo: fetch Total Amount instead of Unit Price / Amount
-                  const itemPrice = ai.amount ?? ai.totalAmount ?? ai.unitPrice ?? ai.price;
+                  // Calculate price per agreement+item combo: total unit amount taking VAT into account
+                  const unitPrice = Number(ai.unitPrice ?? ai.pricePerUnit ?? ai.price ?? 0);
+                  const qty = Number(ai.qty ?? ai.quantity ?? 1);
+                  const totalAmt = Number(ai.totalAmount ?? ai.amount ?? 0);
+                  let itemPrice = 0;
+                  if (totalAmt > 0 && qty > 0) {
+                    itemPrice = totalAmt / qty;
+                  } else if (unitPrice > 0) {
+                    if (ai.priceType === 'incl' || ai.vatIncluded === true || ai.priceType === 'inclusive') {
+                      itemPrice = unitPrice * 1.15;
+                    } else {
+                      itemPrice = unitPrice;
+                    }
+                  }
+
                   const priceKey = `${agr.id}_${targetItemId}`;
-                  if (itemPrice !== undefined && itemPrice !== null && !priceMap.has(priceKey)) {
-                    priceMap.set(priceKey, parseFloat(itemPrice));
+                  if (itemPrice > 0 && !priceMap.has(priceKey)) {
+                    priceMap.set(priceKey, itemPrice);
                     console.log(`Stored price (Total Amount): ${priceKey} = ${itemPrice}`);
+                  }
+                  if (suppId && itemPrice > 0 && !priceMap.has(`${suppId}_${targetItemId}`)) {
+                    priceMap.set(`${suppId}_${targetItemId}`, itemPrice);
                   }
                 }
               });
@@ -339,7 +355,20 @@ Check console for detailed breakdown.`);
                     }
                     custItemsMap.get(custId)!.add(targetItemId);
 
-                    const price = Number(ai.unitPrice ?? ai.pricePerUnit ?? ai.amount ?? ai.totalAmount ?? 0);
+                    const unitPrice = Number(ai.unitPrice ?? ai.pricePerUnit ?? ai.price ?? 0);
+                    const qty = Number(ai.qty ?? ai.quantity ?? 1);
+                    const totalAmt = Number(ai.totalAmount ?? ai.amount ?? 0);
+                    let price = 0;
+                    if (totalAmt > 0 && qty > 0) {
+                      price = totalAmt / qty;
+                    } else if (unitPrice > 0) {
+                      if (ai.priceType === 'incl' || ai.vatIncluded === true || ai.priceType === 'inclusive') {
+                        price = unitPrice * 1.15;
+                      } else {
+                        price = unitPrice;
+                      }
+                    }
+
                     if (price > 0) {
                       if (agr.id) custPricesMap.set(`${agr.id}_${targetItemId}`, price);
                       if (custId) custPricesMap.set(`${custId}_${targetItemId}`, price);
@@ -458,18 +487,30 @@ Check console for detailed breakdown.`);
     }
   };
 
-  // When an item is selected — if the agreement has a matching agreementItem,
-  // pull its transport rate + aggregate value automatically
+  // When an item is selected — pull total rate (incl/excl VAT handled) from supplier agreement or customer sales agreement
   const handleItemChangeWithAgreementLookup = (value: string) => {
     let newTransportRate: string | null = null;
     let newAggregateValue: string | null = null;
 
     console.log('=== ITEM SELECTION DEBUG ===');
     console.log('Selected item ID:', value);
-    console.log('Selected supplier agreement ID:', formData.selectedSupplierAgreementId);
-    console.log('Available supplier item prices:', Object.fromEntries(supplierItemPrices));
 
-    // 1. Fetch aggregateValue from Customer Agreement first
+    // 1. Fetch aggregateValue from Supplier Agreement first (supplier rate from agreement)
+    let suppPrice: number | undefined = undefined;
+    if (formData.selectedSupplierAgreementId) {
+      const suppPriceKey = `${formData.selectedSupplierAgreementId}_${value}`;
+      if (supplierItemPrices.has(suppPriceKey)) {
+        suppPrice = supplierItemPrices.get(suppPriceKey);
+      }
+    }
+    if (suppPrice === undefined && formData.supplierId) {
+      const suppPriceKey = `${formData.supplierId}_${value}`;
+      if (supplierItemPrices.has(suppPriceKey)) {
+        suppPrice = supplierItemPrices.get(suppPriceKey);
+      }
+    }
+
+    // 2. Fetch from Customer Agreement (sales agreement rate)
     let custPrice: number | undefined = undefined;
     if (formData.selectedCustomerAgreementId) {
       const custPriceKey = `${formData.selectedCustomerAgreementId}_${value}`;
@@ -484,19 +525,16 @@ Check console for detailed breakdown.`);
       }
     }
 
-    if (custPrice !== undefined) {
+    // Set aggregateValue from Supplier Agreement or Customer Agreement total
+    if (suppPrice !== undefined && suppPrice > 0) {
+      newAggregateValue = suppPrice.toString();
+      console.log('Found aggregate value from supplier agreement:', newAggregateValue);
+    } else if (custPrice !== undefined && custPrice > 0) {
       newAggregateValue = custPrice.toString();
       console.log('Found aggregate value from customer agreement:', newAggregateValue);
-    } else {
-      // Fallback: Try supplier agreement
-      const suppPriceKey = `${formData.selectedSupplierAgreementId}_${value}`;
-      if (supplierItemPrices.has(suppPriceKey)) {
-        newAggregateValue = supplierItemPrices.get(suppPriceKey)!.toString();
-        console.log('Found aggregate value from supplier agreement fallback:', newAggregateValue);
-      }
     }
 
-    // 2. Fetch transportRate (and aggregateValue fallback if needed) from transporter agreement items
+    // 3. Fetch transportRate from transporter agreement items
     if (selectedAgreement && selectedAgreement.agreementItems) {
       const matched = selectedAgreement.agreementItems.find((ai) => ai.itemId === value);
       if (matched) {
@@ -530,7 +568,6 @@ Check console for detailed breakdown.`);
         if (res.ok) {
           const data = await res.json();
           setTrucks(data.data?.trucks || []);
-          // Also set driver name if available
           if (data.data?.driverName) {
             setFormData((prev) => ({ ...prev, driverName: data.data.driverName }));
           }
@@ -541,28 +578,22 @@ Check console for detailed breakdown.`);
     }
   };
 
-  // Filter items based on:
-  // 1. Customer's agreement items (only show items from the selected customer agreement with Customer Agreement Item Name)
-  // 2. Supplier's agreement items (only show items the selected supplier has in their agreement)
-  // 3. Transporter agreement items (if selected, intersect further)
+  // Filter items based on selected customer agreement OR supplier agreement
   useEffect(() => {
     let availableItems: Item[] = [];
+    const custItemMap = new Map<string, Item>();
+    const suppItemMap = new Map<string, Item>();
 
-    // Step 1: Require Customer Agreement selection first
+    // 1. Collect items from Customer Agreement
     if (formData.selectedCustomerAgreementId) {
       const selectedCust = customers.find(c => c.agreementId === formData.selectedCustomerAgreementId);
       if (selectedCust && selectedCust.items && selectedCust.items.length > 0) {
-        const custItems: Item[] = [];
-        const seenIds = new Set<string>();
-
         selectedCust.items.forEach((ai: any) => {
           const targetItemId = ai.itemId || ai.id;
-          if (targetItemId && !seenIds.has(targetItemId)) {
-            seenIds.add(targetItemId);
+          if (targetItemId && !custItemMap.has(targetItemId)) {
             const dbItem = items.find((i) => i.id === targetItemId);
-            // Prioritize Item table name column (dbItem.name)
             const itemName = dbItem?.name || ai.itemName || ai.name || ai.description || targetItemId;
-            custItems.push({
+            custItemMap.set(targetItemId, {
               id: targetItemId,
               name: itemName,
               code: dbItem?.code || ai.itemCode || '',
@@ -571,35 +602,40 @@ Check console for detailed breakdown.`);
             });
           }
         });
-
-        if (custItems.length > 0) {
-          availableItems = custItems;
-        } else {
-          const custItemIds = new Set(selectedCust.items.map((ai: any) => ai.itemId || ai.id).filter(Boolean));
-          availableItems = items.filter((i) => custItemIds.has(i.id));
-        }
-      } else if (formData.customerId && customerAgreementItems.has(formData.customerId)) {
-        const custItemIds = customerAgreementItems.get(formData.customerId)!;
-        availableItems = items.filter((i) => custItemIds.has(i.id));
-      } else {
-        // Fallback if agreement items couldn't be parsed
-        availableItems = items;
       }
-    } else {
-      // No customer agreement selected -> item selection not available yet
-      availableItems = [];
+    } else if (formData.customerId && customerAgreementItems.has(formData.customerId)) {
+      const custItemIds = customerAgreementItems.get(formData.customerId)!;
+      items.filter((i) => custItemIds.has(i.id)).forEach(i => custItemMap.set(i.id, i));
     }
 
-    // Step 2: If supplier is selected, filter to only their agreement items
-    if (formData.supplierId && supplierAgreementItems.has(formData.supplierId) && availableItems.length > 0) {
+    // 2. Collect items from Supplier Agreement
+    if (formData.selectedSupplierAgreementId) {
+      const selectedSupp = suppliers.find(s => s.agreementId === formData.selectedSupplierAgreementId);
+      const suppId = selectedSupp?.id || formData.supplierId;
+      if (suppId && supplierAgreementItems.has(suppId)) {
+        const suppItemIds = supplierAgreementItems.get(suppId)!;
+        items.filter((i) => suppItemIds.has(i.id)).forEach(i => suppItemMap.set(i.id, i));
+      }
+    } else if (formData.supplierId && supplierAgreementItems.has(formData.supplierId)) {
       const suppItemIds = supplierAgreementItems.get(formData.supplierId)!;
-      const suppFiltered = availableItems.filter((i) => suppItemIds.has(i.id));
-      if (suppFiltered.length > 0) {
-        availableItems = suppFiltered;
-      }
+      items.filter((i) => suppItemIds.has(i.id)).forEach(i => suppItemMap.set(i.id, i));
     }
 
-    // Step 3: If transporter agreement has specific items, intersect with those
+    // 3. Combine items from agreements
+    if (custItemMap.size > 0 && suppItemMap.size > 0) {
+      const combined = new Map<string, Item>();
+      suppItemMap.forEach((val, key) => combined.set(key, val));
+      custItemMap.forEach((val, key) => combined.set(key, val));
+      availableItems = Array.from(combined.values());
+    } else if (custItemMap.size > 0) {
+      availableItems = Array.from(custItemMap.values());
+    } else if (suppItemMap.size > 0) {
+      availableItems = Array.from(suppItemMap.values());
+    } else {
+      availableItems = items;
+    }
+
+    // Step 4: If transporter agreement has specific items, intersect with those
     if (selectedAgreement && selectedAgreement.agreementItems && selectedAgreement.agreementItems.length > 0 && availableItems.length > 0) {
       const agrItemIds = new Set(selectedAgreement.agreementItems.map((ai) => ai.itemId));
       const fromAgreement = availableItems.filter((i) => agrItemIds.has(i.id));
@@ -614,7 +650,7 @@ Check console for detailed breakdown.`);
     if (formData.itemId && !availableItems.find((item) => item.id === formData.itemId)) {
       setFormData((prev) => ({ ...prev, itemId: '', aggregateValue: '' }));
     }
-  }, [formData.customerId, formData.selectedCustomerAgreementId, formData.supplierId, suppliers, items, selectedAgreement, customers, customerAgreementItems, supplierAgreementItems]);
+  }, [formData.customerId, formData.selectedCustomerAgreementId, formData.supplierId, formData.selectedSupplierAgreementId, suppliers, items, selectedAgreement, customers, customerAgreementItems, supplierAgreementItems]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -890,11 +926,13 @@ Check console for detailed breakdown.`);
                   required
                   value={formData.itemId}
                   onChange={(e) => handleItemChangeWithAgreementLookup(e.target.value)}
-                  disabled={loadingData || !formData.selectedCustomerAgreementId}
+                  disabled={loadingData || (!formData.selectedCustomerAgreementId && !formData.selectedSupplierAgreementId && !formData.customerId && !formData.supplierId)}
                   className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border px-3 py-2 disabled:bg-gray-100 disabled:text-gray-500 cursor-pointer disabled:cursor-not-allowed"
                 >
                   <option value="">
-                    {!formData.selectedCustomerAgreementId ? 'Select Customer Agreement First' : 'Select Item'}
+                    {!formData.selectedCustomerAgreementId && !formData.selectedSupplierAgreementId && !formData.customerId && !formData.supplierId
+                      ? 'Select Customer or Supplier Agreement First'
+                      : 'Select Item from Agreement'}
                   </option>
                   {filteredItems.map((item) => (
                     <option key={item.id} value={item.id}>

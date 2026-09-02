@@ -160,20 +160,19 @@ export async function GET(request: NextRequest) {
                 const qty = Number(item.qty || item.quantity || 1);
                 const unitPrice = Number(item.unitPrice || item.pricePerUnit || 0);
 
-                if (unitPrice > 0) {
-                  if (item.vatIncluded === true || item.priceType === 'inclusive') {
-                    finalUnitPriceIncVat = unitPrice;
-                  } else {
-                    // Adds 15% VAT for 'incl', 'excl', or default sales agreement items
-                    finalUnitPriceIncVat = unitPrice * 1.15;
-                  }
-                } else if (item.totalAmount || item.amount || item.total) {
+                if (item.totalAmount || item.amount || item.total) {
                   const total = Number(item.totalAmount || item.amount || item.total);
                   const basePrice = qty > 0 ? total / qty : total;
-                  if (item.vatIncluded === true || item.priceType === 'inclusive') {
+                  if (item.vatIncluded === true || item.priceType === 'inclusive' || item.priceType === 'incl' || item.totalAmount) {
                     finalUnitPriceIncVat = basePrice;
                   } else {
                     finalUnitPriceIncVat = basePrice * 1.15;
+                  }
+                } else if (unitPrice > 0) {
+                  if (item.vatIncluded === true || item.priceType === 'inclusive' || item.priceType === 'incl') {
+                    finalUnitPriceIncVat = unitPrice * 1.15;
+                  } else {
+                    finalUnitPriceIncVat = unitPrice;
                   }
                 }
 
@@ -262,19 +261,19 @@ export async function GET(request: NextRequest) {
                 const qty = Number(item.qty || item.quantity || 1);
                 const unitPrice = Number(item.unitPrice || item.pricePerUnit || 0);
 
-                if (unitPrice > 0) {
-                  if (item.vatIncluded === true || item.priceType === 'inclusive') {
-                    finalUnitPriceIncVat = unitPrice;
-                  } else {
-                    finalUnitPriceIncVat = unitPrice * 1.15;
-                  }
-                } else if (item.totalAmount || item.amount || item.total) {
+                if (item.totalAmount || item.amount || item.total) {
                   const total = Number(item.totalAmount || item.amount || item.total);
                   const basePrice = qty > 0 ? total / qty : total;
-                  if (item.vatIncluded === true || item.priceType === 'inclusive') {
+                  if (item.vatIncluded === true || item.priceType === 'inclusive' || item.priceType === 'incl' || item.totalAmount) {
                     finalUnitPriceIncVat = basePrice;
                   } else {
                     finalUnitPriceIncVat = basePrice * 1.15;
+                  }
+                } else if (unitPrice > 0) {
+                  if (item.vatIncluded === true || item.priceType === 'inclusive' || item.priceType === 'incl') {
+                    finalUnitPriceIncVat = unitPrice * 1.15;
+                  } else {
+                    finalUnitPriceIncVat = unitPrice;
                   }
                 }
 

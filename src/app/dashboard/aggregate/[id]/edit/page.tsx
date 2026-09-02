@@ -186,7 +186,20 @@ export default function EditAggregateDispatchPage() {
                   }
                   custItemsMap.get(custId)!.add(targetItemId);
 
-                  const price = Number(ai.unitPrice ?? ai.pricePerUnit ?? ai.amount ?? ai.totalAmount ?? 0);
+                  const unitPrice = Number(ai.unitPrice ?? ai.pricePerUnit ?? ai.price ?? 0);
+                  const qty = Number(ai.qty ?? ai.quantity ?? 1);
+                  const totalAmt = Number(ai.totalAmount ?? ai.amount ?? 0);
+                  let price = 0;
+                  if (totalAmt > 0 && qty > 0) {
+                    price = totalAmt / qty;
+                  } else if (unitPrice > 0) {
+                    if (ai.priceType === 'incl' || ai.vatIncluded === true || ai.priceType === 'inclusive') {
+                      price = unitPrice * 1.15;
+                    } else {
+                      price = unitPrice;
+                    }
+                  }
+
                   if (price > 0 && !custPricesMap.has(`${custId}_${targetItemId}`)) {
                     custPricesMap.set(`${custId}_${targetItemId}`, price);
                   }
@@ -216,7 +229,20 @@ export default function EditAggregateDispatchPage() {
                   }
                   suppItemsMap.get(suppId)!.add(targetItemId);
 
-                  const price = Number(ai.amount ?? ai.totalAmount ?? ai.unitPrice ?? ai.pricePerUnit ?? 0);
+                  const unitPrice = Number(ai.unitPrice ?? ai.pricePerUnit ?? ai.price ?? 0);
+                  const qty = Number(ai.qty ?? ai.quantity ?? 1);
+                  const totalAmt = Number(ai.totalAmount ?? ai.amount ?? 0);
+                  let price = 0;
+                  if (totalAmt > 0 && qty > 0) {
+                    price = totalAmt / qty;
+                  } else if (unitPrice > 0) {
+                    if (ai.priceType === 'incl' || ai.vatIncluded === true || ai.priceType === 'inclusive') {
+                      price = unitPrice * 1.15;
+                    } else {
+                      price = unitPrice;
+                    }
+                  }
+
                   if (price > 0 && !suppPricesMap.has(`${suppId}_${targetItemId}`)) {
                     suppPricesMap.set(`${suppId}_${targetItemId}`, price);
                   }

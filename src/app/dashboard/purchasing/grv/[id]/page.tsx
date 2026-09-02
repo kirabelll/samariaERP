@@ -49,8 +49,38 @@ export default function GoodsReceiveDetailPage() {
     }
   }, [recordId]);
 
+  const [deleting, setDeleting] = useState(false);
+
   const handleBack = () => {
     router.push(`/dashboard/purchasing/grv`);
+  };
+
+  const handleDelete = async (permanent: boolean = false) => {
+    const isInactive = data?.status === 'Inactive' || data?.status === 'Cancelled';
+    const isPermanent = permanent || isInactive;
+    const confirmPrompt = isPermanent
+      ? `Are you sure you want to PERMANENTLY delete GRV "${data?.grvNo}" from the database?\n\nThis will reverse the inventory stock balances and CANNOT be undone.`
+      : `Are you sure you want to deactivate/delete GRV "${data?.grvNo}"?\n\nThis will reverse the added inventory stock balances.`;
+
+    if (!window.confirm(confirmPrompt)) {
+      return;
+    }
+
+    setDeleting(true);
+    try {
+      const url = isPermanent ? `/api/purchasing/grv/${recordId}?permanent=true` : `/api/purchasing/grv/${recordId}`;
+      const res = await fetch(url, { method: 'DELETE' });
+      const result = await res.json();
+      if (!res.ok || !result.success) {
+        throw new Error(result.error || 'Failed to delete GRV');
+      }
+      alert(result.message || (result.permanent ? 'GRV permanently purged from database.' : 'GRV marked as Inactive.'));
+      router.push('/dashboard/purchasing/grv');
+    } catch (err: any) {
+      alert(err.message || 'Failed to delete GRV');
+    } finally {
+      setDeleting(false);
+    }
   };
 
   if (loading) {
@@ -122,6 +152,36 @@ export default function GoodsReceiveDetailPage() {
           <Badge status={data.status === 'Received' ? 'Confirmed' : (data.status as any)}>
             {data.status}
           </Badge>
+          {data.status === 'Inactive' || data.status === 'Cancelled' ? (
+            <Button
+              variant="danger"
+              size="sm"
+              isLoading={deleting}
+              onClick={() => handleDelete(true)}
+            >
+              Delete Permanently
+            </Button>
+          ) : (
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                className="border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300"
+                isLoading={deleting}
+                onClick={() => handleDelete(false)}
+              >
+                Deactivate GRV
+              </Button>
+              <Button
+                variant="danger"
+                size="sm"
+                isLoading={deleting}
+                onClick={() => handleDelete(true)}
+              >
+                Delete Permanently
+              </Button>
+            </>
+          )}
         </div>
       </div>
 

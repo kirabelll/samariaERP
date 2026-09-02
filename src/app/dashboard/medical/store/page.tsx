@@ -253,17 +253,23 @@ export default function MedicalStorePage() {
     }
   };
 
-  const handleDeleteGRV = async (grvId: string, grvNo: string) => {
-    if (!window.confirm(`Are you sure you want to delete GRV "${grvNo}"?`)) {
+  const handleDeleteGRV = async (grvId: string, grvNo: string, currentStatus?: string) => {
+    const isInactive = currentStatus === 'Inactive' || currentStatus === 'Cancelled';
+    const confirmPrompt = isInactive
+      ? `This GRV "${grvNo}" is INACTIVE.\n\nDo you want to PERMANENTLY delete it from the database? This action cannot be undone.`
+      : `Are you sure you want to delete GRV "${grvNo}"?\n\nThis will reverse the inventory stock balances.`;
+
+    if (!window.confirm(confirmPrompt)) {
       return;
     }
     try {
-      const res = await fetch(`/api/purchasing/grv/${grvId}`, { method: 'DELETE' });
+      const url = isInactive ? `/api/purchasing/grv/${grvId}?permanent=true` : `/api/purchasing/grv/${grvId}`;
+      const res = await fetch(url, { method: 'DELETE' });
       const result = await res.json();
       if (!res.ok || !result.success) {
         throw new Error(result.error || 'Failed to delete GRV');
       }
-      alert(result.message || 'GRV deleted successfully.');
+      alert(result.message || (result.permanent ? 'GRV permanently purged from database.' : 'GRV marked as Inactive.'));
       fetchStoreData();
     } catch (err: any) {
       alert(err.message || 'Failed to delete GRV');
@@ -736,9 +742,10 @@ export default function MedicalStorePage() {
                                 size="sm"
                                 variant="outline"
                                 className="border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300"
-                                onClick={() => handleDeleteGRV(g.id, g.grvNo)}
+                                onClick={() => handleDeleteGRV(g.id, g.grvNo, g.status)}
+                                title={g.status === 'Inactive' || g.status === 'Cancelled' ? 'Permanently Delete GRV' : 'Delete GRV'}
                               >
-                                Delete
+                                {g.status === 'Inactive' || g.status === 'Cancelled' ? 'Purge' : 'Delete'}
                               </Button>
                             </div>
                           </td>

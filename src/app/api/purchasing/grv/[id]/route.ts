@@ -76,6 +76,9 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
+    const searchParams = request.nextUrl?.searchParams;
+    const isPermanent = searchParams?.get('permanent') === 'true' || searchParams?.get('hard') === 'true';
+
     const record = await prisma.goodsReceive.findUnique({
       where: { id: params.id },
     });
@@ -127,13 +130,31 @@ export async function DELETE(
       }
     }
 
-    // Soft delete - set status to Inactive/Cancelled
+    // Permanently purge from database if already Inactive or explicitly requested
+    if (record.status === 'Inactive' || isPermanent) {
+      await prisma.goodsReceive.delete({
+        where: { id: params.id },
+      });
+
+      return NextResponse.json({
+        success: true,
+        message: 'GRV permanently deleted from database.',
+        permanent: true,
+      });
+    }
+
+    // Soft delete - set status to Inactive
     const deletedRecord = await prisma.goodsReceive.update({
       where: { id: params.id },
       data: { status: 'Inactive' },
     });
 
-    return NextResponse.json({ success: true, message: 'GRV deactivated and inventory balances updated successfully', data: deletedRecord });
+    return NextResponse.json({
+      success: true,
+      message: 'GRV marked as Inactive and inventory deducted. Delete again to permanently remove.',
+      data: deletedRecord,
+      permanent: false,
+    });
   } catch (error: any) {
     console.error('Error deleting record:', error);
     return NextResponse.json(

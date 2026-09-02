@@ -89,6 +89,36 @@ export default function MedicalBatchDetailPage() {
     );
   }
 
+  const [deleting, setDeleting] = useState(false);
+
+  const handleDelete = async (permanent: boolean = false) => {
+    const isInactive = data?.status === 'Inactive';
+    const isPermanent = permanent || isInactive;
+    const confirmPrompt = isPermanent
+      ? `Are you sure you want to PERMANENTLY delete Batch "${data?.batchNo}" from the database?\n\nThis action CANNOT be undone.`
+      : `Are you sure you want to deactivate/delete Batch "${data?.batchNo}"?\n\nIt will be marked as Inactive.`;
+
+    if (!window.confirm(confirmPrompt)) {
+      return;
+    }
+
+    setDeleting(true);
+    try {
+      const url = isPermanent ? `/api/medical/batches/${recordId}?permanent=true` : `/api/medical/batches/${recordId}`;
+      const res = await fetch(url, { method: 'DELETE' });
+      const result = await res.json();
+      if (!res.ok || !result.success) {
+        throw new Error(result.error || 'Failed to delete batch');
+      }
+      alert(result.message || (result.permanent ? 'Batch permanently purged from database.' : 'Batch marked as Inactive.'));
+      router.push('/dashboard/medical/store');
+    } catch (err: any) {
+      alert(err.message || 'Failed to delete batch');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const expiryDate = data.expiryDate ? new Date(data.expiryDate) : null;
   const now = new Date();
   const threeMonths = new Date();
@@ -129,10 +159,40 @@ export default function MedicalBatchDetailPage() {
             </Button>
           </Link>
           <Link href={`/dashboard/medical/store/${recordId}/edit`}>
-            <Button variant="primary" size="sm" icon={<Edit2 className="w-4 h-4" />}>
+            <Button variant="outline" size="sm" icon={<Edit2 className="w-4 h-4" />}>
               Edit Batch
             </Button>
           </Link>
+          {data.status === 'Inactive' ? (
+            <Button
+              variant="danger"
+              size="sm"
+              isLoading={deleting}
+              onClick={() => handleDelete(true)}
+            >
+              Delete Permanently
+            </Button>
+          ) : (
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                className="border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300"
+                isLoading={deleting}
+                onClick={() => handleDelete(false)}
+              >
+                Deactivate Batch
+              </Button>
+              <Button
+                variant="danger"
+                size="sm"
+                isLoading={deleting}
+                onClick={() => handleDelete(true)}
+              >
+                Delete Permanently
+              </Button>
+            </>
+          )}
         </div>
       </div>
 

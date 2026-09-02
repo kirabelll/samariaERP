@@ -101,6 +101,24 @@ export async function DELETE(
       );
     }
 
+    // If batch has remaining quantity, adjust StockBalance
+    if (record.status !== 'Inactive' && record.quantity > 0) {
+      try {
+        const existingStock = await prisma.stockBalance.findUnique({
+          where: { itemId_warehouse: { itemId: record.itemId, warehouse: record.warehouse } },
+        });
+        if (existingStock) {
+          const newQty = Math.max(0, existingStock.quantity - record.quantity);
+          await prisma.stockBalance.update({
+            where: { id: existingStock.id },
+            data: { quantity: newQty, lastUpdated: new Date() },
+          });
+        }
+      } catch (err) {
+        console.error('Error updating stock balance on batch delete:', err);
+      }
+    }
+
     // Permanently purge from database if already Inactive or explicitly requested
     if (record.status === 'Inactive' || isPermanent) {
       await prisma.medicalBatch.delete({
@@ -117,7 +135,7 @@ export async function DELETE(
     // Otherwise mark status as Inactive
     const updatedRecord = await prisma.medicalBatch.update({
       where: { id },
-      data: { status: 'Inactive' },
+      data: { status: 'Inactive', quantity: 0 },
     });
 
     return NextResponse.json({

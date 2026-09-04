@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { notify } from '@/lib/telegram';
-import { deductInventory } from '@/lib/inventory';
 
 export const dynamic = 'force-dynamic';
 
@@ -128,16 +127,8 @@ export async function POST(request: NextRequest) {
       include: { customer: true, salesOrder: true },
     });
 
-    // If delivery is linked to a salesOrderId, the sales order already deducted inventory.
-    // If it's a standalone delivery without a sales order, deduct from inventory now.
-    if (!salesOrderId) {
-      try {
-        await deductInventory(parsedItems, division, { orderNo: delivery.deliveryNo });
-      } catch (stockErr) {
-        console.error(`Error updating stock balance for direct delivery:`, stockErr);
-      }
-    } else {
-      // Linked to a sales order -> update the sales order status to InProgress or Delivered
+    // If linked to a sales order -> update the sales order status to InProgress or Delivered
+    if (salesOrderId) {
       try {
         await prisma.salesOrder.update({
           where: { id: salesOrderId },

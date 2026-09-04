@@ -32,7 +32,7 @@ export default function DeliveriesPage() {
   });
 
   const handleDelete = async (delivery: Delivery) => {
-    if (!window.confirm(`Are you sure you want to permanently delete delivery ${delivery.deliveryNo}? This will restore the inventory stock items.`)) {
+    if (!window.confirm(`Are you sure you want to permanently delete delivery ${delivery.deliveryNo}?`)) {
       return;
     }
     try {
@@ -43,7 +43,7 @@ export default function DeliveriesPage() {
       if (!response.ok || !result.success) {
         throw new Error(result.error || 'Failed to delete delivery');
       }
-      alert('Delivery permanently deleted and stock restored successfully.');
+      alert('Delivery permanently deleted successfully.');
       if (refetch) refetch();
       else window.location.reload();
     } catch (err: any) {

@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { restoreInventory } from '@/lib/inventory';
 
 export const dynamic = 'force-dynamic';
 
@@ -87,16 +86,6 @@ export async function DELETE(
         { success: false, error: 'Record not found' },
         { status: 404 }
       );
-    }
-
-    // Only restore inventory if this was a standalone delivery not linked to a sales order
-    // (since a sales order maintains the stock deduction while active)
-    if (!record.salesOrderId && record.status !== 'Inactive' && record.status !== 'Cancelled') {
-      try {
-        await restoreInventory(record.items, record.division, { orderNo: record.deliveryNo });
-      } catch (e) {
-        console.error('Error restoring stock on delivery delete:', e);
-      }
     }
 
     // Permanently delete delivery record

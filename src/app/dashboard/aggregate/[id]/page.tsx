@@ -379,7 +379,7 @@ export default function AggregateDetailPage() {
                           {doc.docType === 'telegram_proof' ? 'Telegram Proof' : doc.docType === 'signed_invoice' ? 'Signed Invoice' : doc.docType}
                           {' · '}
                           {new Date(doc.uploadedAt).toLocaleDateString()}
-                        </p>
+                        </p>  
                       </div>
                     </div>
                     <a

@@ -679,18 +679,6 @@ export default function NewDeliveryPage() {
               <tbody className="divide-y divide-gray-100">
                 {items.map((item) => {
                   const availableItemBatches = medicalBatches.filter((b) => b.itemId === item.itemId);
-                  const selectedMaster = masterItems.find((m) => m.id === item.itemId);
-                  const matchedBatch = medicalBatches.find(
-                    (b) => b.itemId === item.itemId && b.batchNo === item.batchNo
-                  );
-
-                  const availableStock = isMedical && matchedBatch
-                    ? Number(matchedBatch.quantity)
-                    : selectedMaster?.currentStock != null
-                    ? Number(selectedMaster.currentStock)
-                    : null;
-
-                  const remainingStock = availableStock != null ? availableStock - (Number(item.quantity) || 0) : null;
 
                   return (
                     <tr key={item.id} className="hover:bg-gray-50/50 transition-colors">
@@ -708,7 +696,6 @@ export default function NewDeliveryPage() {
                               {masterItems.map((masterItem) => (
                                 <option key={masterItem.id} value={masterItem.id}>
                                   {masterItem.code ? `[${masterItem.code}] ` : ''}{masterItem.name}
-                                  {masterItem.currentStock != null ? ` (Stock: ${masterItem.currentStock})` : ''}
                                 </option>
                               ))}
                             </select>
@@ -719,25 +706,6 @@ export default function NewDeliveryPage() {
                                 onChange={(e) => handleItemChange(item.id, 'itemName', e.target.value)}
                                 className="text-xs"
                               />
-                            )}
-                            {availableStock != null && (
-                              <div className="flex flex-wrap items-center gap-2 text-[11px] pt-0.5">
-                                <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-700 font-medium">
-                                  📦 Available: <b className="text-slate-900">{availableStock}</b> {item.unit}
-                                </span>
-                                {remainingStock != null && (
-                                  <span
-                                    className={`px-2 py-0.5 rounded font-medium ${
-                                      remainingStock < 0
-                                        ? 'bg-red-50 text-red-700 font-bold border border-red-200'
-                                        : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                                    }`}
-                                  >
-                                    📊 Remaining: <b>{remainingStock}</b> {item.unit}
-                                    {remainingStock < 0 && ' (Low Stock)'}
-                                  </span>
-                                )}
-                              </div>
                             )}
                           </div>
                         ) : (
@@ -807,11 +775,7 @@ export default function NewDeliveryPage() {
                           step="any"
                           value={item.quantity}
                           onChange={(e) => handleItemChange(item.id, 'quantity', parseFloat(e.target.value) || 0)}
-                          className={`w-full rounded-md border shadow-sm focus:ring-1 px-2.5 py-1.5 text-sm ${
-                            remainingStock != null && remainingStock < 0
-                              ? 'border-red-400 focus:border-red-500 focus:ring-red-500 bg-red-50/40 text-red-900 font-semibold'
-                              : 'border-gray-300 focus:border-blue-500 focus:ring-blue-500'
-                          }`}
+                          className="w-full rounded-md border border-gray-300 shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 px-2.5 py-1.5 text-sm"
                         />
                       </td>
 

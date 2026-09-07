@@ -1429,7 +1429,7 @@ export default function NewVoucherPage() {
                     <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-center">
                       <p className="text-slate-600 text-sm">
                         No deliveries matching &quot;{deliverySearch}&quot;
-                      </p>
+                      </p>  
                       <button
                         type="button"
                         onClick={() => setDeliverySearch('')}

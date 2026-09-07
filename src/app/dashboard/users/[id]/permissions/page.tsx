@@ -22,7 +22,7 @@ const PAGE_GROUPS: { section: string; pages: string[] }[] = [
   },
   {
     section: 'MEDICAL',
-    pages: ['Licensed Customers', 'Purchase Requests', 'Store Management', 'Pricing & Offers', 'Store Issues', 'Stock Adjustments', 'Commission'],
+    pages: ['Licensed Customers', 'Purchase Order', 'Store Management', 'Pricing & Offers', 'Store Issues', 'Stock Adjustments', 'Commission'],
   },
   {
     section: 'COMMERCIAL',

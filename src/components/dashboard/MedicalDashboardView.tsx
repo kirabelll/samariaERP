@@ -395,7 +395,7 @@ export function MedicalDashboardView({ standalone = false }: { standalone?: bool
           <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-3">
             {[
               { href: '/dashboard/medical/customers', label: 'Licensed Clients', icon: ShieldCheck, color: 'text-rose-500' },
-              { href: '/dashboard/medical/requests', label: 'Purchase Requests', icon: ClipboardList, color: 'text-sky-500' },
+              { href: '/dashboard/medical/requests', label: 'Purchase Order', icon: ClipboardList, color: 'text-sky-500' },
               { href: '/dashboard/medical/store', label: 'Store Batches', icon: Warehouse, color: 'text-amber-500' },
               { href: '/dashboard/medical/pricing', label: 'Pricing & Offers', icon: Pill, color: 'text-emerald-500' },
               { href: '/dashboard/medical/store-issues', label: 'Store Issues', icon: Package, color: 'text-indigo-500' },

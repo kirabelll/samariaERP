@@ -49,7 +49,7 @@ export default function MedicalRequestsPage() {
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold text-gray-900">Purchase Requests</h1>
+        <h1 className="text-3xl font-bold text-gray-900">Purchase Order</h1>
         <Link href="/dashboard/medical/requests/new">
           <Button variant="primary" size="lg">+ New Request</Button>
         </Link>
@@ -87,7 +87,7 @@ export default function MedicalRequestsPage() {
             totalPages={pagination.pages}
             currentPage={currentPage}
             onPageChange={setCurrentPage}
-            emptyMessage={loading ? 'Loading...' : 'No purchase requests found'}
+            emptyMessage={loading ? 'Loading...' : 'No purchase Order found'}
           />
         </CardBody>
       </Card>

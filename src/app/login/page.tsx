@@ -139,8 +139,13 @@ export default function LoginPage() {
       <div className="mx-auto flex w-full flex-col justify-center space-y-4 sm:w-[420px]">
         {/* Brand Header */}
         <div className="mb-2 flex items-center justify-center gap-2.5">
-          <div className="flex size-9 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-md">
-            <Building2 className="h-5 w-5" />
+          <div className="flex size-10 items-center justify-center rounded-xl bg-background border border-border/80 shadow-xs overflow-hidden p-1">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/logo.png"
+              alt="SAMARIA ERP"
+              className="h-full w-full object-contain"
+            />
           </div>
           <h1 className="text-xl font-bold tracking-tight">SAMARIA ERP</h1>
         </div>

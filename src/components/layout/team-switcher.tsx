@@ -38,8 +38,11 @@ export function TeamSwitcher({
               size="lg"
               className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
             >
-              <div className="bg-primary text-primary-foreground flex aspect-square size-8 items-center justify-center rounded-lg shadow-xs">
-                {activeTeam.logo ? (
+              <div className="bg-primary text-primary-foreground flex aspect-square size-8 items-center justify-center rounded-lg shadow-xs overflow-hidden">
+                {activeTeam.name === 'Samaria Trading PLC' ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src="/logo.png" alt={activeTeam.name} className="size-6 object-contain" />
+                ) : activeTeam.logo ? (
                   <activeTeam.logo className="size-4" />
                 ) : (
                   <Building2 className="size-4" />
@@ -69,8 +72,13 @@ export function TeamSwitcher({
                 onClick={() => setActiveTeam(team)}
                 className="gap-2 p-2 cursor-pointer"
               >
-                <div className="flex size-6 items-center justify-center rounded-sm border border-border bg-muted/30">
-                  <team.logo className="size-3.5 shrink-0" />
+                <div className="flex size-6 items-center justify-center rounded-sm border border-border bg-muted/30 overflow-hidden">
+                  {team.name === 'Samaria Trading PLC' ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src="/logo.png" alt={team.name} className="size-4 object-contain" />
+                  ) : (
+                    <team.logo className="size-3.5 shrink-0" />
+                  )}
                 </div>
                 <div className="flex flex-col">
                   <span className="text-sm font-medium">{team.name}</span>

@@ -235,7 +235,7 @@ export const sidebarData: SidebarData = {
               url: '/dashboard/medical/customers',
             },
             {
-              title: 'Purchase Requests',
+              title: 'Purchase Order',
               url: '/dashboard/medical/requests',
             },
             {

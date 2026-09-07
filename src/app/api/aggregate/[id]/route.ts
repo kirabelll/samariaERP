@@ -64,9 +64,21 @@ export async function GET(
         const parsed = typeof suppAgr.items === 'string' ? JSON.parse(suppAgr.items) : (suppAgr.items as any[] || []);
         const matched = parsed.find((i: any) => (i.itemId || i.id) === delivery.itemId);
         if (matched) {
-          const unitPrice = Number(matched.amount ?? matched.totalAmount ?? matched.unitPrice ?? matched.pricePerUnit ?? 0);
+          const unitPrice = Number(matched.unitPrice ?? matched.pricePerUnit ?? matched.price ?? 0);
+          const qty = Number(matched.qty ?? matched.quantity ?? 1);
+          const totalAmt = Number(matched.totalAmount ?? matched.amount ?? matched.total ?? 0);
+          let price = 0;
           if (unitPrice > 0) {
-            supplierPrice = unitPrice;
+            price = unitPrice;
+          } else if (totalAmt > 0 && qty > 0) {
+            if (matched.priceType === 'incl' || matched.vatIncluded === true || matched.priceType === 'inclusive') {
+              price = (totalAmt / 1.15) / qty;
+            } else {
+              price = totalAmt / qty;
+            }
+          }
+          if (price > 0) {
+            supplierPrice = price;
           }
         }
       } catch { /* ignore */ }
@@ -91,9 +103,21 @@ export async function GET(
         const parsed = typeof salesAgr.items === 'string' ? JSON.parse(salesAgr.items) : (salesAgr.items as any[] || []);
         const matched = parsed.find((i: any) => (i.itemId || i.id) === delivery.itemId);
         if (matched) {
-          const unitPrice = Number(matched.unitPrice ?? matched.pricePerUnit ?? matched.amount ?? matched.totalAmount ?? 0);
+          const unitPrice = Number(matched.unitPrice ?? matched.pricePerUnit ?? matched.price ?? 0);
+          const qty = Number(matched.qty ?? matched.quantity ?? 1);
+          const totalAmt = Number(matched.totalAmount ?? matched.amount ?? matched.total ?? 0);
+          let price = 0;
           if (unitPrice > 0) {
-            customerPrice = unitPrice;
+            price = unitPrice;
+          } else if (totalAmt > 0 && qty > 0) {
+            if (matched.priceType === 'incl' || matched.vatIncluded === true || matched.priceType === 'inclusive') {
+              price = (totalAmt / 1.15) / qty;
+            } else {
+              price = totalAmt / qty;
+            }
+          }
+          if (price > 0) {
+            customerPrice = price;
           }
         }
       } catch { /* ignore */ }

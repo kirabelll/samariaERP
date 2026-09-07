@@ -190,13 +190,13 @@ export default function EditAggregateDispatchPage() {
                   const qty = Number(ai.qty ?? ai.quantity ?? 1);
                   const totalAmt = Number(ai.totalAmount ?? ai.amount ?? 0);
                   let price = 0;
-                  if (totalAmt > 0 && qty > 0) {
-                    price = totalAmt / qty;
-                  } else if (unitPrice > 0) {
+                  if (unitPrice > 0) {
+                    price = unitPrice;
+                  } else if (totalAmt > 0 && qty > 0) {
                     if (ai.priceType === 'incl' || ai.vatIncluded === true || ai.priceType === 'inclusive') {
-                      price = unitPrice * 1.15;
+                      price = (totalAmt / 1.15) / qty;
                     } else {
-                      price = unitPrice;
+                      price = totalAmt / qty;
                     }
                   }
 
@@ -233,13 +233,13 @@ export default function EditAggregateDispatchPage() {
                   const qty = Number(ai.qty ?? ai.quantity ?? 1);
                   const totalAmt = Number(ai.totalAmount ?? ai.amount ?? 0);
                   let price = 0;
-                  if (totalAmt > 0 && qty > 0) {
-                    price = totalAmt / qty;
-                  } else if (unitPrice > 0) {
+                  if (unitPrice > 0) {
+                    price = unitPrice;
+                  } else if (totalAmt > 0 && qty > 0) {
                     if (ai.priceType === 'incl' || ai.vatIncluded === true || ai.priceType === 'inclusive') {
-                      price = unitPrice * 1.15;
+                      price = (totalAmt / 1.15) / qty;
                     } else {
-                      price = unitPrice;
+                      price = totalAmt / qty;
                     }
                   }
 

@@ -137,6 +137,7 @@ export async function GET(request: NextRequest) {
     const transporterMap = Object.fromEntries(transporters.map((t) => [t.id, t.companyName]));
 
     // Fetch the LATEST customer sales agreement per customer to get the current unit price
+    // Fetch the LATEST customer sales agreement per customer to get the current unit price (WITHOUT VAT)
     const customerAgreements = await prisma.salesAgreement.findMany({
       where: {
         customerId: { in: uniqueCustomerIds },
@@ -156,28 +157,24 @@ export async function GET(request: NextRequest) {
             if (targetId) {
               const priceKey = `${agr.customerId}_${targetId}`;
               if (!customerPriceMap.has(priceKey)) {
-                let finalUnitPriceIncVat = 0;
+                let finalUnitPrice = 0;
                 const qty = Number(item.qty || item.quantity || 1);
                 const unitPrice = Number(item.unitPrice || item.pricePerUnit || 0);
 
-                if (item.totalAmount || item.amount || item.total) {
+                if (unitPrice > 0) {
+                  finalUnitPrice = unitPrice;
+                } else if (item.totalAmount || item.amount || item.total) {
                   const total = Number(item.totalAmount || item.amount || item.total);
                   const basePrice = qty > 0 ? total / qty : total;
-                  if (item.vatIncluded === true || item.priceType === 'inclusive' || item.priceType === 'incl' || item.totalAmount) {
-                    finalUnitPriceIncVat = basePrice;
-                  } else {
-                    finalUnitPriceIncVat = basePrice * 1.15;
-                  }
-                } else if (unitPrice > 0) {
                   if (item.vatIncluded === true || item.priceType === 'inclusive' || item.priceType === 'incl') {
-                    finalUnitPriceIncVat = unitPrice * 1.15;
+                    finalUnitPrice = basePrice / 1.15;
                   } else {
-                    finalUnitPriceIncVat = unitPrice;
+                    finalUnitPrice = basePrice;
                   }
                 }
 
-                if (finalUnitPriceIncVat > 0) {
-                  customerPriceMap.set(priceKey, finalUnitPriceIncVat);
+                if (finalUnitPrice > 0) {
+                  customerPriceMap.set(priceKey, finalUnitPrice);
                 }
               }
             }
@@ -186,7 +183,7 @@ export async function GET(request: NextRequest) {
       } catch { /* ignore */ }
     }
 
-    // Calculate Customer Receivables — grouped by customer + item, using agreement price per item (Inc. VAT)
+    // Calculate Customer Receivables — grouped by customer + item, using agreement price per item (WITHOUT VAT)
     const customerReceivablesMap = new Map<string, CustomerReceivables>();
     aggregateDeliveries.forEach((delivery) => {
       const custId = delivery.customerId;
@@ -204,7 +201,7 @@ export async function GET(request: NextRequest) {
         } catch {}
       }
       if (customerPrice <= 0) {
-        customerPrice = customerPriceMap.get(groupKey) || (delivery.aggregateValue ? delivery.aggregateValue * 1.15 : 0);
+        customerPrice = customerPriceMap.get(groupKey) || Number(delivery.aggregateValue || 0);
       }
       const agreementPrice = customerPrice;
 
@@ -215,7 +212,7 @@ export async function GET(request: NextRequest) {
           itemId: itemId,
           itemName: itemMap[itemId]?.name || 'Unknown',
           totalDeliveredVolume: 0,
-          aggregateValue: agreementPrice, // Dispatch specific or sales agreement (Inc. VAT)
+          aggregateValue: agreementPrice, // Dispatch specific or sales agreement (Excl. VAT)
           totalReceivable: 0,
         });
       }
@@ -233,7 +230,7 @@ export async function GET(request: NextRequest) {
       .sort((a, b) => b.totalReceivable - a.totalReceivable);
     const totalCustomerReceivables = customerReceivables.reduce((sum, r) => sum + r.totalReceivable, 0);
 
-    // Fetch the LATEST supplier agreement per supplier to get the current unit price
+    // Fetch the LATEST supplier agreement per supplier to get the current unit price (WITHOUT VAT)
     // orderBy createdAt desc → first match per supplier = latest agreement
     const supplierAgreements = uniqueSupplierIds.length > 0
       ? await prisma.supplierAgreement.findMany({
@@ -246,7 +243,7 @@ export async function GET(request: NextRequest) {
         })
       : [];
 
-    // supplierPriceMap: "supplierId_itemId" → unitPrice INCLUDING 15% VAT (latest agreement per supplier+item)
+    // supplierPriceMap: "supplierId_itemId" → unitPrice WITHOUT VAT (latest agreement per supplier+item)
     const supplierPriceMap = new Map<string, number>();
     for (const agr of supplierAgreements) {
       try {
@@ -257,28 +254,24 @@ export async function GET(request: NextRequest) {
             if (targetId) {
               const priceKey = `${agr.supplierId}_${targetId}`;
               if (!supplierPriceMap.has(priceKey)) {
-                let finalUnitPriceIncVat = 0;
+                let finalUnitPrice = 0;
                 const qty = Number(item.qty || item.quantity || 1);
                 const unitPrice = Number(item.unitPrice || item.pricePerUnit || 0);
 
-                if (item.totalAmount || item.amount || item.total) {
+                if (unitPrice > 0) {
+                  finalUnitPrice = unitPrice;
+                } else if (item.totalAmount || item.amount || item.total) {
                   const total = Number(item.totalAmount || item.amount || item.total);
                   const basePrice = qty > 0 ? total / qty : total;
-                  if (item.vatIncluded === true || item.priceType === 'inclusive' || item.priceType === 'incl' || item.totalAmount) {
-                    finalUnitPriceIncVat = basePrice;
-                  } else {
-                    finalUnitPriceIncVat = basePrice * 1.15;
-                  }
-                } else if (unitPrice > 0) {
                   if (item.vatIncluded === true || item.priceType === 'inclusive' || item.priceType === 'incl') {
-                    finalUnitPriceIncVat = unitPrice * 1.15;
+                    finalUnitPrice = basePrice / 1.15;
                   } else {
-                    finalUnitPriceIncVat = unitPrice;
+                    finalUnitPrice = basePrice;
                   }
                 }
 
-                if (finalUnitPriceIncVat > 0) {
-                  supplierPriceMap.set(priceKey, finalUnitPriceIncVat);
+                if (finalUnitPrice > 0) {
+                  supplierPriceMap.set(priceKey, finalUnitPrice);
                 }
               }
             }
@@ -287,14 +280,14 @@ export async function GET(request: NextRequest) {
       } catch { /* ignore */ }
     }
 
-    // Calculate Supplier Payables — grouped by supplier + item, using agreement price per item (Inc. VAT)
+    // Calculate Supplier Payables — grouped by supplier + item, using agreement price per item (WITHOUT VAT)
     const supplierPayablesMap = new Map<string, SupplierPayables>();
     aggregateDeliveries.forEach((delivery) => {
       const suppId = delivery.supplierId;
       const itemId = delivery.itemId;
       const groupKey = `${suppId}_${itemId}`;
 
-      // Get the agreement price (Inc. VAT) for this specific supplier + item combo (or dispatch aggregateValue)
+      // Get the agreement price (Without VAT) for this specific supplier + item combo (or dispatch aggregateValue)
       const agreementPrice = (Number(delivery.aggregateValue || 0) > 0)
         ? Number(delivery.aggregateValue)
         : (supplierPriceMap.get(groupKey) || 0);
@@ -306,7 +299,7 @@ export async function GET(request: NextRequest) {
           itemId: itemId,
           itemName: itemMap[itemId]?.name || 'Unknown',
           totalVolume: 0,
-          aggregateValue: agreementPrice, // Direct from agreement for this item (Inc. VAT)
+          aggregateValue: agreementPrice, // Direct from agreement for this item (Excl. VAT)
           totalPayable: 0,
         });
       }
@@ -346,7 +339,7 @@ export async function GET(request: NextRequest) {
     );
     const totalTransportPayable = transporterPayments.reduce((sum, t) => sum + t.totalNetPayment, 0);
 
-    // Calculate Daily Report Summary (Inc. VAT)
+    // Calculate Daily Report Summary
     const dailyMap = new Map<string, DailyReportRow>();
     aggregateDeliveries.forEach((delivery) => {
       if (!delivery.dispatchDate) return;
@@ -364,8 +357,8 @@ export async function GET(request: NextRequest) {
       daily.totalDeliveries += 1;
       const deliveredVol = delivery.deliveredVolume || delivery.loadedVolume;
       const custKey = `${delivery.customerId}_${delivery.itemId}`;
-      const unitPriceIncVat = customerPriceMap.get(custKey) || (delivery.aggregateValue ? delivery.aggregateValue * 1.15 : 0);
-      daily.totalSalesValue += deliveredVol * unitPriceIncVat;
+      const unitPrice = customerPriceMap.get(custKey) || Number(delivery.aggregateValue || 0);
+      daily.totalSalesValue += deliveredVol * unitPrice;
       daily.totalTransportCosts += delivery.grossTruckFee || 0;
       daily.totalShortageDeductions += delivery.shortageDeduction || 0;
     });
@@ -379,8 +372,8 @@ export async function GET(request: NextRequest) {
     const totalSalesValue = aggregateDeliveries.reduce((sum, d) => {
       const deliveredVol = d.deliveredVolume || d.loadedVolume;
       const custKey = `${d.customerId}_${d.itemId}`;
-      const unitPriceIncVat = customerPriceMap.get(custKey) || (d.aggregateValue ? d.aggregateValue * 1.15 : 0);
-      return sum + deliveredVol * unitPriceIncVat;
+      const unitPrice = customerPriceMap.get(custKey) || Number(d.aggregateValue || 0);
+      return sum + deliveredVol * unitPrice;
     }, 0);
     const totalTransportCosts = aggregateDeliveries.reduce((sum, d) => sum + (d.grossTruckFee || 0), 0);
     const totalShortageDeductions = aggregateDeliveries.reduce((sum, d) => sum + (d.shortageDeduction || 0), 0);

@@ -111,7 +111,7 @@ export async function GET(request: NextRequest) {
     const supplierMap = Object.fromEntries(suppliers.map((s: any) => [s.id, s]));
     const itemMap = Object.fromEntries(items.map((i: any) => [i.id, i]));
 
-    // Build customer price map (customerId_itemId -> price per m3)
+    // Build customer price map (customerId_itemId -> price per m3 WITHOUT VAT)
     const customerPriceMap = new Map<string, number>();
     for (const agr of customerAgreements) {
       try {
@@ -122,18 +122,18 @@ export async function GET(request: NextRequest) {
             if (targetId) {
               const priceKey = `${agr.customerId}_${targetId}`;
               if (!customerPriceMap.has(priceKey)) {
+                const unitPrice = Number(item.unitPrice ?? item.pricePerUnit ?? item.price ?? 0);
                 const qty = Number(item.qty || item.quantity || 1);
-                const unitPrice = Number(item.unitPrice || item.pricePerUnit || item.price || 0);
                 const totalAmt = Number(item.totalAmount || item.amount || item.total || 0);
                 let finalPrice = 0;
 
-                if (totalAmt > 0 && qty > 0) {
-                  finalPrice = totalAmt / qty;
-                } else if (unitPrice > 0) {
+                if (unitPrice > 0) {
+                  finalPrice = unitPrice;
+                } else if (totalAmt > 0 && qty > 0) {
                   if (item.priceType === 'incl' || item.vatIncluded === true || item.priceType === 'inclusive') {
-                    finalPrice = unitPrice * 1.15;
+                    finalPrice = (totalAmt / 1.15) / qty;
                   } else {
-                    finalPrice = unitPrice;
+                    finalPrice = totalAmt / qty;
                   }
                 }
 
@@ -147,7 +147,7 @@ export async function GET(request: NextRequest) {
       } catch {}
     }
 
-    // Build supplier price map (supplierId_itemId -> price per m3)
+    // Build supplier price map (supplierId_itemId -> price per m3 WITHOUT VAT)
     const supplierPriceMap = new Map<string, number>();
     for (const agr of supplierAgreements) {
       try {
@@ -158,18 +158,18 @@ export async function GET(request: NextRequest) {
             if (targetId) {
               const priceKey = `${agr.supplierId}_${targetId}`;
               if (!supplierPriceMap.has(priceKey)) {
+                const unitPrice = Number(item.unitPrice ?? item.pricePerUnit ?? item.price ?? 0);
                 const qty = Number(item.qty || item.quantity || 1);
-                const unitPrice = Number(item.unitPrice || item.pricePerUnit || item.price || 0);
                 const totalAmt = Number(item.totalAmount || item.amount || item.total || 0);
                 let finalPrice = 0;
 
-                if (totalAmt > 0 && qty > 0) {
-                  finalPrice = totalAmt / qty;
-                } else if (unitPrice > 0) {
+                if (unitPrice > 0) {
+                  finalPrice = unitPrice;
+                } else if (totalAmt > 0 && qty > 0) {
                   if (item.priceType === 'incl' || item.vatIncluded === true || item.priceType === 'inclusive') {
-                    finalPrice = unitPrice * 1.15;
+                    finalPrice = (totalAmt / 1.15) / qty;
                   } else {
-                    finalPrice = unitPrice;
+                    finalPrice = totalAmt / qty;
                   }
                 }
 

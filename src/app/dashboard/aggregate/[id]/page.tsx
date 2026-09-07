@@ -7,7 +7,7 @@ import { ConfirmDialog } from '@/components/ui/Modal';
 import FileUpload from '@/components/ui/FileUpload';
 import { uploadDocument, fetchDocuments } from '@/lib/upload-helper';
 
-// Known sub-routes that should not be treated as delivery IDs
+// Known sub-routes that should not be treated
 const KNOWN_SUBROUTES = ['commission', 'recoveries', 'daily', 'new', 'proofs', 'summary', 'shortage'];
 
 interface DeliveryData {

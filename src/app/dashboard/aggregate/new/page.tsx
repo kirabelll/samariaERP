@@ -299,25 +299,25 @@ Check console for detailed breakdown.`);
                     });
                   }
 
-                  // Calculate price per agreement+item combo: total unit amount taking VAT into account
+                  // Calculate price per agreement+item combo: base unit price WITHOUT VAT
                   const unitPrice = Number(ai.unitPrice ?? ai.pricePerUnit ?? ai.price ?? 0);
                   const qty = Number(ai.qty ?? ai.quantity ?? 1);
                   const totalAmt = Number(ai.totalAmount ?? ai.amount ?? 0);
                   let itemPrice = 0;
-                  if (totalAmt > 0 && qty > 0) {
-                    itemPrice = totalAmt / qty;
-                  } else if (unitPrice > 0) {
+                  if (unitPrice > 0) {
+                    itemPrice = unitPrice;
+                  } else if (totalAmt > 0 && qty > 0) {
                     if (ai.priceType === 'incl' || ai.vatIncluded === true || ai.priceType === 'inclusive') {
-                      itemPrice = unitPrice * 1.15;
+                      itemPrice = (totalAmt / 1.15) / qty;
                     } else {
-                      itemPrice = unitPrice;
+                      itemPrice = totalAmt / qty;
                     }
                   }
 
                   const priceKey = `${agr.id}_${targetItemId}`;
                   if (itemPrice > 0 && !priceMap.has(priceKey)) {
                     priceMap.set(priceKey, itemPrice);
-                    console.log(`Stored price (Total Amount): ${priceKey} = ${itemPrice}`);
+                    console.log(`Stored price (Without VAT): ${priceKey} = ${itemPrice}`);
                   }
                   if (suppId && itemPrice > 0 && !priceMap.has(`${suppId}_${targetItemId}`)) {
                     priceMap.set(`${suppId}_${targetItemId}`, itemPrice);
@@ -359,13 +359,13 @@ Check console for detailed breakdown.`);
                     const qty = Number(ai.qty ?? ai.quantity ?? 1);
                     const totalAmt = Number(ai.totalAmount ?? ai.amount ?? 0);
                     let price = 0;
-                    if (totalAmt > 0 && qty > 0) {
-                      price = totalAmt / qty;
-                    } else if (unitPrice > 0) {
+                    if (unitPrice > 0) {
+                      price = unitPrice;
+                    } else if (totalAmt > 0 && qty > 0) {
                       if (ai.priceType === 'incl' || ai.vatIncluded === true || ai.priceType === 'inclusive') {
-                        price = unitPrice * 1.15;
+                        price = (totalAmt / 1.15) / qty;
                       } else {
-                        price = unitPrice;
+                        price = totalAmt / qty;
                       }
                     }
 

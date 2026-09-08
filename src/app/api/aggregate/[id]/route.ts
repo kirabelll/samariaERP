@@ -133,7 +133,7 @@ export async function GET(
     });
     const itemsMap = new Map(itemsDb.map((it) => [it.id, it]));
 
-    // Format parsed customer agreement items (Price Before VAT)
+    // Format parsed customer agreement items (take direct item unit price from agreement)
     let matchedCustomerItem: any = null;
     const parsedCustomerItems = rawSalesItems.map((i: any) => {
       const itId = i.itemId || i.id;
@@ -141,23 +141,15 @@ export async function GET(
       const itemName = i.itemName || i.name || dbIt?.name || 'Aggregate Item';
       const itemCode = i.code || dbIt?.code || '';
       const unit = i.unit || dbIt?.unit || 'm³';
-      const isIncl = i.priceType === 'incl' || i.vatIncluded === true || i.priceType === 'inclusive';
-      const rawUnitPrice = Number(i.unitPrice ?? i.pricePerUnit ?? i.price ?? 0);
       const qty = Number(i.qty ?? i.quantity ?? 1);
+      const rawUnitPrice = Number(i.unitPrice ?? i.pricePerUnit ?? i.price ?? 0);
       const rawTotalAmt = Number(i.totalAmount ?? i.amount ?? i.total ?? (qty * rawUnitPrice));
 
-      let unitPriceBeforeVat = rawUnitPrice;
-      if (isIncl) {
-        if (rawUnitPrice > 0) {
-          unitPriceBeforeVat = Math.round((rawUnitPrice / 1.15) * 100) / 100;
-        } else if (rawTotalAmt > 0 && qty > 0) {
-          unitPriceBeforeVat = Math.round(((rawTotalAmt / 1.15) / qty) * 100) / 100;
-        }
-      } else if (rawUnitPrice <= 0 && rawTotalAmt > 0 && qty > 0) {
-        unitPriceBeforeVat = Math.round((rawTotalAmt / qty) * 100) / 100;
+      let unitPrice = rawUnitPrice;
+      if (unitPrice <= 0 && rawTotalAmt > 0 && qty > 0) {
+        unitPrice = Math.round((rawTotalAmt / qty) * 100) / 100;
       }
-
-      const totalAmountBeforeVat = Math.round(qty * unitPriceBeforeVat * 100) / 100;
+      const totalAmount = rawTotalAmt > 0 ? rawTotalAmt : Math.round(qty * unitPrice * 100) / 100;
       const isMatched = itId === delivery.itemId || itemName.toLowerCase() === item?.name.toLowerCase();
 
       const itemObj = {
@@ -165,12 +157,10 @@ export async function GET(
         itemName,
         itemCode,
         unit,
-        unitPrice: unitPriceBeforeVat,
-        unitPriceBeforeVat,
-        rawUnitPrice,
-        vatIncluded: isIncl,
+        unitPrice,
+        priceType: i.priceType || (i.vatIncluded ? 'incl' : 'excl'),
         qty,
-        totalAmount: totalAmountBeforeVat,
+        totalAmount,
         isMatched,
       };
 
@@ -180,7 +170,7 @@ export async function GET(
       return itemObj;
     });
 
-    // Format parsed supplier agreement items (Price Before VAT)
+    // Format parsed supplier agreement items (take direct item unit price from agreement)
     let matchedSupplierItem: any = null;
     const parsedSupplierItems = rawSuppItems.map((i: any) => {
       const itId = i.itemId || i.id;
@@ -188,23 +178,15 @@ export async function GET(
       const itemName = i.itemName || i.name || dbIt?.name || 'Aggregate Item';
       const itemCode = i.code || dbIt?.code || '';
       const unit = i.unit || dbIt?.unit || 'm³';
-      const isIncl = i.priceType === 'incl' || i.vatIncluded === true || i.priceType === 'inclusive';
-      let rawUnitPrice = Number(i.unitPrice ?? i.pricePerUnit ?? i.price ?? 0);
       const qty = Number(i.qty ?? i.quantity ?? 1);
+      let rawUnitPrice = Number(i.unitPrice ?? i.pricePerUnit ?? i.price ?? 0);
       const rawTotalAmt = Number(i.totalAmount ?? i.amount ?? i.total ?? (qty * rawUnitPrice));
 
-      let unitPriceBeforeVat = rawUnitPrice;
-      if (isIncl) {
-        if (rawUnitPrice > 0) {
-          unitPriceBeforeVat = Math.round((rawUnitPrice / 1.15) * 100) / 100;
-        } else if (rawTotalAmt > 0 && qty > 0) {
-          unitPriceBeforeVat = Math.round(((rawTotalAmt / 1.15) / qty) * 100) / 100;
-        }
-      } else if (rawUnitPrice <= 0 && rawTotalAmt > 0 && qty > 0) {
-        unitPriceBeforeVat = Math.round((rawTotalAmt / qty) * 100) / 100;
+      let unitPrice = rawUnitPrice;
+      if (unitPrice <= 0 && rawTotalAmt > 0 && qty > 0) {
+        unitPrice = Math.round((rawTotalAmt / qty) * 100) / 100;
       }
-
-      const totalAmountBeforeVat = Math.round(qty * unitPriceBeforeVat * 100) / 100;
+      const totalAmount = rawTotalAmt > 0 ? rawTotalAmt : Math.round(qty * unitPrice * 100) / 100;
       const isMatched = itId === delivery.itemId || itemName.toLowerCase() === item?.name.toLowerCase();
 
       const itemObj = {
@@ -213,12 +195,10 @@ export async function GET(
         itemCode,
         type: i.type || 'AGGREGATE',
         unit,
-        unitPrice: unitPriceBeforeVat,
-        unitPriceBeforeVat,
-        rawUnitPrice,
-        vatIncluded: isIncl,
+        unitPrice,
+        priceType: i.priceType || (i.vatIncluded ? 'incl' : 'excl'),
         qty,
-        totalAmount: totalAmountBeforeVat,
+        totalAmount,
         description: i.description || '',
         isMatched,
       };

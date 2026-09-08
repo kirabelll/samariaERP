@@ -33,9 +33,7 @@ interface AgreementItem {
   type?: string;
   unit: string;
   unitPrice: number;
-  unitPriceBeforeVat?: number;
-  rawUnitPrice?: number;
-  vatIncluded?: boolean;
+  priceType?: string;
   qty: number;
   totalAmount: number;
   description?: string;
@@ -591,25 +589,25 @@ export default function AggregateDetailPage() {
               <span className="text-[11px] text-slate-500 font-mono">Code: {delivery.item?.code || '—'}</span>
             </div>
             <div>
-              <span className="text-xs font-medium text-emerald-700">Customer Sale Price (Before VAT)</span>
+              <span className="text-xs font-medium text-emerald-700">Customer Sale Price</span>
               <p className="text-lg font-bold text-emerald-900 font-mono">
                 {Number(delivery.customerPrice ?? delivery.aggregateValue ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2 })} ETB/m³
               </p>
               <span className="text-[11px] text-emerald-600">
-                {delivery.customerAgreement ? `Agreement ${delivery.customerAgreement.agreementNo}` : 'Dispatch rate (Net)'}
+                {delivery.customerAgreement ? `Agreement ${delivery.customerAgreement.agreementNo}` : 'Dispatch rate'}
               </span>
             </div>
             <div>
-              <span className="text-xs font-medium text-amber-700">Supplier Purchase Price (Before VAT)</span>
+              <span className="text-xs font-medium text-amber-700">Supplier Purchase Price</span>
               <p className="text-lg font-bold text-amber-900 font-mono">
                 {Number(delivery.supplierPrice ?? delivery.aggregateValue ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2 })} ETB/m³
               </p>
               <span className="text-[11px] text-amber-600">
-                {delivery.supplierAgreement ? `Agreement ${delivery.supplierAgreement.agreementNo}` : 'Dispatch rate (Net)'}
+                {delivery.supplierAgreement ? `Agreement ${delivery.supplierAgreement.agreementNo}` : 'Dispatch rate'}
               </span>
             </div>
             <div>
-              <span className="text-xs font-medium text-indigo-700">Material Margin / Spread (Before VAT)</span>
+              <span className="text-xs font-medium text-indigo-700">Material Margin / Spread</span>
               <p className="text-lg font-bold text-indigo-900 font-mono">
                 {(Number(delivery.customerPrice ?? delivery.aggregateValue ?? 0) - Number(delivery.supplierPrice ?? delivery.aggregateValue ?? 0)).toLocaleString('en-US', { minimumFractionDigits: 2 })} ETB/m³
               </p>
@@ -706,8 +704,8 @@ export default function AggregateDetailPage() {
                         <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-800 flex items-center gap-1">
                           <CheckCircle2 className="w-3 h-3 text-emerald-600" />
                           {delivery.customerAgreement.isDateValid
-                            ? 'Sales Rate Before VAT (Applied)'
-                            : 'Sales Rate Before VAT (Expired / Period Mismatch)'}
+                            ? 'Contract Unit Price (Applied)'
+                            : 'Contract Unit Price (Expired / Period Mismatch)'}
                         </span>
                         <p className="text-xs font-semibold text-slate-900 mt-0.5">
                           {delivery.customerAgreement.matchedItem.itemName}
@@ -717,7 +715,7 @@ export default function AggregateDetailPage() {
                         <span className="text-base font-bold font-mono text-emerald-900">
                           {Number(delivery.customerAgreement.matchedItem.unitPrice).toLocaleString('en-US', { minimumFractionDigits: 2 })} ETB
                         </span>
-                        <span className="text-[10px] text-emerald-700 block">per {delivery.customerAgreement.matchedItem.unit || 'm³'} (excl. VAT)</span>
+                        <span className="text-[10px] text-emerald-700 block">per {delivery.customerAgreement.matchedItem.unit || 'm³'}</span>
                       </div>
                     </div>
                   )}
@@ -725,7 +723,7 @@ export default function AggregateDetailPage() {
                   {/* All Agreement Items Table */}
                   <div>
                     <div className="flex items-center justify-between mb-1.5">
-                      <span className="text-xs font-semibold text-slate-700">Contracted Items & Rates Before VAT ({delivery.customerAgreement.items.length})</span>
+                      <span className="text-xs font-semibold text-slate-700">Contracted Items & Unit Prices ({delivery.customerAgreement.items.length})</span>
                       {delivery.customerAgreement.totalAmount ? (
                         <span className="text-xs text-slate-500">
                           Contract Value: <strong className="text-slate-800 font-mono">{Number(delivery.customerAgreement.totalAmount).toLocaleString('en-US')} ETB</strong>
@@ -738,28 +736,21 @@ export default function AggregateDetailPage() {
                           <tr>
                             <th className="py-2 px-2.5">Item Name</th>
                             <th className="py-2 px-2.5 text-right">Contract Qty</th>
-                            <th className="py-2 px-2.5 text-right">Price Before VAT (ETB)</th>
-                            <th className="py-2 px-2.5 text-right">Total Before VAT (ETB)</th>
+                            <th className="py-2 px-2.5 text-right">Unit Price (ETB)</th>
+                            <th className="py-2 px-2.5 text-right">Total (ETB)</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
                           {delivery.customerAgreement.items.map((it, idx) => (
                             <tr key={idx} className={it.isMatched ? 'bg-emerald-50/70 font-medium' : 'hover:bg-slate-50'}>
                               <td className="py-2 px-2.5">
-                                <div className="flex flex-col">
-                                  <div className="flex items-center gap-1.5">
-                                    <span>{it.itemName}</span>
-                                    {it.isMatched && (
-                                      <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-emerald-600 text-white">
-                                        Current
-                                      </span>
-                                    )}
-                                  </div>
-                                  {it.vatIncluded && it.rawUnitPrice && it.rawUnitPrice !== it.unitPrice ? (
-                                    <span className="text-[10px] text-slate-400">
-                                      (was {it.rawUnitPrice.toFixed(2)} incl. 15% VAT)
+                                <div className="flex items-center gap-1.5">
+                                  <span>{it.itemName}</span>
+                                  {it.isMatched && (
+                                    <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-emerald-600 text-white">
+                                      Current
                                     </span>
-                                  ) : null}
+                                  )}
                                 </div>
                               </td>
                               <td className="py-2 px-2.5 text-right font-mono text-slate-700">
@@ -783,7 +774,7 @@ export default function AggregateDetailPage() {
                   <AlertCircle className="w-8 h-8 text-slate-400 mx-auto mb-2" />
                   <p className="text-sm font-medium text-slate-700">No Active Customer Agreement Found</p>
                   <p className="text-xs text-slate-500 mt-1 max-w-xs mx-auto">
-                    Pricing defaults to dispatch override or standard rate ({delivery.customerPrice?.toFixed(2) || delivery.aggregateValue.toFixed(2)} ETB/m³ before VAT).
+                    Pricing defaults to dispatch override or standard rate ({delivery.customerPrice?.toFixed(2) || delivery.aggregateValue.toFixed(2)} ETB/m³).
                   </p>
                   <Link
                     href="/dashboard/sales/agreements/new"
@@ -881,8 +872,8 @@ export default function AggregateDetailPage() {
                         <span className="text-[10px] font-bold uppercase tracking-wider text-amber-800 flex items-center gap-1">
                           <CheckCircle2 className="w-3 h-3 text-amber-600" />
                           {delivery.supplierAgreement.isDateValid
-                            ? 'Purchase Rate Before VAT (Applied)'
-                            : 'Purchase Rate Before VAT (Expired / Period Mismatch)'}
+                            ? 'Contract Unit Price (Applied)'
+                            : 'Contract Unit Price (Expired / Period Mismatch)'}
                         </span>
                         <p className="text-xs font-semibold text-slate-900 mt-0.5">
                           {delivery.supplierAgreement.matchedItem.itemName}
@@ -892,7 +883,7 @@ export default function AggregateDetailPage() {
                         <span className="text-base font-bold font-mono text-amber-900">
                           {Number(delivery.supplierAgreement.matchedItem.unitPrice).toLocaleString('en-US', { minimumFractionDigits: 2 })} ETB
                         </span>
-                        <span className="text-[10px] text-amber-700 block">per {delivery.supplierAgreement.matchedItem.unit || 'm³'} (excl. VAT)</span>
+                        <span className="text-[10px] text-amber-700 block">per {delivery.supplierAgreement.matchedItem.unit || 'm³'}</span>
                       </div>
                     </div>
                   )}
@@ -900,7 +891,7 @@ export default function AggregateDetailPage() {
                   {/* All Agreement Items Table */}
                   <div>
                     <div className="flex items-center justify-between mb-1.5">
-                      <span className="text-xs font-semibold text-slate-700">Contracted Items & Rates Before VAT ({delivery.supplierAgreement.items.length})</span>
+                      <span className="text-xs font-semibold text-slate-700">Contracted Items & Unit Prices ({delivery.supplierAgreement.items.length})</span>
                       {delivery.supplierAgreement.totalAmount ? (
                         <span className="text-xs text-slate-500">
                           Contract Value: <strong className="text-slate-800 font-mono">{Number(delivery.supplierAgreement.totalAmount).toLocaleString('en-US')} ETB</strong>
@@ -913,28 +904,21 @@ export default function AggregateDetailPage() {
                           <tr>
                             <th className="py-2 px-2.5">Item Name</th>
                             <th className="py-2 px-2.5 text-right">Contract Qty</th>
-                            <th className="py-2 px-2.5 text-right">Price Before VAT (ETB)</th>
-                            <th className="py-2 px-2.5 text-right">Total Before VAT (ETB)</th>
+                            <th className="py-2 px-2.5 text-right">Unit Price (ETB)</th>
+                            <th className="py-2 px-2.5 text-right">Total (ETB)</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
                           {delivery.supplierAgreement.items.map((it, idx) => (
                             <tr key={idx} className={it.isMatched ? 'bg-amber-50/70 font-medium' : 'hover:bg-slate-50'}>
                               <td className="py-2 px-2.5">
-                                <div className="flex flex-col">
-                                  <div className="flex items-center gap-1.5">
-                                    <span>{it.itemName}</span>
-                                    {it.isMatched && (
-                                      <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-amber-600 text-white">
-                                        Current
-                                      </span>
-                                    )}
-                                  </div>
-                                  {it.vatIncluded && it.rawUnitPrice && it.rawUnitPrice !== it.unitPrice ? (
-                                    <span className="text-[10px] text-slate-400">
-                                      (was {it.rawUnitPrice.toFixed(2)} incl. 15% VAT)
+                                <div className="flex items-center gap-1.5">
+                                  <span>{it.itemName}</span>
+                                  {it.isMatched && (
+                                    <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-amber-600 text-white">
+                                      Current
                                     </span>
-                                  ) : null}
+                                  )}
                                 </div>
                               </td>
                               <td className="py-2 px-2.5 text-right font-mono text-slate-700">
@@ -958,7 +942,7 @@ export default function AggregateDetailPage() {
                   <AlertCircle className="w-8 h-8 text-slate-400 mx-auto mb-2" />
                   <p className="text-sm font-medium text-slate-700">No Active Supplier Agreement Found</p>
                   <p className="text-xs text-slate-500 mt-1 max-w-xs mx-auto">
-                    Pricing defaults to aggregate value ({delivery.aggregateValue.toFixed(2)} ETB/m³ before VAT).
+                    Pricing defaults to aggregate value ({delivery.aggregateValue.toFixed(2)} ETB/m³).
                   </p>
                 </div>
               )}

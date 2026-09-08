@@ -53,24 +53,41 @@ export async function GET(request: NextRequest) {
         // Fetch all active invoices (excluding Cancelled) to extract invoiced lifting and delivery IDs
         const allActiveInvoices = await prisma.salesInvoice.findMany({
           where: { status: { not: 'Cancelled' } },
-          select: { id: true, invoiceNo: true, liftingId: true, division: true, items: true },
+          select: {
+            id: true,
+            invoiceNo: true,
+            liftingId: true,
+            division: true,
+            items: true,
+            cementLifting: { select: { id: true, liftingNo: true } },
+          },
         });
 
         const invoicedLiftingIds = new Set<string>();
         const invoicedDeliveryIds = new Set<string>();
 
         allActiveInvoices.forEach((inv) => {
-          if (inv.liftingId) {
-            invoicedLiftingIds.add(inv.liftingId);
-          }
+          if (inv.liftingId) invoicedLiftingIds.add(String(inv.liftingId));
+          if (inv.cementLifting?.liftingNo) invoicedLiftingIds.add(String(inv.cementLifting.liftingNo));
           if (inv.items) {
             try {
               const parsed = typeof inv.items === 'string' ? JSON.parse(inv.items) : inv.items;
               if (Array.isArray(parsed)) {
                 parsed.forEach((item: any) => {
-                  if (item.liftingId) invoicedLiftingIds.add(item.liftingId);
-                  if (item.deliveryId) invoicedDeliveryIds.add(item.deliveryId);
-                  if (item.dispatchNo) invoicedDeliveryIds.add(item.dispatchNo);
+                  if (item.liftingId) invoicedLiftingIds.add(String(item.liftingId));
+                  if (item.liftingNo) invoicedLiftingIds.add(String(item.liftingNo));
+                  if (item.deliveryId) invoicedDeliveryIds.add(String(item.deliveryId));
+                  if (item.dispatchNo) invoicedDeliveryIds.add(String(item.dispatchNo));
+                  if (item.dispatchId) invoicedDeliveryIds.add(String(item.dispatchId));
+                  if (item.padNumber) invoicedDeliveryIds.add(String(item.padNumber));
+                  if (item.podNumber) invoicedDeliveryIds.add(String(item.podNumber));
+
+                  // Pattern matching in item name/description for any embedded references
+                  const text = `${item.name || ''} ${item.description || ''}`;
+                  const lftMatches = text.match(/LFT-[\w-]+/gi);
+                  if (lftMatches) lftMatches.forEach((m) => invoicedLiftingIds.add(m));
+                  const dispMatches = text.match(/(?:DISP|DSP)-[\w-]+/gi);
+                  if (dispMatches) dispMatches.forEach((m) => invoicedDeliveryIds.add(m));
                 });
               }
             } catch {}
@@ -104,8 +121,8 @@ export async function GET(request: NextRequest) {
           .filter(
             (l) =>
               l.invoices.length === 0 &&
-              !invoicedLiftingIds.has(l.id) &&
-              !invoicedLiftingIds.has(l.liftingNo)
+              !invoicedLiftingIds.has(String(l.id)) &&
+              !invoicedLiftingIds.has(String(l.liftingNo))
           )
           .map((l) => {
             const weight = l.buyerWeighbridgeQty || l.factoryWeight || 0;
@@ -148,8 +165,8 @@ export async function GET(request: NextRequest) {
         const uninvoicedAggItems = aggregateDeliveries
           .filter(
             (d) =>
-              !invoicedDeliveryIds.has(d.id) &&
-              !invoicedDeliveryIds.has(d.dispatchNo)
+              !invoicedDeliveryIds.has(String(d.id)) &&
+              !invoicedDeliveryIds.has(String(d.dispatchNo))
           )
           .map((d) => {
             const volume = d.deliveredVolume || d.loadedVolume || 0;
@@ -182,23 +199,70 @@ export async function GET(request: NextRequest) {
         data = {
           records: invoices.map((inv) => {
             const paid = inv.payments.reduce((s, p) => s + p.amount, 0);
-            let deliveryRef = inv.cementLifting?.liftingNo || null;
-            let deliveryId = inv.cementLifting?.id || null;
+            const deliveryRefsSet = new Set<string>();
+            const deliveryIdsSet = new Set<string>();
+            const itemsBreakdown: Array<{
+              id?: string;
+              ref: string;
+              type: 'CEMENT' | 'AGGREGATE' | 'OTHER';
+              name?: string;
+              description?: string;
+              quantity?: number;
+              unit?: string;
+              unitPrice?: number;
+              total?: number;
+            }> = [];
 
-            if (!deliveryRef && inv.items) {
+            if (inv.cementLifting?.liftingNo) {
+              deliveryRefsSet.add(inv.cementLifting.liftingNo);
+              if (inv.cementLifting.id) deliveryIdsSet.add(inv.cementLifting.id);
+              itemsBreakdown.push({
+                id: inv.cementLifting.id,
+                ref: inv.cementLifting.liftingNo,
+                type: 'CEMENT',
+                name: `Cement Lifting ${inv.cementLifting.liftingNo}`,
+                description: `Linked Lifting #${inv.cementLifting.liftingNo} (${inv.cementLifting.status})`,
+              });
+            } else if (inv.liftingId) {
+              deliveryIdsSet.add(inv.liftingId);
+            }
+
+            if (inv.items) {
               try {
                 const parsed = typeof inv.items === 'string' ? JSON.parse(inv.items) : inv.items;
                 if (Array.isArray(parsed)) {
-                  const itemWithRef = parsed.find(
-                    (item: any) => item.dispatchNo || item.deliveryId || item.liftingNo
-                  );
-                  if (itemWithRef) {
-                    deliveryRef = itemWithRef.dispatchNo || itemWithRef.liftingNo || null;
-                    deliveryId = itemWithRef.deliveryId || itemWithRef.liftingId || null;
-                  }
+                  parsed.forEach((item: any, idx: number) => {
+                    const ref = item.dispatchNo || item.liftingNo || item.podNumber || item.padNumber;
+                    const id = item.deliveryId || item.liftingId || item.id;
+                    if (ref) deliveryRefsSet.add(String(ref));
+                    if (id) deliveryIdsSet.add(String(id));
+
+                    const itemType = item.liftingNo || item.liftingId || inv.division === 'CEMENT'
+                      ? 'CEMENT'
+                      : item.dispatchNo || item.deliveryId || inv.division === 'AGGREGATE'
+                      ? 'AGGREGATE'
+                      : 'OTHER';
+
+                    itemsBreakdown.push({
+                      id: id ? String(id) : `item-${idx}`,
+                      ref: ref ? String(ref) : `Item #${idx + 1}`,
+                      type: itemType,
+                      name: item.name || (ref ? `${itemType === 'CEMENT' ? 'Lifting' : 'Dispatch'} ${ref}` : `Item #${idx + 1}`),
+                      description: item.description || '',
+                      quantity: typeof item.quantity === 'number' ? item.quantity : undefined,
+                      unit: item.unit || (itemType === 'CEMENT' ? 'Tons' : itemType === 'AGGREGATE' ? 'm³' : ''),
+                      unitPrice: typeof item.unitPrice === 'number' ? item.unitPrice : undefined,
+                      total: typeof item.total === 'number' ? item.total : undefined,
+                    });
+                  });
                 }
               } catch {}
             }
+
+            const deliveryRefs = Array.from(deliveryRefsSet);
+            const deliveryIds = Array.from(deliveryIdsSet);
+            const dispatchesCount = itemsBreakdown.filter((i) => i.type === 'AGGREGATE').length;
+            const liftingsCount = itemsBreakdown.filter((i) => i.type === 'CEMENT').length;
 
             return {
               id: inv.id,
@@ -211,8 +275,13 @@ export async function GET(request: NextRequest) {
               paid: paid,
               status: inv.status,
               division: inv.division,
-              deliveryRef,
-              deliveryId,
+              deliveryRef: deliveryRefs.length > 0 ? deliveryRefs.join(', ') : null,
+              deliveryRefs,
+              deliveryIds,
+              deliveriesCount: itemsBreakdown.length,
+              dispatchesCount,
+              liftingsCount,
+              itemsBreakdown,
             };
           }),
           summary: {

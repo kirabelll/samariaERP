@@ -27,6 +27,7 @@ import {
   Boxes,
   Eye,
   EyeOff,
+  ChevronRight,
 } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
 import { Button } from '@/components/ui/Button';
@@ -46,6 +47,7 @@ import { SalesDashboardView } from '@/components/dashboard/SalesDashboardView';
 import { PurchasingDashboardView } from '@/components/dashboard/PurchasingDashboardView';
 import { TransportDashboardView } from '@/components/dashboard/TransportDashboardView';
 import { StockDashboardView } from '@/components/dashboard/StockDashboardView';
+import { ReceivablesBreakdownModal } from '@/components/dashboard/ReceivablesBreakdownModal';
 import {
   DashboardLineChart,
   DashboardBarChart,
@@ -103,6 +105,7 @@ export default function DashboardPage() {
   const [stats, setStats] = React.useState<DashboardStats | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [refreshing, setRefreshing] = React.useState(false);
+  const [showReceivablesModal, setShowReceivablesModal] = React.useState(false);
   const { showAmounts, toggleVisibility, formatCompactAmount } = useAmountVisibility();
   const [activeSubDashboard, setActiveSubDashboard] = React.useState<
     'overview' | 'finance' | 'construction' | 'medical' | 'sales' | 'purchasing' | 'transport' | 'stock'
@@ -317,12 +320,21 @@ export default function DashboardPage() {
               </div>
             </Card>
 
-            <Card className="p-5 flex flex-col justify-between hover:border-primary/50 transition-all shadow-xs">
+            <Card className="p-5 flex flex-col justify-between hover:border-amber-500/50 transition-all shadow-xs group">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                   Receivables
                 </span>
                 <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setShowReceivablesModal(true)}
+                    title="View customer accounts & receivables breakdown"
+                    className="px-2 py-1 rounded-md text-amber-700 dark:text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 transition-colors cursor-pointer flex items-center gap-1 text-xs font-semibold"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    <span>View Accounts</span>
+                  </button>
                   <button
                     type="button"
                     onClick={toggleVisibility}
@@ -344,9 +356,19 @@ export default function DashboardPage() {
                 <div className="text-2xl font-bold font-mono tracking-tight text-foreground">
                   {s ? formatCompactAmount(s.outstandingReceivables) : '—'}
                 </div>
-                <p className="text-xs text-muted-foreground font-medium mt-1">
-                  Outstanding customer credit
-                </p>
+                <div className="flex items-center justify-between mt-1">
+                  <p className="text-xs text-muted-foreground font-medium">
+                    Outstanding customer credit
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setShowReceivablesModal(true)}
+                    className="text-xs text-amber-600 dark:text-amber-400 font-semibold hover:underline flex items-center gap-0.5 cursor-pointer"
+                  >
+                    <span>View breakdown</span>
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               </div>
             </Card>
 
@@ -837,6 +859,10 @@ export default function DashboardPage() {
           </div>
         </div>
       )}
+      <ReceivablesBreakdownModal
+        isOpen={showReceivablesModal}
+        onClose={() => setShowReceivablesModal(false)}
+      />
     </div>
   );
 }

@@ -20,10 +20,13 @@ import {
   FileCheck2,
   Eye,
   EyeOff,
+  ChevronRight,
+  ExternalLink,
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
+import { ReceivablesBreakdownModal } from './ReceivablesBreakdownModal';
 import {
   DashboardLineChart,
   DashboardBarChart,
@@ -79,6 +82,7 @@ export function FinanceDashboardView({ standalone = false }: { standalone?: bool
   const [data, setData] = React.useState<FinanceStats | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [refreshing, setRefreshing] = React.useState(false);
+  const [showReceivablesModal, setShowReceivablesModal] = React.useState(false);
   const { showAmounts, toggleVisibility, formatAmount } = useAmountVisibility();
 
   const fetchFinanceStats = async () => {
@@ -215,12 +219,21 @@ export function FinanceDashboardView({ standalone = false }: { standalone?: bool
         </Card>
 
         {/* Outstanding Receivables */}
-        <Card className="p-5 flex flex-col justify-between hover:border-amber-500/40 transition-all shadow-xs border-border/80">
+        <Card className="p-5 flex flex-col justify-between hover:border-amber-500/50 transition-all shadow-xs border-border/80 group">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               Outstanding Receivables
             </span>
             <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => setShowReceivablesModal(true)}
+                title="View customer accounts & receivables breakdown"
+                className="px-2 py-1 rounded-md text-amber-700 dark:text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 transition-colors cursor-pointer flex items-center gap-1 text-xs font-semibold"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+                <span>View Accounts</span>
+              </button>
               <button
                 type="button"
                 onClick={toggleVisibility}
@@ -242,10 +255,20 @@ export function FinanceDashboardView({ standalone = false }: { standalone?: bool
             <div className="text-2xl font-bold font-mono tracking-tight text-foreground">
               {s ? formatAmount(s.outstandingReceivables) : '—'}
             </div>
-            <p className="text-xs text-amber-600 dark:text-amber-400 font-medium mt-1 flex items-center gap-1">
-              <Clock className="w-3.5 h-3.5" />
-              <span>Customer credit due for collection</span>
-            </p>
+            <div className="flex items-center justify-between mt-1">
+              <p className="text-xs text-amber-600 dark:text-amber-400 font-medium flex items-center gap-1">
+                <Clock className="w-3.5 h-3.5" />
+                <span>Customer credit due for collection</span>
+              </p>
+              <button
+                type="button"
+                onClick={() => setShowReceivablesModal(true)}
+                className="text-xs text-amber-600 dark:text-amber-400 font-semibold hover:underline flex items-center gap-0.5 cursor-pointer"
+              >
+                <span>View breakdown</span>
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
           </div>
         </Card>
 
@@ -669,6 +692,11 @@ export function FinanceDashboardView({ standalone = false }: { standalone?: bool
           </CardContent>
         </Card>
       </div>
+
+      <ReceivablesBreakdownModal
+        isOpen={showReceivablesModal}
+        onClose={() => setShowReceivablesModal(false)}
+      />
     </div>
   );
 }

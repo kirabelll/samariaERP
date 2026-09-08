@@ -27,6 +27,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/com
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { ReceivablesBreakdownModal } from './ReceivablesBreakdownModal';
+import { PayablesBreakdownModal } from './PayablesBreakdownModal';
 import {
   DashboardLineChart,
   DashboardBarChart,
@@ -83,6 +84,7 @@ export function FinanceDashboardView({ standalone = false }: { standalone?: bool
   const [loading, setLoading] = React.useState(true);
   const [refreshing, setRefreshing] = React.useState(false);
   const [showReceivablesModal, setShowReceivablesModal] = React.useState(false);
+  const [showPayablesModal, setShowPayablesModal] = React.useState(false);
   const { showAmounts, toggleVisibility, formatAmount } = useAmountVisibility();
 
   const fetchFinanceStats = async () => {
@@ -273,12 +275,21 @@ export function FinanceDashboardView({ standalone = false }: { standalone?: bool
         </Card>
 
         {/* Pending Payables */}
-        <Card className="p-5 flex flex-col justify-between hover:border-rose-500/40 transition-all shadow-xs border-border/80">
+        <Card className="p-5 flex flex-col justify-between hover:border-rose-500/50 transition-all shadow-xs border-border/80 group">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               Pending Payables
             </span>
             <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => setShowPayablesModal(true)}
+                title="View vendor accounts & payables breakdown"
+                className="px-2 py-1 rounded-md text-rose-700 dark:text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 transition-colors cursor-pointer flex items-center gap-1 text-xs font-semibold"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+                <span>View Accounts</span>
+              </button>
               <button
                 type="button"
                 onClick={toggleVisibility}
@@ -300,10 +311,20 @@ export function FinanceDashboardView({ standalone = false }: { standalone?: bool
             <div className="text-2xl font-bold font-mono tracking-tight text-foreground">
               {s ? formatAmount(s.pendingPayables) : '—'}
             </div>
-            <p className="text-xs text-rose-600 dark:text-rose-400 font-medium mt-1 flex items-center gap-1">
-              <AlertCircle className="w-3.5 h-3.5" />
-              <span>Supplier payments awaiting disbursement</span>
-            </p>
+            <div className="flex items-center justify-between mt-1">
+              <p className="text-xs text-rose-600 dark:text-rose-400 font-medium flex items-center gap-1">
+                <AlertCircle className="w-3.5 h-3.5" />
+                <span>Supplier payments awaiting disbursement</span>
+              </p>
+              <button
+                type="button"
+                onClick={() => setShowPayablesModal(true)}
+                className="text-xs text-rose-600 dark:text-rose-400 font-semibold hover:underline flex items-center gap-0.5 cursor-pointer"
+              >
+                <span>View breakdown</span>
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
           </div>
         </Card>
       </div>
@@ -696,6 +717,10 @@ export function FinanceDashboardView({ standalone = false }: { standalone?: bool
       <ReceivablesBreakdownModal
         isOpen={showReceivablesModal}
         onClose={() => setShowReceivablesModal(false)}
+      />
+      <PayablesBreakdownModal
+        isOpen={showPayablesModal}
+        onClose={() => setShowPayablesModal(false)}
       />
     </div>
   );

@@ -48,6 +48,7 @@ import { PurchasingDashboardView } from '@/components/dashboard/PurchasingDashbo
 import { TransportDashboardView } from '@/components/dashboard/TransportDashboardView';
 import { StockDashboardView } from '@/components/dashboard/StockDashboardView';
 import { ReceivablesBreakdownModal } from '@/components/dashboard/ReceivablesBreakdownModal';
+import { PayablesBreakdownModal } from '@/components/dashboard/PayablesBreakdownModal';
 import {
   DashboardLineChart,
   DashboardBarChart,
@@ -106,6 +107,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = React.useState(true);
   const [refreshing, setRefreshing] = React.useState(false);
   const [showReceivablesModal, setShowReceivablesModal] = React.useState(false);
+  const [showPayablesModal, setShowPayablesModal] = React.useState(false);
   const { showAmounts, toggleVisibility, formatCompactAmount } = useAmountVisibility();
   const [activeSubDashboard, setActiveSubDashboard] = React.useState<
     'overview' | 'finance' | 'construction' | 'medical' | 'sales' | 'purchasing' | 'transport' | 'stock'
@@ -862,6 +864,10 @@ export default function DashboardPage() {
       <ReceivablesBreakdownModal
         isOpen={showReceivablesModal}
         onClose={() => setShowReceivablesModal(false)}
+      />
+      <PayablesBreakdownModal
+        isOpen={showPayablesModal}
+        onClose={() => setShowPayablesModal(false)}
       />
     </div>
   );

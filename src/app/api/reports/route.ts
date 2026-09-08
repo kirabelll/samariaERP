@@ -30,7 +30,11 @@ export async function GET(request: NextRequest) {
             where: whereClause,
             skip,
             take: limit,
-            include: { customer: { select: { companyName: true } }, payments: true },
+            include: {
+              customer: { select: { companyName: true, code: true } },
+              cementLifting: { select: { id: true, liftingNo: true, status: true } },
+              payments: true,
+            },
             orderBy: { invoiceDate: 'desc' },
           }),
           prisma.salesInvoice.count({ where: whereClause }),
@@ -46,62 +50,169 @@ export async function GET(request: NextRequest) {
           return sum + paid;
         }, 0);
 
-        // Fetch delivered/verified liftings that have no invoice
+        // Fetch all active invoices (excluding Cancelled) to extract invoiced lifting and delivery IDs
+        const allActiveInvoices = await prisma.salesInvoice.findMany({
+          where: { status: { not: 'Cancelled' } },
+          select: { id: true, invoiceNo: true, liftingId: true, division: true, items: true },
+        });
+
+        const invoicedLiftingIds = new Set<string>();
+        const invoicedDeliveryIds = new Set<string>();
+
+        allActiveInvoices.forEach((inv) => {
+          if (inv.liftingId) {
+            invoicedLiftingIds.add(inv.liftingId);
+          }
+          if (inv.items) {
+            try {
+              const parsed = typeof inv.items === 'string' ? JSON.parse(inv.items) : inv.items;
+              if (Array.isArray(parsed)) {
+                parsed.forEach((item: any) => {
+                  if (item.liftingId) invoicedLiftingIds.add(item.liftingId);
+                  if (item.deliveryId) invoicedDeliveryIds.add(item.deliveryId);
+                  if (item.dispatchNo) invoicedDeliveryIds.add(item.dispatchNo);
+                });
+              }
+            } catch {}
+          }
+        });
+
+        // Date filter for liftings and deliveries
         const liftingDateFilter: any = {};
         if (startDate) liftingDateFilter.gte = new Date(startDate);
         if (endDate) liftingDateFilter.lte = new Date(endDate);
 
-        const uninvoicedWhere: any = {
-          status: { in: ['Delivered', 'Verified'] },
-          invoices: { none: {} },
-        };
-        if (startDate || endDate) uninvoicedWhere.liftingDate = liftingDateFilter;
-
-        const [uninvoicedLiftings, uninvoicedCount] = await Promise.all([
-          prisma.cementLifting.findMany({
-            where: uninvoicedWhere,
-            include: {
-              customer: { select: { companyName: true } },
-              factory: { select: { name: true } },
-              purchase: { select: { unitPrice: true } },
+        // 1. Fetch Cement Liftings and check strictly by ID against active invoices
+        const cementLiftings = await prisma.cementLifting.findMany({
+          where: {
+            status: { in: ['Delivered', 'Verified', 'Lifted'] },
+            ...(startDate || endDate ? { liftingDate: liftingDateFilter } : {}),
+          },
+          include: {
+            customer: { select: { id: true, companyName: true, code: true } },
+            factory: { select: { name: true } },
+            purchase: { select: { unitPrice: true, cementType: true } },
+            invoices: {
+              where: { status: { not: 'Cancelled' } },
+              select: { id: true, invoiceNo: true, status: true },
             },
-            orderBy: { liftingDate: 'desc' },
-          }),
-          prisma.cementLifting.count({ where: uninvoicedWhere }),
-        ]);
-
-        const uninvoicedItems = uninvoicedLiftings.map((l) => {
-          const weight = l.buyerWeighbridgeQty || l.factoryWeight;
-          const unitPrice = l.purchase.unitPrice;
-          const estValue = weight * unitPrice;
-          return {
-            id: l.id,
-            liftingNo: l.liftingNo,
-            customer: l.customer.companyName,
-            factory: l.factory.name,
-            weight,
-            unitPrice,
-            estValue,
-            deliveryDate: l.liftingDate,
-            status: l.status,
-          };
+          },
+          orderBy: { liftingDate: 'desc' },
         });
+
+        const uninvoicedCementItems = cementLiftings
+          .filter(
+            (l) =>
+              l.invoices.length === 0 &&
+              !invoicedLiftingIds.has(l.id) &&
+              !invoicedLiftingIds.has(l.liftingNo)
+          )
+          .map((l) => {
+            const weight = l.buyerWeighbridgeQty || l.factoryWeight || 0;
+            const unitPrice = l.purchase?.unitPrice || 0;
+            const estValue = Math.round(weight * unitPrice * 100) / 100;
+            return {
+              id: l.id,
+              type: 'CEMENT',
+              division: 'CEMENT',
+              referenceNo: l.liftingNo,
+              customerId: l.customer?.id,
+              customer: l.customer?.companyName || 'Unknown',
+              source: l.factory?.name || 'Factory',
+              quantity: weight,
+              unit: 'Tons',
+              unitPrice,
+              estValue,
+              deliveryDate: l.liftingDate,
+              status: l.status,
+              isInvoiced: false,
+            };
+          });
+
+        // 2. Fetch Aggregate Deliveries and check strictly by ID against active invoices
+        const aggregateDeliveries = await prisma.aggregateDelivery.findMany({
+          where: {
+            status: { in: ['Delivered', 'Verified', 'Settled'] },
+            ...(startDate || endDate ? { dispatchDate: liftingDateFilter } : {}),
+          },
+          orderBy: { dispatchDate: 'desc' },
+        });
+
+        const aggCustIds = Array.from(new Set(aggregateDeliveries.map((d) => d.customerId)));
+        const aggCustomers = await prisma.customer.findMany({
+          where: { id: { in: aggCustIds } },
+          select: { id: true, companyName: true, code: true },
+        });
+        const aggCustMap = new Map(aggCustomers.map((c) => [c.id, c.companyName]));
+
+        const uninvoicedAggItems = aggregateDeliveries
+          .filter(
+            (d) =>
+              !invoicedDeliveryIds.has(d.id) &&
+              !invoicedDeliveryIds.has(d.dispatchNo)
+          )
+          .map((d) => {
+            const volume = d.deliveredVolume || d.loadedVolume || 0;
+            const unitPrice = d.aggregateValue || d.transportRate || 0;
+            const estValue = Math.round(volume * unitPrice * 100) / 100;
+            return {
+              id: d.id,
+              type: 'AGGREGATE',
+              division: 'AGGREGATE',
+              referenceNo: d.dispatchNo,
+              customerId: d.customerId,
+              customer: aggCustMap.get(d.customerId) || 'Customer',
+              source: d.padNumber ? `Pad #${d.padNumber}` : `Site Dispatch`,
+              quantity: volume,
+              unit: 'm³',
+              unitPrice,
+              estValue,
+              deliveryDate: d.deliveryDate || d.dispatchDate,
+              status: d.status,
+              isInvoiced: false,
+            };
+          });
+
+        const uninvoicedItems = [...uninvoicedCementItems, ...uninvoicedAggItems].sort(
+          (a, b) => new Date(b.deliveryDate).getTime() - new Date(a.deliveryDate).getTime()
+        );
 
         const uninvoicedTotalValue = uninvoicedItems.reduce((s, i) => s + i.estValue, 0);
 
         data = {
           records: invoices.map((inv) => {
             const paid = inv.payments.reduce((s, p) => s + p.amount, 0);
+            let deliveryRef = inv.cementLifting?.liftingNo || null;
+            let deliveryId = inv.cementLifting?.id || null;
+
+            if (!deliveryRef && inv.items) {
+              try {
+                const parsed = typeof inv.items === 'string' ? JSON.parse(inv.items) : inv.items;
+                if (Array.isArray(parsed)) {
+                  const itemWithRef = parsed.find(
+                    (item: any) => item.dispatchNo || item.deliveryId || item.liftingNo
+                  );
+                  if (itemWithRef) {
+                    deliveryRef = itemWithRef.dispatchNo || itemWithRef.liftingNo || null;
+                    deliveryId = itemWithRef.deliveryId || itemWithRef.liftingId || null;
+                  }
+                }
+              } catch {}
+            }
+
             return {
               id: inv.id,
               invoiceNo: inv.invoiceNo,
               date: inv.invoiceDate,
-              customer: inv.customer.companyName,
+              customer: inv.customer?.companyName || 'Unknown',
+              customerCode: inv.customer?.code || '',
               amount: inv.totalAmount,
               vat: inv.vatAmount,
               paid: paid,
               status: inv.status,
               division: inv.division,
+              deliveryRef,
+              deliveryId,
             };
           }),
           summary: {
@@ -112,7 +223,9 @@ export async function GET(request: NextRequest) {
             totalOutstanding: (summary._sum.totalAmount || 0) - totalPaid,
           },
           deliveredNotInvoiced: {
-            count: uninvoicedCount,
+            count: uninvoicedItems.length,
+            cementCount: uninvoicedCementItems.length,
+            aggregateCount: uninvoicedAggItems.length,
             totalValue: uninvoicedTotalValue,
             items: uninvoicedItems,
           },

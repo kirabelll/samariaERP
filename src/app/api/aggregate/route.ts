@@ -130,15 +130,17 @@ export async function GET(request: NextRequest) {
         if (Array.isArray(parsed)) {
           const matched = parsed.find((item: any) => (item.itemId || item.id) === itemId);
           if (matched) {
+            const isIncl = matched.priceType === 'incl' || matched.vatIncluded === true || matched.priceType === 'inclusive';
             const unitPrice = Number(matched.unitPrice ?? matched.pricePerUnit ?? matched.price ?? 0);
             const qty = Number(matched.qty || matched.quantity || 1);
             const totalAmt = Number(matched.totalAmount || matched.amount || matched.total || 0);
+            if (isIncl) {
+              if (unitPrice > 0) return Math.round((unitPrice / 1.15) * 100) / 100;
+              if (totalAmt > 0 && qty > 0) return Math.round(((totalAmt / 1.15) / qty) * 100) / 100;
+            }
             if (unitPrice > 0) return unitPrice;
             if (totalAmt > 0 && qty > 0) {
-              if (matched.priceType === 'incl' || matched.vatIncluded === true || matched.priceType === 'inclusive') {
-                return (totalAmt / 1.15) / qty;
-              }
-              return totalAmt / qty;
+              return Math.round((totalAmt / qty) * 100) / 100;
             }
           }
         }

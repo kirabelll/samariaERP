@@ -98,12 +98,12 @@ export async function GET(request: NextRequest) {
       itemIds.length > 0 ? prisma.item.findMany({ where: { id: { in: itemIds } }, select: { id: true, name: true, code: true, category: true, unit: true } }) : [],
       customerIds.length > 0 ? prisma.salesAgreement.findMany({
         where: { customerId: { in: customerIds }, status: { notIn: ['Void', 'Cancelled'] } },
-        select: { customerId: true, items: true },
+        select: { customerId: true, items: true, validFrom: true, validTo: true, createdAt: true },
         orderBy: { createdAt: 'desc' },
       }) : [],
       supplierIds.length > 0 ? prisma.supplierAgreement.findMany({
         where: { supplierId: { in: supplierIds }, status: { notIn: ['Void', 'Cancelled'] } },
-        select: { supplierId: true, items: true },
+        select: { supplierId: true, items: true, validFrom: true, validTo: true, createdAt: true },
         orderBy: { createdAt: 'desc' },
       }) : [],
     ]);
@@ -111,88 +111,52 @@ export async function GET(request: NextRequest) {
     const supplierMap = Object.fromEntries(suppliers.map((s: any) => [s.id, s]));
     const itemMap = Object.fromEntries(items.map((i: any) => [i.id, i]));
 
-    // Build customer price map (customerId_itemId -> price per m3 WITHOUT VAT)
-    const customerPriceMap = new Map<string, number>();
-    for (const agr of customerAgreements) {
+    const isWithinPeriod = (validFrom: Date | string, validTo: Date | string, dateToTest: Date): boolean => {
+      const from = new Date(validFrom);
+      from.setHours(0, 0, 0, 0);
+      const to = new Date(validTo);
+      to.setHours(23, 59, 59, 999);
+      const test = new Date(dateToTest);
+      return test >= from && test <= to;
+    };
+
+    // Helper to resolve agreement price for a specific date and item
+    const resolveAgreementPrice = (agreements: any[], partyId: string, itemId: string, dispatchDate: Date): number => {
+      const partyAgreements = agreements.filter((a) => (a.customerId || a.supplierId) === partyId);
+      const validAgr = partyAgreements.find((a) => isWithinPeriod(a.validFrom, a.validTo, dispatchDate)) || partyAgreements[0];
+      if (!validAgr?.items) return 0;
       try {
-        const parsed = typeof agr.items === 'string' ? JSON.parse(agr.items) : (agr.items as any[] || []);
+        const parsed = typeof validAgr.items === 'string' ? JSON.parse(validAgr.items) : (validAgr.items as any[] || []);
         if (Array.isArray(parsed)) {
-          parsed.forEach((item: any) => {
-            const targetId = item.itemId || item.id;
-            if (targetId) {
-              const priceKey = `${agr.customerId}_${targetId}`;
-              if (!customerPriceMap.has(priceKey)) {
-                const unitPrice = Number(item.unitPrice ?? item.pricePerUnit ?? item.price ?? 0);
-                const qty = Number(item.qty || item.quantity || 1);
-                const totalAmt = Number(item.totalAmount || item.amount || item.total || 0);
-                let finalPrice = 0;
-
-                if (unitPrice > 0) {
-                  finalPrice = unitPrice;
-                } else if (totalAmt > 0 && qty > 0) {
-                  if (item.priceType === 'incl' || item.vatIncluded === true || item.priceType === 'inclusive') {
-                    finalPrice = (totalAmt / 1.15) / qty;
-                  } else {
-                    finalPrice = totalAmt / qty;
-                  }
-                }
-
-                if (finalPrice > 0) {
-                  customerPriceMap.set(priceKey, finalPrice);
-                }
+          const matched = parsed.find((item: any) => (item.itemId || item.id) === itemId);
+          if (matched) {
+            const unitPrice = Number(matched.unitPrice ?? matched.pricePerUnit ?? matched.price ?? 0);
+            const qty = Number(matched.qty || matched.quantity || 1);
+            const totalAmt = Number(matched.totalAmount || matched.amount || matched.total || 0);
+            if (unitPrice > 0) return unitPrice;
+            if (totalAmt > 0 && qty > 0) {
+              if (matched.priceType === 'incl' || matched.vatIncluded === true || matched.priceType === 'inclusive') {
+                return (totalAmt / 1.15) / qty;
               }
+              return totalAmt / qty;
             }
-          });
+          }
         }
       } catch {}
-    }
-
-    // Build supplier price map (supplierId_itemId -> price per m3 WITHOUT VAT)
-    const supplierPriceMap = new Map<string, number>();
-    for (const agr of supplierAgreements) {
-      try {
-        const parsed = typeof agr.items === 'string' ? JSON.parse(agr.items) : (agr.items as any[] || []);
-        if (Array.isArray(parsed)) {
-          parsed.forEach((item: any) => {
-            const targetId = item.itemId || item.id;
-            if (targetId) {
-              const priceKey = `${agr.supplierId}_${targetId}`;
-              if (!supplierPriceMap.has(priceKey)) {
-                const unitPrice = Number(item.unitPrice ?? item.pricePerUnit ?? item.price ?? 0);
-                const qty = Number(item.qty || item.quantity || 1);
-                const totalAmt = Number(item.totalAmount || item.amount || item.total || 0);
-                let finalPrice = 0;
-
-                if (unitPrice > 0) {
-                  finalPrice = unitPrice;
-                } else if (totalAmt > 0 && qty > 0) {
-                  if (item.priceType === 'incl' || item.vatIncluded === true || item.priceType === 'inclusive') {
-                    finalPrice = (totalAmt / 1.15) / qty;
-                  } else {
-                    finalPrice = totalAmt / qty;
-                  }
-                }
-
-                if (finalPrice > 0) {
-                  supplierPriceMap.set(priceKey, finalPrice);
-                }
-              }
-            }
-          });
-        }
-      } catch {}
-    }
+      return 0;
+    };
 
     const data = records.map((r: any) => {
       const loadedVol = Number(r.loadedVolume || 0);
       const deliveredVol = Number(r.deliveredVolume ?? r.loadedVolume ?? 0);
+      const dispatchDate = new Date(r.dispatchDate);
 
-      // Supplier pricing (from Supplier Agreement or dispatch aggregateValue)
-      const suppPriceKey = `${r.supplierId}_${r.itemId}`;
-      const supplierPrice = supplierPriceMap.get(suppPriceKey) || Number(r.aggregateValue || 0);
+      // Supplier pricing (from Supplier Agreement valid on dispatchDate or dispatch aggregateValue)
+      const agreementSuppPrice = resolveAgreementPrice(supplierAgreements, r.supplierId, r.itemId, dispatchDate);
+      const supplierPrice = agreementSuppPrice > 0 ? agreementSuppPrice : Number(r.aggregateValue || 0);
       const supplierPayable = deliveredVol * supplierPrice;
 
-      // Customer pricing (from dispatch metadata override or Customer Agreement)
+      // Customer pricing (from dispatch metadata override or Customer Agreement valid on dispatchDate)
       let customerPrice = 0;
       if (r.registeredBy && typeof r.registeredBy === 'string' && r.registeredBy.startsWith('{')) {
         try {
@@ -203,8 +167,8 @@ export async function GET(request: NextRequest) {
         } catch {}
       }
       if (customerPrice <= 0) {
-        const custPriceKey = `${r.customerId}_${r.itemId}`;
-        customerPrice = customerPriceMap.get(custPriceKey) || supplierPrice;
+        const agreementCustPrice = resolveAgreementPrice(customerAgreements, r.customerId, r.itemId, dispatchDate);
+        customerPrice = agreementCustPrice > 0 ? agreementCustPrice : supplierPrice;
       }
       const customerReceivable = loadedVol * customerPrice;
 

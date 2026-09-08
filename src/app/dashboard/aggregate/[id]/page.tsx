@@ -48,6 +48,7 @@ interface CustomerAgreementData {
   offloadingSite?: string | null;
   terms?: string | null;
   totalAmount?: number;
+  isDateValid?: boolean;
   items: AgreementItem[];
   matchedItem?: AgreementItem | null;
 }
@@ -62,6 +63,7 @@ interface SupplierAgreementData {
   offloadingSite?: string | null;
   terms?: string | null;
   totalAmount?: number;
+  isDateValid?: boolean;
   items: AgreementItem[];
   matchedItem?: AgreementItem | null;
 }
@@ -675,13 +677,34 @@ export default function AggregateDetailPage() {
                     )}
                   </div>
 
+                  {/* Dispatch Date Validity Indicator */}
+                  <div className="flex items-center gap-2">
+                    {delivery.customerAgreement.isDateValid ? (
+                      <span className="px-2.5 py-1 rounded-md text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200 inline-flex items-center gap-1.5 shadow-2xs">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>Dispatch Date ({new Date(delivery.dispatchDate).toLocaleDateString()}) is within Agreement Period</span>
+                      </span>
+                    ) : (
+                      <span className="px-2.5 py-1 rounded-md text-xs font-semibold bg-amber-50 text-amber-800 border border-amber-200 inline-flex items-center gap-1.5 shadow-2xs">
+                        <AlertCircle className="w-3.5 h-3.5 text-amber-600" />
+                        <span>Dispatch Date ({new Date(delivery.dispatchDate).toLocaleDateString()}) is outside Agreement Period</span>
+                      </span>
+                    )}
+                  </div>
+
                   {/* Highlight for Current Dispatch Item */}
                   {delivery.customerAgreement.matchedItem && (
-                    <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200 flex items-center justify-between">
+                    <div className={`p-3 rounded-lg border flex items-center justify-between ${
+                      delivery.customerAgreement.isDateValid
+                        ? 'bg-emerald-50 border-emerald-200'
+                        : 'bg-amber-50/50 border-amber-200'
+                    }`}>
                       <div>
                         <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-800 flex items-center gap-1">
                           <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                          Matched Dispatch Item Rate
+                          {delivery.customerAgreement.isDateValid
+                            ? 'Contract Item Sales Rate (Applied)'
+                            : 'Contract Item Sales Rate (Expired / Period Mismatch)'}
                         </span>
                         <p className="text-xs font-semibold text-slate-900 mt-0.5">
                           {delivery.customerAgreement.matchedItem.itemName}
@@ -822,13 +845,34 @@ export default function AggregateDetailPage() {
                     )}
                   </div>
 
+                  {/* Dispatch Date Validity Indicator */}
+                  <div className="flex items-center gap-2">
+                    {delivery.supplierAgreement.isDateValid ? (
+                      <span className="px-2.5 py-1 rounded-md text-xs font-semibold bg-amber-50 text-amber-900 border border-amber-200 inline-flex items-center gap-1.5 shadow-2xs">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-amber-600" />
+                        <span>Dispatch Date ({new Date(delivery.dispatchDate).toLocaleDateString()}) is within Agreement Period</span>
+                      </span>
+                    ) : (
+                      <span className="px-2.5 py-1 rounded-md text-xs font-semibold bg-red-50 text-red-800 border border-red-200 inline-flex items-center gap-1.5 shadow-2xs">
+                        <AlertCircle className="w-3.5 h-3.5 text-red-600" />
+                        <span>Dispatch Date ({new Date(delivery.dispatchDate).toLocaleDateString()}) is outside Agreement Period</span>
+                      </span>
+                    )}
+                  </div>
+
                   {/* Highlight for Current Dispatch Item */}
                   {delivery.supplierAgreement.matchedItem && (
-                    <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 flex items-center justify-between">
+                    <div className={`p-3 rounded-lg border flex items-center justify-between ${
+                      delivery.supplierAgreement.isDateValid
+                        ? 'bg-amber-50 border-amber-200'
+                        : 'bg-red-50/40 border-red-200'
+                    }`}>
                       <div>
                         <span className="text-[10px] font-bold uppercase tracking-wider text-amber-800 flex items-center gap-1">
                           <CheckCircle2 className="w-3 h-3 text-amber-600" />
-                          Matched Purchase Rate
+                          {delivery.supplierAgreement.isDateValid
+                            ? 'Contract Item Purchase Rate (Applied)'
+                            : 'Contract Item Purchase Rate (Expired / Period Mismatch)'}
                         </span>
                         <p className="text-xs font-semibold text-slate-900 mt-0.5">
                           {delivery.supplierAgreement.matchedItem.itemName}

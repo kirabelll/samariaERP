@@ -25,8 +25,20 @@ export async function GET(
       );
     }
 
+    const dispatchDate = new Date(delivery.dispatchDate);
+
+    // Helper to check if a date falls between validFrom and validTo
+    const isWithinPeriod = (validFrom: Date | string, validTo: Date | string, dateToTest: Date): boolean => {
+      const from = new Date(validFrom);
+      from.setHours(0, 0, 0, 0);
+      const to = new Date(validTo);
+      to.setHours(23, 59, 59, 999);
+      const test = new Date(dateToTest);
+      return test >= from && test <= to;
+    };
+
     // Resolve customer, supplier, item, plus active agreements
-    const [customer, supplier, item, salesAgr, suppAgr] = await Promise.all([
+    const [customer, supplier, item, allSalesAgreements, allSuppAgreements] = await Promise.all([
       prisma.customer.findUnique({
         where: { id: delivery.customerId },
         select: { id: true, companyName: true, code: true },
@@ -39,7 +51,7 @@ export async function GET(
         where: { id: delivery.itemId },
         select: { id: true, name: true, code: true, unit: true },
       }),
-      prisma.salesAgreement.findFirst({
+      prisma.salesAgreement.findMany({
         where: {
           customerId: delivery.customerId,
           status: { notIn: ['Void', 'Cancelled'] },
@@ -58,7 +70,7 @@ export async function GET(
         },
         orderBy: { createdAt: 'desc' },
       }),
-      prisma.supplierAgreement.findFirst({
+      prisma.supplierAgreement.findMany({
         where: {
           supplierId: delivery.supplierId,
           status: { notIn: ['Void', 'Cancelled'] },
@@ -79,6 +91,15 @@ export async function GET(
         orderBy: { createdAt: 'desc' },
       }),
     ]);
+
+    // Pick agreement where dispatchDate is within [validFrom, validTo]
+    const validSalesAgr = allSalesAgreements.find((a) => isWithinPeriod(a.validFrom, a.validTo, dispatchDate));
+    const salesAgr = validSalesAgr || allSalesAgreements[0] || null;
+    const isCustomerDateValid = Boolean(validSalesAgr);
+
+    const validSuppAgr = allSuppAgreements.find((a) => isWithinPeriod(a.validFrom, a.validTo, dispatchDate));
+    const suppAgr = validSuppAgr || allSuppAgreements[0] || null;
+    const isSupplierDateValid = Boolean(validSuppAgr);
 
     // Gather all item IDs from both agreements to resolve item names
     const allItemIds = new Set<string>();
@@ -183,16 +204,18 @@ export async function GET(
       return itemObj;
     });
 
-    // 1. Resolve Supplier Price (from Supplier Agreement or dispatch override in aggregateValue)
+    // 1. Resolve Supplier Price (from Supplier Agreement valid for dispatchDate or dispatch override)
     let supplierPrice = Number(delivery.aggregateValue || 0);
-    if (matchedSupplierItem && matchedSupplierItem.unitPrice > 0) {
+    if (isSupplierDateValid && matchedSupplierItem && matchedSupplierItem.unitPrice > 0) {
+      supplierPrice = matchedSupplierItem.unitPrice;
+    } else if (!isSupplierDateValid && matchedSupplierItem && matchedSupplierItem.unitPrice > 0 && supplierPrice <= 0) {
       supplierPrice = matchedSupplierItem.unitPrice;
     }
     if (Number(delivery.aggregateValue || 0) > 0) {
       supplierPrice = Number(delivery.aggregateValue);
     }
 
-    // 2. Resolve Customer Price (from dispatch override in registeredBy or Customer Sales Agreement)
+    // 2. Resolve Customer Price (from dispatch override in registeredBy or Customer Sales Agreement valid for dispatchDate)
     let customerPrice = 0;
     if (delivery.registeredBy && typeof delivery.registeredBy === 'string' && delivery.registeredBy.startsWith('{')) {
       try {
@@ -203,7 +226,9 @@ export async function GET(
       } catch {}
     }
 
-    if (customerPrice <= 0 && matchedCustomerItem && matchedCustomerItem.unitPrice > 0) {
+    if (customerPrice <= 0 && isCustomerDateValid && matchedCustomerItem && matchedCustomerItem.unitPrice > 0) {
+      customerPrice = matchedCustomerItem.unitPrice;
+    } else if (customerPrice <= 0 && matchedCustomerItem && matchedCustomerItem.unitPrice > 0) {
       customerPrice = matchedCustomerItem.unitPrice;
     }
 
@@ -237,6 +262,7 @@ export async function GET(
         offloadingSite: salesAgr.offloadingSite,
         terms: salesAgr.terms,
         totalAmount: salesAgr.totalAmount,
+        isDateValid: isCustomerDateValid,
         items: parsedCustomerItems,
         matchedItem: matchedCustomerItem,
       } : null,
@@ -250,6 +276,7 @@ export async function GET(
         offloadingSite: suppAgr.offloadingSite,
         terms: suppAgr.terms,
         totalAmount: suppAgr.totalAmount,
+        isDateValid: isSupplierDateValid,
         items: parsedSupplierItems,
         matchedItem: matchedSupplierItem,
       } : null,

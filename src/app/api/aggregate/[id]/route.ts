@@ -25,7 +25,7 @@ export async function GET(
       );
     }
 
-    // Resolve customer and supplier names from their IDs, plus active agreement prices
+    // Resolve customer, supplier, item, plus active agreements
     const [customer, supplier, item, salesAgr, suppAgr] = await Promise.all([
       prisma.customer.findUnique({
         where: { id: delivery.customerId },
@@ -44,7 +44,18 @@ export async function GET(
           customerId: delivery.customerId,
           status: { notIn: ['Void', 'Cancelled'] },
         },
-        select: { items: true },
+        select: {
+          id: true,
+          agreementNo: true,
+          status: true,
+          validFrom: true,
+          validTo: true,
+          terms: true,
+          offloadingSite: true,
+          totalAmount: true,
+          items: true,
+          createdAt: true,
+        },
         orderBy: { createdAt: 'desc' },
       }),
       prisma.supplierAgreement.findFirst({
@@ -52,36 +63,130 @@ export async function GET(
           supplierId: delivery.supplierId,
           status: { notIn: ['Void', 'Cancelled'] },
         },
-        select: { items: true },
+        select: {
+          id: true,
+          agreementNo: true,
+          status: true,
+          validFrom: true,
+          validTo: true,
+          terms: true,
+          loadingSite: true,
+          offloadingSite: true,
+          totalAmount: true,
+          items: true,
+          createdAt: true,
+        },
         orderBy: { createdAt: 'desc' },
       }),
     ]);
 
-    // 1. Resolve Supplier Price (from Supplier Agreement or dispatch override in aggregateValue)
-    let supplierPrice = Number(delivery.aggregateValue || 0);
+    // Gather all item IDs from both agreements to resolve item names
+    const allItemIds = new Set<string>();
+    if (delivery.itemId) allItemIds.add(delivery.itemId);
+
+    let rawSalesItems: any[] = [];
+    if (salesAgr?.items) {
+      try {
+        rawSalesItems = typeof salesAgr.items === 'string' ? JSON.parse(salesAgr.items) : (salesAgr.items as any[] || []);
+        rawSalesItems.forEach((i: any) => {
+          if (i.itemId) allItemIds.add(i.itemId);
+          if (i.id) allItemIds.add(i.id);
+        });
+      } catch {}
+    }
+
+    let rawSuppItems: any[] = [];
     if (suppAgr?.items) {
       try {
-        const parsed = typeof suppAgr.items === 'string' ? JSON.parse(suppAgr.items) : (suppAgr.items as any[] || []);
-        const matched = parsed.find((i: any) => (i.itemId || i.id) === delivery.itemId);
-        if (matched) {
-          const unitPrice = Number(matched.unitPrice ?? matched.pricePerUnit ?? matched.price ?? 0);
-          const qty = Number(matched.qty ?? matched.quantity ?? 1);
-          const totalAmt = Number(matched.totalAmount ?? matched.amount ?? matched.total ?? 0);
-          let price = 0;
-          if (unitPrice > 0) {
-            price = unitPrice;
-          } else if (totalAmt > 0 && qty > 0) {
-            if (matched.priceType === 'incl' || matched.vatIncluded === true || matched.priceType === 'inclusive') {
-              price = (totalAmt / 1.15) / qty;
-            } else {
-              price = totalAmt / qty;
-            }
-          }
-          if (price > 0) {
-            supplierPrice = price;
-          }
+        rawSuppItems = typeof suppAgr.items === 'string' ? JSON.parse(suppAgr.items) : (suppAgr.items as any[] || []);
+        rawSuppItems.forEach((i: any) => {
+          if (i.itemId) allItemIds.add(i.itemId);
+          if (i.id) allItemIds.add(i.id);
+        });
+      } catch {}
+    }
+
+    const itemsDb = await prisma.item.findMany({
+      where: { id: { in: Array.from(allItemIds) } },
+      select: { id: true, name: true, code: true, unit: true },
+    });
+    const itemsMap = new Map(itemsDb.map((it) => [it.id, it]));
+
+    // Format parsed customer agreement items
+    let matchedCustomerItem: any = null;
+    const parsedCustomerItems = rawSalesItems.map((i: any) => {
+      const itId = i.itemId || i.id;
+      const dbIt = itemsMap.get(itId);
+      const itemName = i.itemName || i.name || dbIt?.name || 'Aggregate Item';
+      const itemCode = i.code || dbIt?.code || '';
+      const unit = i.unit || dbIt?.unit || 'm³';
+      const unitPrice = Number(i.unitPrice ?? i.pricePerUnit ?? i.price ?? 0);
+      const qty = Number(i.qty ?? i.quantity ?? 1);
+      const totalAmt = Number(i.totalAmount ?? i.amount ?? i.total ?? (qty * unitPrice));
+      const isMatched = itId === delivery.itemId || itemName.toLowerCase() === item?.name.toLowerCase();
+
+      const itemObj = {
+        itemId: itId,
+        itemName,
+        itemCode,
+        unit,
+        unitPrice,
+        qty,
+        totalAmount: totalAmt,
+        isMatched,
+      };
+
+      if (isMatched && !matchedCustomerItem) {
+        matchedCustomerItem = itemObj;
+      }
+      return itemObj;
+    });
+
+    // Format parsed supplier agreement items
+    let matchedSupplierItem: any = null;
+    const parsedSupplierItems = rawSuppItems.map((i: any) => {
+      const itId = i.itemId || i.id;
+      const dbIt = itemsMap.get(itId);
+      const itemName = i.itemName || i.name || dbIt?.name || 'Aggregate Item';
+      const itemCode = i.code || dbIt?.code || '';
+      const unit = i.unit || dbIt?.unit || 'm³';
+      let unitPrice = Number(i.unitPrice ?? i.pricePerUnit ?? i.price ?? 0);
+      const qty = Number(i.qty ?? i.quantity ?? 1);
+      const totalAmt = Number(i.totalAmount ?? i.amount ?? i.total ?? (qty * unitPrice));
+
+      if (unitPrice <= 0 && totalAmt > 0 && qty > 0) {
+        if (i.priceType === 'incl' || i.vatIncluded === true || i.priceType === 'inclusive') {
+          unitPrice = (totalAmt / 1.15) / qty;
+        } else {
+          unitPrice = totalAmt / qty;
         }
-      } catch { /* ignore */ }
+      }
+
+      const isMatched = itId === delivery.itemId || itemName.toLowerCase() === item?.name.toLowerCase();
+
+      const itemObj = {
+        itemId: itId,
+        itemName,
+        itemCode,
+        type: i.type || 'AGGREGATE',
+        unit,
+        unitPrice,
+        qty,
+        totalAmount: totalAmt,
+        description: i.description || '',
+        isMatched,
+      };
+
+      if (isMatched && !matchedSupplierItem) {
+        matchedSupplierItem = itemObj;
+      }
+      return itemObj;
+    });
+
+    // 1. Resolve Supplier Price (from Supplier Agreement or dispatch override in aggregateValue)
+    let supplierPrice = Number(delivery.aggregateValue || 0);
+    if (matchedSupplierItem && matchedSupplierItem.unitPrice > 0) {
+      supplierPrice = matchedSupplierItem.unitPrice;
     }
     if (Number(delivery.aggregateValue || 0) > 0) {
       supplierPrice = Number(delivery.aggregateValue);
@@ -98,29 +203,8 @@ export async function GET(
       } catch {}
     }
 
-    if (customerPrice <= 0 && salesAgr?.items) {
-      try {
-        const parsed = typeof salesAgr.items === 'string' ? JSON.parse(salesAgr.items) : (salesAgr.items as any[] || []);
-        const matched = parsed.find((i: any) => (i.itemId || i.id) === delivery.itemId);
-        if (matched) {
-          const unitPrice = Number(matched.unitPrice ?? matched.pricePerUnit ?? matched.price ?? 0);
-          const qty = Number(matched.qty ?? matched.quantity ?? 1);
-          const totalAmt = Number(matched.totalAmount ?? matched.amount ?? matched.total ?? 0);
-          let price = 0;
-          if (unitPrice > 0) {
-            price = unitPrice;
-          } else if (totalAmt > 0 && qty > 0) {
-            if (matched.priceType === 'incl' || matched.vatIncluded === true || matched.priceType === 'inclusive') {
-              price = (totalAmt / 1.15) / qty;
-            } else {
-              price = totalAmt / qty;
-            }
-          }
-          if (price > 0) {
-            customerPrice = price;
-          }
-        }
-      } catch { /* ignore */ }
+    if (customerPrice <= 0 && matchedCustomerItem && matchedCustomerItem.unitPrice > 0) {
+      customerPrice = matchedCustomerItem.unitPrice;
     }
 
     if (customerPrice <= 0) {
@@ -144,6 +228,31 @@ export async function GET(
       customerReceivable,
       supplierPayable,
       netAmount,
+      customerAgreement: salesAgr ? {
+        id: salesAgr.id,
+        agreementNo: salesAgr.agreementNo,
+        status: salesAgr.status,
+        validFrom: salesAgr.validFrom,
+        validTo: salesAgr.validTo,
+        offloadingSite: salesAgr.offloadingSite,
+        terms: salesAgr.terms,
+        totalAmount: salesAgr.totalAmount,
+        items: parsedCustomerItems,
+        matchedItem: matchedCustomerItem,
+      } : null,
+      supplierAgreement: suppAgr ? {
+        id: suppAgr.id,
+        agreementNo: suppAgr.agreementNo,
+        status: suppAgr.status,
+        validFrom: suppAgr.validFrom,
+        validTo: suppAgr.validTo,
+        loadingSite: suppAgr.loadingSite,
+        offloadingSite: suppAgr.offloadingSite,
+        terms: suppAgr.terms,
+        totalAmount: suppAgr.totalAmount,
+        items: parsedSupplierItems,
+        matchedItem: matchedSupplierItem,
+      } : null,
     };
 
     return NextResponse.json(

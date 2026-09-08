@@ -2,13 +2,69 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
+import Link from 'next/link';
 import { Card, CardHeader, CardBody, CardFooter, Button } from '@/components/ui';
 import { ConfirmDialog } from '@/components/ui/Modal';
 import FileUpload from '@/components/ui/FileUpload';
 import { uploadDocument, fetchDocuments } from '@/lib/upload-helper';
+import {
+  FileText,
+  CheckCircle2,
+  ExternalLink,
+  Layers,
+  Building2,
+  Calendar,
+  MapPin,
+  TrendingUp,
+  Tag,
+  Boxes,
+  Truck,
+  ArrowRight,
+  AlertCircle,
+} from 'lucide-react';
 
 // Known sub-routes that should not be treated
 const KNOWN_SUBROUTES = ['commission', 'recoveries', 'daily', 'new', 'proofs', 'summary', 'shortage'];
+
+interface AgreementItem {
+  itemId?: string;
+  itemName: string;
+  itemCode?: string;
+  type?: string;
+  unit: string;
+  unitPrice: number;
+  qty: number;
+  totalAmount: number;
+  description?: string;
+  isMatched?: boolean;
+}
+
+interface CustomerAgreementData {
+  id: string;
+  agreementNo: string;
+  status: string;
+  validFrom: string;
+  validTo: string;
+  offloadingSite?: string | null;
+  terms?: string | null;
+  totalAmount?: number;
+  items: AgreementItem[];
+  matchedItem?: AgreementItem | null;
+}
+
+interface SupplierAgreementData {
+  id: string;
+  agreementNo: string;
+  status: string;
+  validFrom: string;
+  validTo: string;
+  loadingSite?: string | null;
+  offloadingSite?: string | null;
+  terms?: string | null;
+  totalAmount?: number;
+  items: AgreementItem[];
+  matchedItem?: AgreementItem | null;
+}
 
 interface DeliveryData {
   id: string; 
@@ -35,6 +91,8 @@ interface DeliveryData {
   customerReceivable?: number;
   supplierPayable?: number;
   netAmount?: number;
+  customerAgreement?: CustomerAgreementData | null;
+  supplierAgreement?: SupplierAgreementData | null;
   customer: {
     id: string;
     companyName: string;
@@ -499,6 +557,353 @@ export default function AggregateDetailPage() {
             )}
           </CardBody>
         </Card>
+      </div>
+
+      {/* Customer & Supplier Agreements & Item Pricing */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 rounded-lg bg-blue-600 text-white">
+              <FileText className="w-4 h-4" />
+            </div>
+            <h2 className="text-lg font-semibold text-slate-900">
+              Customer & Supplier Agreements and Item Pricing
+            </h2>
+          </div>
+          <span className="text-xs text-slate-500">
+            Contractual rates and full item price schedules
+          </span>
+        </div>
+
+        {/* Pricing Spread & Margin Banner */}
+        <div className="bg-linear-to-r from-blue-50 via-indigo-50 to-emerald-50 rounded-xl p-4 border border-blue-200/80 shadow-xs">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div>
+              <span className="text-xs font-medium text-slate-600">Current Item</span>
+              <p className="text-sm font-bold text-slate-900 truncate" title={delivery.item?.name || 'N/A'}>
+                {delivery.item?.name || 'N/A'}
+              </p>
+              <span className="text-[11px] text-slate-500 font-mono">Code: {delivery.item?.code || '—'}</span>
+            </div>
+            <div>
+              <span className="text-xs font-medium text-emerald-700">Customer Sale Price</span>
+              <p className="text-lg font-bold text-emerald-900 font-mono">
+                {Number(delivery.customerPrice ?? delivery.aggregateValue ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2 })} ETB/m³
+              </p>
+              <span className="text-[11px] text-emerald-600">
+                {delivery.customerAgreement ? `Agreement ${delivery.customerAgreement.agreementNo}` : 'Dispatch rate'}
+              </span>
+            </div>
+            <div>
+              <span className="text-xs font-medium text-amber-700">Supplier Purchase Price</span>
+              <p className="text-lg font-bold text-amber-900 font-mono">
+                {Number(delivery.supplierPrice ?? delivery.aggregateValue ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2 })} ETB/m³
+              </p>
+              <span className="text-[11px] text-amber-600">
+                {delivery.supplierAgreement ? `Agreement ${delivery.supplierAgreement.agreementNo}` : 'Dispatch rate'}
+              </span>
+            </div>
+            <div>
+              <span className="text-xs font-medium text-indigo-700">Material Margin / Spread</span>
+              <p className="text-lg font-bold text-indigo-900 font-mono">
+                {(Number(delivery.customerPrice ?? delivery.aggregateValue ?? 0) - Number(delivery.supplierPrice ?? delivery.aggregateValue ?? 0)).toLocaleString('en-US', { minimumFractionDigits: 2 })} ETB/m³
+              </p>
+              <span className="text-[11px] text-indigo-600">
+                Gross Spread: {((delivery.loadedVolume || 0) * (Number(delivery.customerPrice ?? delivery.aggregateValue ?? 0) - Number(delivery.supplierPrice ?? delivery.aggregateValue ?? 0))).toLocaleString('en-US', { minimumFractionDigits: 2 })} ETB
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* 2-Column Grid: Customer Agreement vs Supplier Agreement */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Customer Sales Agreement Card */}
+          <Card className="border-emerald-200/80 shadow-xs">
+            <CardHeader className="bg-emerald-50/50 border-b border-emerald-100 pb-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="p-1 rounded-md bg-emerald-600 text-white">
+                    <Building2 className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-slate-900 text-sm">Customer Sales Agreement</h3>
+                    <p className="text-xs text-slate-500">{delivery.customer?.companyName || 'Unknown Customer'}</p>
+                  </div>
+                </div>
+                {delivery.customerAgreement ? (
+                  <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
+                    delivery.customerAgreement.status === 'Active' || delivery.customerAgreement.status === 'Approved'
+                      ? 'bg-emerald-100 text-emerald-800'
+                      : 'bg-slate-100 text-slate-700'
+                  }`}>
+                    {delivery.customerAgreement.status}
+                  </span>
+                ) : (
+                  <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-500">
+                    No Agreement
+                  </span>
+                )}
+              </div>
+            </CardHeader>
+            <CardBody className="space-y-4">
+              {delivery.customerAgreement ? (
+                <>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 bg-slate-50 p-3 rounded-lg text-xs border border-slate-200/80">
+                    <div>
+                      <span className="text-slate-500 block">Agreement No</span>
+                      <Link
+                        href={`/dashboard/sales/agreements`}
+                        className="font-mono font-semibold text-blue-600 hover:underline inline-flex items-center gap-0.5"
+                      >
+                        <span>{delivery.customerAgreement.agreementNo}</span>
+                        <ExternalLink className="w-2.5 h-2.5" />
+                      </Link>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 block">Validity Period</span>
+                      <span className="font-medium text-slate-800">
+                        {new Date(delivery.customerAgreement.validFrom).toLocaleDateString()} - {new Date(delivery.customerAgreement.validTo).toLocaleDateString()}
+                      </span>
+                    </div>
+                    {delivery.customerAgreement.offloadingSite && (
+                      <div className="col-span-2 sm:col-span-1">
+                        <span className="text-slate-500 block">Offloading Site</span>
+                        <span className="font-medium text-slate-800 truncate block" title={delivery.customerAgreement.offloadingSite}>
+                          {delivery.customerAgreement.offloadingSite}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Highlight for Current Dispatch Item */}
+                  {delivery.customerAgreement.matchedItem && (
+                    <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200 flex items-center justify-between">
+                      <div>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-800 flex items-center gap-1">
+                          <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                          Matched Dispatch Item Rate
+                        </span>
+                        <p className="text-xs font-semibold text-slate-900 mt-0.5">
+                          {delivery.customerAgreement.matchedItem.itemName}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-base font-bold font-mono text-emerald-900">
+                          {Number(delivery.customerAgreement.matchedItem.unitPrice).toLocaleString('en-US', { minimumFractionDigits: 2 })} ETB
+                        </span>
+                        <span className="text-[10px] text-emerald-700 block">per {delivery.customerAgreement.matchedItem.unit || 'm³'}</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* All Agreement Items Table */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-xs font-semibold text-slate-700">Contracted Items & Prices ({delivery.customerAgreement.items.length})</span>
+                      {delivery.customerAgreement.totalAmount ? (
+                        <span className="text-xs text-slate-500">
+                          Contract Value: <strong className="text-slate-800 font-mono">{Number(delivery.customerAgreement.totalAmount).toLocaleString('en-US')} ETB</strong>
+                        </span>
+                      ) : null}
+                    </div>
+                    <div className="border border-slate-200 rounded-lg overflow-hidden">
+                      <table className="w-full text-left text-xs">
+                        <thead className="bg-slate-100/75 text-slate-600 font-semibold border-b border-slate-200">
+                          <tr>
+                            <th className="py-2 px-2.5">Item Name</th>
+                            <th className="py-2 px-2.5 text-right">Contract Qty</th>
+                            <th className="py-2 px-2.5 text-right">Unit Price (ETB)</th>
+                            <th className="py-2 px-2.5 text-right">Total (ETB)</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {delivery.customerAgreement.items.map((it, idx) => (
+                            <tr key={idx} className={it.isMatched ? 'bg-emerald-50/70 font-medium' : 'hover:bg-slate-50'}>
+                              <td className="py-2 px-2.5">
+                                <div className="flex items-center gap-1.5">
+                                  <span>{it.itemName}</span>
+                                  {it.isMatched && (
+                                    <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-emerald-600 text-white">
+                                      Current
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="py-2 px-2.5 text-right font-mono text-slate-700">
+                                {it.qty.toLocaleString('en-US')} {it.unit}
+                              </td>
+                              <td className="py-2 px-2.5 text-right font-mono font-semibold text-slate-900">
+                                {it.unitPrice.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                              </td>
+                              <td className="py-2 px-2.5 text-right font-mono text-slate-700">
+                                {it.totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="text-center py-6 bg-slate-50 rounded-lg border border-dashed border-slate-200">
+                  <AlertCircle className="w-8 h-8 text-slate-400 mx-auto mb-2" />
+                  <p className="text-sm font-medium text-slate-700">No Active Customer Agreement Found</p>
+                  <p className="text-xs text-slate-500 mt-1 max-w-xs mx-auto">
+                    Pricing defaults to dispatch override or standard rate ({delivery.customerPrice?.toFixed(2) || delivery.aggregateValue.toFixed(2)} ETB/m³).
+                  </p>
+                  <Link
+                    href="/dashboard/sales/agreements/new"
+                    className="inline-flex items-center gap-1 mt-3 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 text-white hover:bg-emerald-700 transition-colors"
+                  >
+                    <span>Create Customer Agreement</span>
+                    <ArrowRight className="w-3 h-3" />
+                  </Link>
+                </div>
+              )}
+            </CardBody>
+          </Card>
+
+          {/* Supplier Purchase Agreement Card */}
+          <Card className="border-amber-200/80 shadow-xs">
+            <CardHeader className="bg-amber-50/50 border-b border-amber-100 pb-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="p-1 rounded-md bg-amber-600 text-white">
+                    <Building2 className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-slate-900 text-sm">Supplier Purchase Agreement</h3>
+                    <p className="text-xs text-slate-500">{delivery.supplier?.companyName || 'Unknown Supplier'}</p>
+                  </div>
+                </div>
+                {delivery.supplierAgreement ? (
+                  <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
+                    delivery.supplierAgreement.status === 'Active' || delivery.supplierAgreement.status === 'Approved'
+                      ? 'bg-amber-100 text-amber-800'
+                      : 'bg-slate-100 text-slate-700'
+                  }`}>
+                    {delivery.supplierAgreement.status}
+                  </span>
+                ) : (
+                  <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-500">
+                    No Agreement
+                  </span>
+                )}
+              </div>
+            </CardHeader>
+            <CardBody className="space-y-4">
+              {delivery.supplierAgreement ? (
+                <>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 bg-slate-50 p-3 rounded-lg text-xs border border-slate-200/80">
+                    <div>
+                      <span className="text-slate-500 block">Agreement No</span>
+                      <Link
+                        href={`/dashboard/purchasing/agreements`}
+                        className="font-mono font-semibold text-blue-600 hover:underline inline-flex items-center gap-0.5"
+                      >
+                        <span>{delivery.supplierAgreement.agreementNo}</span>
+                        <ExternalLink className="w-2.5 h-2.5" />
+                      </Link>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 block">Validity Period</span>
+                      <span className="font-medium text-slate-800">
+                        {new Date(delivery.supplierAgreement.validFrom).toLocaleDateString()} - {new Date(delivery.supplierAgreement.validTo).toLocaleDateString()}
+                      </span>
+                    </div>
+                    {(delivery.supplierAgreement.loadingSite || delivery.supplierAgreement.offloadingSite) && (
+                      <div className="col-span-2 sm:col-span-1">
+                        <span className="text-slate-500 block">Loading / Quarry Site</span>
+                        <span className="font-medium text-slate-800 truncate block" title={delivery.supplierAgreement.loadingSite || delivery.supplierAgreement.offloadingSite || ''}>
+                          {delivery.supplierAgreement.loadingSite || delivery.supplierAgreement.offloadingSite}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Highlight for Current Dispatch Item */}
+                  {delivery.supplierAgreement.matchedItem && (
+                    <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 flex items-center justify-between">
+                      <div>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-amber-800 flex items-center gap-1">
+                          <CheckCircle2 className="w-3 h-3 text-amber-600" />
+                          Matched Purchase Rate
+                        </span>
+                        <p className="text-xs font-semibold text-slate-900 mt-0.5">
+                          {delivery.supplierAgreement.matchedItem.itemName}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-base font-bold font-mono text-amber-900">
+                          {Number(delivery.supplierAgreement.matchedItem.unitPrice).toLocaleString('en-US', { minimumFractionDigits: 2 })} ETB
+                        </span>
+                        <span className="text-[10px] text-amber-700 block">per {delivery.supplierAgreement.matchedItem.unit || 'm³'}</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* All Agreement Items Table */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-xs font-semibold text-slate-700">Contracted Items & Prices ({delivery.supplierAgreement.items.length})</span>
+                      {delivery.supplierAgreement.totalAmount ? (
+                        <span className="text-xs text-slate-500">
+                          Contract Value: <strong className="text-slate-800 font-mono">{Number(delivery.supplierAgreement.totalAmount).toLocaleString('en-US')} ETB</strong>
+                        </span>
+                      ) : null}
+                    </div>
+                    <div className="border border-slate-200 rounded-lg overflow-hidden">
+                      <table className="w-full text-left text-xs">
+                        <thead className="bg-slate-100/75 text-slate-600 font-semibold border-b border-slate-200">
+                          <tr>
+                            <th className="py-2 px-2.5">Item Name</th>
+                            <th className="py-2 px-2.5 text-right">Contract Qty</th>
+                            <th className="py-2 px-2.5 text-right">Purchase Price (ETB)</th>
+                            <th className="py-2 px-2.5 text-right">Total (ETB)</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {delivery.supplierAgreement.items.map((it, idx) => (
+                            <tr key={idx} className={it.isMatched ? 'bg-amber-50/70 font-medium' : 'hover:bg-slate-50'}>
+                              <td className="py-2 px-2.5">
+                                <div className="flex items-center gap-1.5">
+                                  <span>{it.itemName}</span>
+                                  {it.isMatched && (
+                                    <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-amber-600 text-white">
+                                      Current
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="py-2 px-2.5 text-right font-mono text-slate-700">
+                                {it.qty.toLocaleString('en-US')} {it.unit}
+                              </td>
+                              <td className="py-2 px-2.5 text-right font-mono font-semibold text-slate-900">
+                                {it.unitPrice.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                              </td>
+                              <td className="py-2 px-2.5 text-right font-mono text-slate-700">
+                                {it.totalAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="text-center py-6 bg-slate-50 rounded-lg border border-dashed border-slate-200">
+                  <AlertCircle className="w-8 h-8 text-slate-400 mx-auto mb-2" />
+                  <p className="text-sm font-medium text-slate-700">No Active Supplier Agreement Found</p>
+                  <p className="text-xs text-slate-500 mt-1 max-w-xs mx-auto">
+                    Pricing defaults to aggregate value ({delivery.aggregateValue.toFixed(2)} ETB/m³).
+                  </p>
+                </div>
+              )}
+            </CardBody>
+          </Card>
+        </div>
       </div>
 
       {/* Volumes */}

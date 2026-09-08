@@ -107,11 +107,16 @@ export default function NewTransporterAgreementPage() {
       })
       .catch(console.error);
 
-    // Fetch customers for offloading site selection
-    fetch('/api/customers?limit=500')
+    // Fetch active customers for offloading site selection
+    fetch('/api/customers?status=Active&limit=1000')
       .then((res) => res.json())
       .then((data) => {
-        if (data.success) setCustomers(data.data || []);
+        if (data.success) {
+          const list = (data.data || []).sort((a: any, b: any) =>
+            (a.companyName || '').localeCompare(b.companyName || '')
+          );
+          setCustomers(list);
+        }
       })
       .catch(console.error);
   }, []);

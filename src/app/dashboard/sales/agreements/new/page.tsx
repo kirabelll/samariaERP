@@ -6,7 +6,9 @@ import { Card, CardHeader, CardBody, CardFooter, Button, Input } from '@/compone
 
 interface Customer {
   id: string;
+  code?: string;
   companyName: string;
+  status?: string;
 }
 
 interface Item {
@@ -56,10 +58,13 @@ export default function NewSalesAgreementPage() {
   useEffect(() => {
     const fetchCustomers = async () => {
       try {
-        const res = await fetch('/api/customers');
+        const res = await fetch('/api/customers?status=Active&limit=1000');
         const data = await res.json();
         if (data.success) {
-          setCustomers(data.data || []);
+          const list = (data.data || []).sort((a: Customer, b: Customer) =>
+            (a.companyName || '').localeCompare(b.companyName || '')
+          );
+          setCustomers(list);
         }
       } catch (error) {
         console.error('Error fetching customers:', error);
@@ -280,11 +285,14 @@ export default function NewSalesAgreementPage() {
                   }`}
                 >
                   <option value="">
-                    {customersLoading ? 'Loading customers...' : 'Select Customer'}
+                    {customersLoading ? 'Loading active customers...' : 'Select Customer'}
                   </option>
+                  {customers.length === 0 && !customersLoading && (
+                    <option value="" disabled>No active customers found</option>
+                  )}
                   {customers.map((customer) => (
                     <option key={customer.id} value={customer.id}>
-                      {customer.companyName}
+                      {customer.companyName}{customer.code ? ` (${customer.code})` : ''}
                     </option>
                   ))}
                 </select>

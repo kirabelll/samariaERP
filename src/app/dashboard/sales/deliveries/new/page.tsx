@@ -146,7 +146,7 @@ export default function NewDeliveryPage() {
         // 1. Fetch Customers based on division
         if (division === 'MEDICAL') {
           const [custRes, batchRes] = await Promise.all([
-            fetch('/api/customers?division=MEDICAL&limit=500').then((r) => r.json()).catch(() => ({ success: false, data: [] })),
+            fetch('/api/customers?division=MEDICAL&status=Active&limit=1000').then((r) => r.json()).catch(() => ({ success: false, data: [] })),
             fetch('/api/medical/batches?limit=1000').then((r) => r.json()).catch(() => ({ success: false, data: [] })),
           ]);
 
@@ -169,7 +169,7 @@ export default function NewDeliveryPage() {
           setMedicalBatches([]);
           const [agreementsRes, generalRes] = await Promise.all([
             fetch(`/api/sales/agreements/customers${division ? `?division=${division}` : ''}`).then((r) => r.json()).catch(() => ({ success: false, data: [] })),
-            fetch(`/api/customers${division ? `?division=${division}&limit=500` : '?limit=500'}`).then((r) => r.json()).catch(() => ({ success: false, data: [] })),
+            fetch(`/api/customers${division ? `?division=${division}&status=Active&limit=1000` : '?status=Active&limit=1000'}`).then((r) => r.json()).catch(() => ({ success: false, data: [] })),
           ]);
 
           if (!isCancelled) {

@@ -5,7 +5,7 @@ import { useRouter, useParams } from 'next/navigation';
 import { Card, CardHeader, CardBody, CardFooter, Button, Input } from '@/components/ui';
 import { ConfirmDialog } from '@/components/ui/Modal';
 
-interface Customer { id: string; companyName: string; }
+interface Customer { id: string; companyName: string; code?: string; status?: string; }
 interface Item { id: string; code: string; name: string; unit: string; }
 interface AgreementItemRow { id: number; itemId: string; qty: string; unit: string; unitPrice: string; priceType: 'excl' | 'incl'; }
 
@@ -65,14 +65,21 @@ export default function SalesAgreementEditPage() {
       try {
         const [recRes, custRes, itemRes] = await Promise.all([
           fetch(`/api/sales/agreements/${recordId}`),
-          fetch('/api/customers'),
+          fetch('/api/customers?status=Active&limit=1000'),
           fetch('/api/items?limit=1000'),
         ]);
         const recJson = await recRes.json();
         const custJson = await custRes.json();
         const itemJson = await itemRes.json();
 
-        if (custJson.success) setCustomers(custJson.data || []);
+        if (custJson.success) {
+          let list: Customer[] = custJson.data || [];
+          if (recJson.data?.customer && !list.some((c) => c.id === recJson.data.customer.id)) {
+            list = [recJson.data.customer, ...list];
+          }
+          list.sort((a, b) => (a.companyName || '').localeCompare(b.companyName || ''));
+          setCustomers(list);
+        }
         if (itemJson.success) setItems(itemJson.data || []);
 
         if (recJson.success && recJson.data) {
@@ -229,7 +236,11 @@ export default function SalesAgreementEditPage() {
                 <select name="customerId" value={formData.customerId} onChange={handleChange}
                   className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-900">
                   <option value="">Select Customer</option>
-                  {customers.map((c) => <option key={c.id} value={c.id}>{c.companyName}</option>)}
+                  {customers.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.companyName}{c.code ? ` (${c.code})` : ''}
+                    </option>
+                  ))}
                 </select>
               </div>
               <div>

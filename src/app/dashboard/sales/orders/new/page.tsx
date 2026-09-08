@@ -90,7 +90,7 @@ export default function NewSalesOrderPage() {
         if (division === 'MEDICAL') {
           // Fetch licensed medical customers & active batches
           const [custRes, batchRes] = await Promise.all([
-            fetch('/api/customers?division=MEDICAL&limit=500').then((r) => r.json()).catch(() => ({ success: false, data: [] })),
+            fetch('/api/customers?division=MEDICAL&status=Active&limit=1000').then((r) => r.json()).catch(() => ({ success: false, data: [] })),
             fetch('/api/medical/batches?limit=1000').then((r) => r.json()).catch(() => ({ success: false, data: [] })),
           ]);
 
@@ -131,8 +131,8 @@ export default function NewSalesOrderPage() {
             ? `/api/sales/agreements/customers?division=${division}`
             : '/api/sales/agreements/customers';
           const generalUrl = division
-            ? `/api/customers?division=${division}&limit=500`
-            : '/api/customers?limit=500';
+            ? `/api/customers?division=${division}&status=Active&limit=1000`
+            : '/api/customers?status=Active&limit=1000';
 
           const [agreementRes, generalRes] = await Promise.all([
             fetch(agreementUrl).then((r) => r.json()).catch(() => ({ success: false, data: [] })),

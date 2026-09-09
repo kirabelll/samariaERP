@@ -10,6 +10,8 @@ interface EmployeeData {
   firstName: string;
   middleName?: string;
   lastName: string;
+  firstNameAm?: string;
+  lastNameAm?: string;
   gender?: string;
   dateOfBirth?: string;
   phone?: string;
@@ -19,10 +21,6 @@ interface EmployeeData {
   hireDate?: string;
   employmentType?: string;
   baseSalary?: number;
-  transportAllowance?: number;
-  positionAllowance?: number;
-  phoneAllowance?: number;
-  otherAllowance?: number;
   bankName?: string;
   bankAccount?: string;
   tin?: string;
@@ -31,6 +29,8 @@ interface EmployeeData {
   emergencyPhone?: string;
   address?: string;
   status?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 const fieldLabels: Record<string, string> = {
@@ -38,27 +38,27 @@ const fieldLabels: Record<string, string> = {
   firstName: 'First Name',
   middleName: 'Middle Name',
   lastName: 'Last Name',
+  firstNameAm: 'First Name (Amharic)',
+  lastNameAm: 'Last Name (Amharic)',
   gender: 'Gender',
   dateOfBirth: 'Date of Birth',
   phone: 'Phone',
   email: 'Email',
   department: 'Department',
   position: 'Position',
-  hireDate: 'Hire Date',
   employmentType: 'Employment Type',
+  hireDate: 'Hire Date',
   baseSalary: 'Base Salary (ETB)',
-  transportAllowance: 'Transport Allowance (ETB)',
-  positionAllowance: 'Position Allowance (ETB)',
-  phoneAllowance: 'Phone Allowance (ETB)',
-  otherAllowance: 'Other Allowance (ETB)',
   bankName: 'Bank Name',
   bankAccount: 'Bank Account',
   tin: 'TIN',
   pensionNo: 'Pension Number',
-  emergencyContact: 'Emergency Contact',
-  emergencyPhone: 'Emergency Phone',
-  address: 'Address',
+  emergencyContact: 'Emergency Contact Name',
+  emergencyPhone: 'Emergency Contact Phone',
+  address: 'Address / Location',
   status: 'Status',
+  createdAt: 'Registered At',
+  updatedAt: 'Last Updated',
 };
 
 export default function EmployeeDetailPage() {
@@ -116,7 +116,11 @@ export default function EmployeeDetailPage() {
   const formatDate = (date?: string) => {
     if (!date) return 'N/A';
     try {
-      return new Date(date).toLocaleDateString();
+      return new Date(date).toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+      });
     } catch {
       return date;
     }
@@ -124,7 +128,7 @@ export default function EmployeeDetailPage() {
 
   const formatCurrency = (value?: number) => {
     if (value === undefined || value === null) return '0.00 ETB';
-    return `${value.toLocaleString('en-US', { minimumFractionDigits: 2 })} ETB`;
+    return `${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ETB`;
   };
 
   if (loading) {
@@ -155,14 +159,6 @@ export default function EmployeeDetailPage() {
       </div>
     );
   }
-
-  const baseSal = Number(data.baseSalary || 0);
-  const transportAll = Number(data.transportAllowance || 0);
-  const positionAll = Number(data.positionAllowance || 0);
-  const phoneAll = Number(data.phoneAllowance || 0);
-  const otherAll = Number(data.otherAllowance || 0);
-  const totalAll = transportAll + positionAll + phoneAll + otherAll;
-  const totalGross = baseSal + totalAll;
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
@@ -213,7 +209,7 @@ export default function EmployeeDetailPage() {
                 <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
                   {fieldLabels.firstName}
                 </label>
-                <p className="text-base font-medium text-slate-900 mt-1">{data.firstName}</p>
+                <p className="text-base font-medium text-slate-900 mt-1">{data.firstName || 'N/A'}</p>
               </div>
               <div>
                 <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
@@ -225,7 +221,19 @@ export default function EmployeeDetailPage() {
                 <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
                   {fieldLabels.lastName}
                 </label>
-                <p className="text-base font-medium text-slate-900 mt-1">{data.lastName}</p>
+                <p className="text-base font-medium text-slate-900 mt-1">{data.lastName || 'N/A'}</p>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                  {fieldLabels.firstNameAm}
+                </label>
+                <p className="text-base font-medium text-slate-900 mt-1">{data.firstNameAm || 'N/A'}</p>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                  {fieldLabels.lastNameAm}
+                </label>
+                <p className="text-base font-medium text-slate-900 mt-1">{data.lastNameAm || 'N/A'}</p>
               </div>
               <div>
                 <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
@@ -251,7 +259,7 @@ export default function EmployeeDetailPage() {
                 </label>
                 <p className="text-base font-medium text-slate-900 mt-1">{data.email || 'N/A'}</p>
               </div>
-              <div>
+              <div className="md:col-span-2">
                 <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
                   {fieldLabels.address}
                 </label>
@@ -278,6 +286,12 @@ export default function EmployeeDetailPage() {
               </div>
               <div>
                 <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                  {fieldLabels.employmentType}
+                </label>
+                <p className="text-base font-medium text-slate-900 mt-1">{data.employmentType || 'Permanent'}</p>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
                   {fieldLabels.hireDate}
                 </label>
                 <p className="text-base font-medium text-slate-900 mt-1">{formatDate(data.hireDate)}</p>
@@ -292,48 +306,31 @@ export default function EmployeeDetailPage() {
                   </Badge>
                 </div>
               </div>
+              {data.createdAt && (
+                <div>
+                  <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                    {fieldLabels.createdAt}
+                  </label>
+                  <p className="text-base font-medium text-slate-900 mt-1">{formatDate(data.createdAt)}</p>
+                </div>
+              )}
             </div>
           </div>
 
-          {/* Salary & Allowances Section */}
+          {/* Salary Information Section */}
           <div>
-            <h3 className="text-lg font-semibold text-slate-900 mb-4 pb-2 border-b">Salary & Allowances Breakdown</h3>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
-              <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
-                <label className="text-xs font-medium text-slate-500 block">Base Salary</label>
+            <h3 className="text-lg font-semibold text-slate-900 mb-4 pb-2 border-b">Salary Information</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              <div>
+                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                  {fieldLabels.baseSalary}
+                </label>
                 <p className="text-base font-bold font-mono text-slate-900 mt-1">{formatCurrency(data.baseSalary)}</p>
               </div>
-              <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
-                <label className="text-xs font-medium text-slate-500 block">Transport Allowance</label>
-                <p className="text-base font-bold font-mono text-slate-900 mt-1">{formatCurrency(data.transportAllowance)}</p>
-              </div>
-              <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
-                <label className="text-xs font-medium text-slate-500 block">Position Allowance</label>
-                <p className="text-base font-bold font-mono text-slate-900 mt-1">{formatCurrency(data.positionAllowance)}</p>
-              </div>
-              <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
-                <label className="text-xs font-medium text-slate-500 block">Phone Allowance</label>
-                <p className="text-base font-bold font-mono text-slate-900 mt-1">{formatCurrency(data.phoneAllowance)}</p>
-              </div>
-              <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
-                <label className="text-xs font-medium text-slate-500 block">Other Allowance</label>
-                <p className="text-base font-bold font-mono text-slate-900 mt-1">{formatCurrency(data.otherAllowance)}</p>
-              </div>
-            </div>
-
-            <div className="mt-4 p-4 rounded-xl bg-indigo-50/70 border border-indigo-200 flex flex-wrap items-center justify-between gap-4">
-              <div>
-                <span className="text-xs font-medium text-indigo-700 uppercase tracking-wider block">Total Monthly Allowances</span>
-                <p className="text-lg font-bold font-mono text-indigo-900 mt-0.5">{formatCurrency(totalAll)}</p>
-              </div>
-              <div className="text-right">
-                <span className="text-xs font-medium text-indigo-700 uppercase tracking-wider block">Total Monthly Gross Compensation</span>
-                <p className="text-2xl font-extrabold font-mono text-indigo-950 mt-0.5">{formatCurrency(totalGross)}</p>
-              </div>
             </div>
           </div>
 
-          {/* Banking Information Section */}
+          {/* Banking & Tax Information Section */}
           <div>
             <h3 className="text-lg font-semibold text-slate-900 mb-4 pb-2 border-b">Banking & Tax Information</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">

@@ -8,17 +8,24 @@ import { DollarSign } from 'lucide-react';
 interface FormData {
   firstName: string;
   lastName: string;
+  middleName: string;
+  firstNameAm: string;
+  lastNameAm: string;
+  gender: string;
+  dateOfBirth: string;
   email: string;
   phone: string;
+  address: string;
+  tin: string;
+  pensionNo: string;
+  emergencyContact: string;
+  emergencyPhone: string;
   employeeId: string;
   department: string;
   position: string;
+  employmentType: string;
   hireDate: string;
   salary: string; // Base Salary
-  transportAllowance: string;
-  positionAllowance: string;
-  phoneAllowance: string;
-  otherAllowance: string;
   bankName: string;
   bankAccount: string;
   status: 'Active' | 'Inactive';
@@ -37,17 +44,24 @@ export default function EditEmployeePage() {
   const [formData, setFormData] = useState<FormData>({
     firstName: '',
     lastName: '',
+    middleName: '',
+    firstNameAm: '',
+    lastNameAm: '',
+    gender: '',
+    dateOfBirth: '',
     email: '',
     phone: '',
+    address: '',
+    tin: '',
+    pensionNo: '',
+    emergencyContact: '',
+    emergencyPhone: '',
     employeeId: '',
     department: '',
     position: '',
+    employmentType: 'Permanent',
     hireDate: '',
     salary: '',
-    transportAllowance: '',
-    positionAllowance: '',
-    phoneAllowance: '',
-    otherAllowance: '',
     bankName: '',
     bankAccount: '',
     status: 'Active',
@@ -72,17 +86,24 @@ export default function EditEmployeePage() {
         setFormData({
           firstName: emp.firstName || '',
           lastName: emp.lastName || '',
+          middleName: emp.middleName || '',
+          firstNameAm: emp.firstNameAm || '',
+          lastNameAm: emp.lastNameAm || '',
+          gender: emp.gender || '',
+          dateOfBirth: emp.dateOfBirth ? new Date(emp.dateOfBirth).toISOString().split('T')[0] : '',
           email: emp.email || '',
           phone: emp.phone || '',
+          address: emp.address || '',
+          tin: emp.tin || '',
+          pensionNo: emp.pensionNo || '',
+          emergencyContact: emp.emergencyContact || '',
+          emergencyPhone: emp.emergencyPhone || '',
           employeeId: emp.employeeNo || '',
           department: emp.department || '',
           position: emp.position || '',
+          employmentType: emp.employmentType || 'Permanent',
           hireDate: emp.hireDate ? new Date(emp.hireDate).toISOString().split('T')[0] : '',
           salary: emp.baseSalary !== undefined && emp.baseSalary !== null ? String(emp.baseSalary) : '',
-          transportAllowance: emp.transportAllowance !== undefined && emp.transportAllowance !== null ? String(emp.transportAllowance) : '',
-          positionAllowance: emp.positionAllowance !== undefined && emp.positionAllowance !== null ? String(emp.positionAllowance) : '',
-          phoneAllowance: emp.phoneAllowance !== undefined && emp.phoneAllowance !== null ? String(emp.phoneAllowance) : '',
-          otherAllowance: emp.otherAllowance !== undefined && emp.otherAllowance !== null ? String(emp.otherAllowance) : '',
           bankName: emp.bankName || '',
           bankAccount: emp.bankAccount || '',
           status: (emp.status as any) || 'Active',
@@ -118,18 +139,6 @@ export default function EditEmployeePage() {
     if (formData.salary && isNaN(parseFloat(formData.salary))) {
       newErrors.salary = 'Base salary must be a number';
     }
-    if (formData.transportAllowance && isNaN(parseFloat(formData.transportAllowance))) {
-      newErrors.transportAllowance = 'Transport allowance must be a number';
-    }
-    if (formData.positionAllowance && isNaN(parseFloat(formData.positionAllowance))) {
-      newErrors.positionAllowance = 'Position allowance must be a number';
-    }
-    if (formData.phoneAllowance && isNaN(parseFloat(formData.phoneAllowance))) {
-      newErrors.phoneAllowance = 'Phone allowance must be a number';
-    }
-    if (formData.otherAllowance && isNaN(parseFloat(formData.otherAllowance))) {
-      newErrors.otherAllowance = 'Other allowance must be a number';
-    }
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -155,12 +164,6 @@ export default function EditEmployeePage() {
   };
 
   const baseSalaryNum = parseFloat(formData.salary) || 0;
-  const transportNum = parseFloat(formData.transportAllowance) || 0;
-  const positionNum = parseFloat(formData.positionAllowance) || 0;
-  const phoneNum = parseFloat(formData.phoneAllowance) || 0;
-  const otherNum = parseFloat(formData.otherAllowance) || 0;
-  const totalAllowances = transportNum + positionNum + phoneNum + otherNum;
-  const totalGrossSalary = baseSalaryNum + totalAllowances;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -177,10 +180,6 @@ export default function EditEmployeePage() {
         body: JSON.stringify({
           ...formData,
           baseSalary: baseSalaryNum,
-          transportAllowance: transportNum,
-          positionAllowance: positionNum,
-          phoneAllowance: phoneNum,
-          otherAllowance: otherNum,
         }),
       });
 
@@ -238,7 +237,7 @@ export default function EditEmployeePage() {
       {/* Page Header */}
       <div>
         <h1 className="text-3xl font-bold text-slate-900">Edit Employee</h1>
-        <p className="text-slate-600 mt-2">Update employee details, salary, and allowances</p>
+        <p className="text-slate-600 mt-2">Update employee personal details, employment terms, and base salary</p>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
@@ -271,6 +270,69 @@ export default function EditEmployeePage() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <Input
+                label="Middle Name"
+                name="middleName"
+                value={formData.middleName}
+                onChange={handleInputChange}
+                placeholder="e.g., Robert (Optional)"
+              />
+              <Input
+                label="Date of Birth"
+                name="dateOfBirth"
+                type="date"
+                value={formData.dateOfBirth}
+                onChange={handleInputChange}
+              />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <Input
+                label="First Name (Amharic)"
+                name="firstNameAm"
+                value={formData.firstNameAm}
+                onChange={handleInputChange}
+                placeholder="e.g., ዮሐንስ (Optional)"
+              />
+              <Input
+                label="Last Name (Amharic)"
+                name="lastNameAm"
+                value={formData.lastNameAm}
+                onChange={handleInputChange}
+                placeholder="e.g., በቀለ (Optional)"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <Select
+                label="Gender"
+                name="gender"
+                value={formData.gender}
+                onChange={handleInputChange}
+                options={[
+                  { value: '', label: 'Select Gender' },
+                  { value: 'Male', label: 'Male' },
+                  { value: 'Female', label: 'Female' },
+                ]}
+              />
+              <Input
+                label="National ID / TIN"
+                name="tin"
+                value={formData.tin}
+                onChange={handleInputChange}
+                placeholder="e.g., 0012345678 (Optional)"
+              />
+            </div>
+          </CardBody>
+        </Card>
+
+        {/* Contact Information Section */}
+        <Card>
+          <CardHeader>
+            <h2 className="text-xl font-bold text-slate-900">Contact Information</h2>
+          </CardHeader>
+          <CardBody className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <Input
                 label="Email"
                 name="email"
                 type="email"
@@ -291,6 +353,40 @@ export default function EditEmployeePage() {
                 required
               />
             </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <Input
+                label="Address / Location"
+                name="address"
+                value={formData.address}
+                onChange={handleInputChange}
+                placeholder="e.g., Addis Ababa, Bole Sub-City"
+              />
+              <Input
+                label="Pension Number"
+                name="pensionNo"
+                value={formData.pensionNo}
+                onChange={handleInputChange}
+                placeholder="e.g., PEN-998822 (Optional)"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <Input
+                label="Emergency Contact Name"
+                name="emergencyContact"
+                value={formData.emergencyContact}
+                onChange={handleInputChange}
+                placeholder="e.g., Mary Doe (Spouse)"
+              />
+              <Input
+                label="Emergency Contact Phone"
+                name="emergencyPhone"
+                value={formData.emergencyPhone}
+                onChange={handleInputChange}
+                placeholder="e.g., +251 92 987 6543"
+              />
+            </div>
           </CardBody>
         </Card>
 
@@ -300,7 +396,7 @@ export default function EditEmployeePage() {
             <h2 className="text-xl font-bold text-slate-900">Employment Information</h2>
           </CardHeader>
           <CardBody className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <Input
                 label="Employee ID / Number"
                 name="employeeId"
@@ -315,14 +411,29 @@ export default function EditEmployeePage() {
                 value={formData.department}
                 onChange={handleInputChange}
                 options={[
-                  { value: 'HR', label: 'Human Resources' },
-                  { value: 'Finance', label: 'Finance' },
-                  { value: 'Operations', label: 'Operations' },
+                  { value: '', label: 'Select Department' },
+                  { value: 'Management', label: 'Management' },
                   { value: 'Sales', label: 'Sales' },
+                  { value: 'Finance', label: 'Finance' },
+                  { value: 'HR', label: 'Human Resources' },
+                  { value: 'Operations', label: 'Operations' },
+                  { value: 'Logistics', label: 'Logistics' },
+                  { value: 'Procurement', label: 'Procurement' },
                   { value: 'Warehouse', label: 'Warehouse' },
                   { value: 'IT', label: 'IT' },
-                  { value: 'Management', label: 'Management' },
-                  { value: 'Logistics', label: 'Logistics' },
+                  { value: 'Medical', label: 'Medical' },
+                ]}
+              />
+              <Select
+                label="Employment Type"
+                name="employmentType"
+                value={formData.employmentType}
+                onChange={handleInputChange}
+                options={[
+                  { value: 'Permanent', label: 'Permanent' },
+                  { value: 'Contract', label: 'Contract' },
+                  { value: 'PartTime', label: 'Part Time' },
+                  { value: 'Intern', label: 'Intern' },
                 ]}
               />
             </div>
@@ -346,7 +457,7 @@ export default function EditEmployeePage() {
           </CardBody>
         </Card>
 
-        {/* Salary & Allowances Section */}
+        {/* Salary Information Section */}
         <Card className="border-indigo-100">
           <CardHeader className="bg-slate-50/70 border-b border-slate-100">
             <div className="flex items-center gap-2">
@@ -354,8 +465,8 @@ export default function EditEmployeePage() {
                 <DollarSign className="w-4 h-4" />
               </div>
               <div>
-                <h2 className="text-lg font-bold text-slate-900">Salary & Allowances</h2>
-                <p className="text-xs text-slate-500">Configure base salary and monthly allowances (Transport, Position, Phone)</p>
+                <h2 className="text-lg font-bold text-slate-900">Salary Information</h2>
+                <p className="text-xs text-slate-500">Configure monthly base salary</p>
               </div>
             </div>
           </CardHeader>
@@ -373,77 +484,6 @@ export default function EditEmployeePage() {
                 placeholder="e.g., 25000.00"
                 required
               />
-              <Input
-                label="Transport Allowance (ETB)"
-                name="transportAllowance"
-                type="number"
-                step="0.01"
-                value={formData.transportAllowance}
-                onChange={handleInputChange}
-                error={errors.transportAllowance}
-                placeholder="e.g., 3000.00"
-              />
-            </div>
-
-            {/* Position, Phone, and Other Allowances */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <Input
-                label="Position Allowance (ETB)"
-                name="positionAllowance"
-                type="number"
-                step="0.01"
-                value={formData.positionAllowance}
-                onChange={handleInputChange}
-                error={errors.positionAllowance}
-                placeholder="e.g., 5000.00"
-              />
-              <Input
-                label="Phone Allowance (ETB)"
-                name="phoneAllowance"
-                type="number"
-                step="0.01"
-                value={formData.phoneAllowance}
-                onChange={handleInputChange}
-                error={errors.phoneAllowance}
-                placeholder="e.g., 1000.00"
-              />
-              <Input
-                label="Other Allowance (ETB)"
-                name="otherAllowance"
-                type="number"
-                step="0.01"
-                value={formData.otherAllowance}
-                onChange={handleInputChange}
-                error={errors.otherAllowance}
-                placeholder="e.g., 500.00"
-              />
-            </div>
-
-            {/* Total Compensation Summary Box */}
-            <div className="bg-gradient-to-br from-slate-50 to-indigo-50/40 p-4 rounded-xl border border-indigo-100/80">
-              <h3 className="text-xs font-semibold text-slate-700 uppercase tracking-wider mb-3">
-                Monthly Compensation Breakdown
-              </h3>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                <div className="bg-white p-3 rounded-lg border border-slate-200">
-                  <span className="text-xs text-slate-500 block">Base Salary:</span>
-                  <span className="text-base font-bold text-slate-900 font-mono">
-                    ETB {baseSalaryNum.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                  </span>
-                </div>
-                <div className="bg-white p-3 rounded-lg border border-slate-200">
-                  <span className="text-xs text-slate-500 block">Total Allowances:</span>
-                  <span className="text-base font-bold text-indigo-600 font-mono">
-                    ETB {totalAllowances.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                  </span>
-                </div>
-                <div className="bg-white p-3 rounded-lg border border-indigo-200 sm:col-span-2">
-                  <span className="text-xs text-indigo-700 font-medium block">Total Gross Monthly Compensation:</span>
-                  <span className="text-xl font-extrabold text-indigo-950 font-mono">
-                    ETB {totalGrossSalary.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                  </span>
-                </div>
-              </div>
             </div>
           </CardBody>
         </Card>

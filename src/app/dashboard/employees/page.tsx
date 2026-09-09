@@ -18,10 +18,6 @@ interface Employee {
   email: string;
   employmentType: string;
   baseSalary: number;
-  transportAllowance?: number;
-  positionAllowance?: number;
-  phoneAllowance?: number;
-  otherAllowance?: number;
   status: string;
 }
 

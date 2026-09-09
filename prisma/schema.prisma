@@ -1029,12 +1029,8 @@ model Employee {
   position        String?
   hireDate        DateTime
   employmentType  String   @default("Permanent") // Permanent, Contract, PartTime
-  baseSalary          Float    @default(0)
-  transportAllowance  Float    @default(0)
-  positionAllowance   Float    @default(0)
-  phoneAllowance      Float    @default(0)
-  otherAllowance      Float    @default(0)
-  bankAccount         String?
+  baseSalary      Float    @default(0)
+  bankAccount     String?
   bankName        String?
   tin             String?
   pensionNo       String?

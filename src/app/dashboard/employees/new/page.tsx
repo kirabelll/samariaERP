@@ -15,10 +15,6 @@ interface FormData {
   position: string;
   hireDate: string;
   salary: string; // Base Salary
-  transportAllowance: string;
-  positionAllowance: string;
-  phoneAllowance: string;
-  otherAllowance: string;
   bankName: string;
   bankAccount: string;
   status: 'Active' | 'Inactive';
@@ -40,10 +36,6 @@ export default function NewEmployeePage() {
     position: '',
     hireDate: '',
     salary: '',
-    transportAllowance: '',
-    positionAllowance: '',
-    phoneAllowance: '',
-    otherAllowance: '',
     bankName: '',
     bankAccount: '',
     status: 'Active',
@@ -75,18 +67,6 @@ export default function NewEmployeePage() {
     if (formData.salary && isNaN(parseFloat(formData.salary))) {
       newErrors.salary = 'Base salary must be a number';
     }
-    if (formData.transportAllowance && isNaN(parseFloat(formData.transportAllowance))) {
-      newErrors.transportAllowance = 'Transport allowance must be a number';
-    }
-    if (formData.positionAllowance && isNaN(parseFloat(formData.positionAllowance))) {
-      newErrors.positionAllowance = 'Position allowance must be a number';
-    }
-    if (formData.phoneAllowance && isNaN(parseFloat(formData.phoneAllowance))) {
-      newErrors.phoneAllowance = 'Phone allowance must be a number';
-    }
-    if (formData.otherAllowance && isNaN(parseFloat(formData.otherAllowance))) {
-      newErrors.otherAllowance = 'Other allowance must be a number';
-    }
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -112,12 +92,6 @@ export default function NewEmployeePage() {
   };
 
   const baseSalaryNum = parseFloat(formData.salary) || 0;
-  const transportNum = parseFloat(formData.transportAllowance) || 0;
-  const positionNum = parseFloat(formData.positionAllowance) || 0;
-  const phoneNum = parseFloat(formData.phoneAllowance) || 0;
-  const otherNum = parseFloat(formData.otherAllowance) || 0;
-  const totalAllowances = transportNum + positionNum + phoneNum + otherNum;
-  const totalGrossSalary = baseSalaryNum + totalAllowances;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -134,10 +108,6 @@ export default function NewEmployeePage() {
         body: JSON.stringify({
           ...formData,
           baseSalary: baseSalaryNum,
-          transportAllowance: transportNum,
-          positionAllowance: positionNum,
-          phoneAllowance: phoneNum,
-          otherAllowance: otherNum,
         }),
       });
       const data = await res.json();
@@ -282,7 +252,7 @@ export default function NewEmployeePage() {
           </CardBody>
         </Card>
 
-        {/* Salary & Allowances Section */}
+        {/* Salary Information Section */}
         <Card className="border-indigo-100">
           <CardHeader className="bg-slate-50/70 border-b border-slate-100">
             <div className="flex items-center gap-2">
@@ -290,8 +260,8 @@ export default function NewEmployeePage() {
                 <DollarSign className="w-4 h-4" />
               </div>
               <div>
-                <h2 className="text-lg font-bold text-slate-900">Salary & Allowances</h2>
-                <p className="text-xs text-slate-500">Configure base salary and monthly allowances (Transport, Position, Phone)</p>
+                <h2 className="text-lg font-bold text-slate-900">Salary Information</h2>
+                <p className="text-xs text-slate-500">Configure monthly base salary</p>
               </div>
             </div>
           </CardHeader>
@@ -309,77 +279,6 @@ export default function NewEmployeePage() {
                 placeholder="e.g., 25000.00"
                 required
               />
-              <Input
-                label="Transport Allowance (ETB)"
-                name="transportAllowance"
-                type="number"
-                step="0.01"
-                value={formData.transportAllowance}
-                onChange={handleInputChange}
-                error={errors.transportAllowance}
-                placeholder="e.g., 3000.00"
-              />
-            </div>
-
-            {/* Position, Phone, and Other Allowances */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <Input
-                label="Position Allowance (ETB)"
-                name="positionAllowance"
-                type="number"
-                step="0.01"
-                value={formData.positionAllowance}
-                onChange={handleInputChange}
-                error={errors.positionAllowance}
-                placeholder="e.g., 5000.00"
-              />
-              <Input
-                label="Phone Allowance (ETB)"
-                name="phoneAllowance"
-                type="number"
-                step="0.01"
-                value={formData.phoneAllowance}
-                onChange={handleInputChange}
-                error={errors.phoneAllowance}
-                placeholder="e.g., 1000.00"
-              />
-              <Input
-                label="Other Allowance (ETB)"
-                name="otherAllowance"
-                type="number"
-                step="0.01"
-                value={formData.otherAllowance}
-                onChange={handleInputChange}
-                error={errors.otherAllowance}
-                placeholder="e.g., 500.00"
-              />
-            </div>
-
-            {/* Total Compensation Summary Box */}
-            <div className="bg-gradient-to-br from-slate-50 to-indigo-50/40 p-4 rounded-xl border border-indigo-100/80">
-              <h3 className="text-xs font-semibold text-slate-700 uppercase tracking-wider mb-3">
-                Monthly Compensation Breakdown
-              </h3>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                <div className="bg-white p-3 rounded-lg border border-slate-200">
-                  <span className="text-xs text-slate-500 block">Base Salary:</span>
-                  <span className="text-base font-bold text-slate-900 font-mono">
-                    ETB {baseSalaryNum.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                  </span>
-                </div>
-                <div className="bg-white p-3 rounded-lg border border-slate-200">
-                  <span className="text-xs text-slate-500 block">Total Allowances:</span>
-                  <span className="text-base font-bold text-indigo-600 font-mono">
-                    ETB {totalAllowances.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                  </span>
-                </div>
-                <div className="bg-white p-3 rounded-lg border border-indigo-200 sm:col-span-2">
-                  <span className="text-xs text-indigo-700 font-medium block">Total Gross Monthly Compensation:</span>
-                  <span className="text-xl font-extrabold text-indigo-950 font-mono">
-                    ETB {totalGrossSalary.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                  </span>
-                </div>
-              </div>
             </div>
           </CardBody>
         </Card>

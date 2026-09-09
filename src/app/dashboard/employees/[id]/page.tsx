@@ -5,6 +5,7 @@ import { useRouter, useParams } from 'next/navigation';
 import { Card, CardHeader, CardBody, Button, Badge } from '@/components/ui';
 
 interface EmployeeData {
+  id: string;
   employeeNo: string;
   firstName: string;
   middleName?: string;
@@ -18,6 +19,10 @@ interface EmployeeData {
   hireDate?: string;
   employmentType?: string;
   baseSalary?: number;
+  transportAllowance?: number;
+  positionAllowance?: number;
+  phoneAllowance?: number;
+  otherAllowance?: number;
   bankName?: string;
   bankAccount?: string;
   tin?: string;
@@ -41,7 +46,11 @@ const fieldLabels: Record<string, string> = {
   position: 'Position',
   hireDate: 'Hire Date',
   employmentType: 'Employment Type',
-  baseSalary: 'Base Salary',
+  baseSalary: 'Base Salary (ETB)',
+  transportAllowance: 'Transport Allowance (ETB)',
+  positionAllowance: 'Position Allowance (ETB)',
+  phoneAllowance: 'Phone Allowance (ETB)',
+  otherAllowance: 'Other Allowance (ETB)',
   bankName: 'Bank Name',
   bankAccount: 'Bank Account',
   tin: 'TIN',
@@ -114,16 +123,16 @@ export default function EmployeeDetailPage() {
   };
 
   const formatCurrency = (value?: number) => {
-    if (value === undefined || value === null) return 'N/A';
-    return value.toLocaleString('en-US');
+    if (value === undefined || value === null) return '0.00 ETB';
+    return `${value.toLocaleString('en-US', { minimumFractionDigits: 2 })} ETB`;
   };
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
+      <div className="flex items-center justify-center min-h-[50vh]">
         <div className="text-center space-y-4">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="text-slate-600">Loading...</p>
+          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="text-slate-600">Loading employee details...</p>
         </div>
       </div>
     );
@@ -147,8 +156,16 @@ export default function EmployeeDetailPage() {
     );
   }
 
+  const baseSal = Number(data.baseSalary || 0);
+  const transportAll = Number(data.transportAllowance || 0);
+  const positionAll = Number(data.positionAllowance || 0);
+  const phoneAll = Number(data.phoneAllowance || 0);
+  const otherAll = Number(data.otherAllowance || 0);
+  const totalAll = transportAll + positionAll + phoneAll + otherAll;
+  const totalGross = baseSal + totalAll;
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 max-w-5xl mx-auto">
       {/* Breadcrumb */}
       <div className="flex items-center gap-2 text-sm text-slate-600">
         <button
@@ -184,98 +201,86 @@ export default function EmployeeDetailPage() {
         <CardBody className="space-y-8">
           {/* Personal Information Section */}
           <div>
-            <h3 className="text-lg font-semibold text-slate-900 mb-4">Personal Information</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <h3 className="text-lg font-semibold text-slate-900 mb-4 pb-2 border-b">Personal Information</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               <div>
                 <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
                   {fieldLabels.employeeNo}
                 </label>
-                <p className="text-lg font-medium text-slate-900 mt-1">{data.employeeNo}</p>
+                <p className="text-base font-semibold font-mono text-slate-900 mt-1">{data.employeeNo}</p>
               </div>
               <div>
                 <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
                   {fieldLabels.firstName}
                 </label>
-                <p className="text-lg font-medium text-slate-900 mt-1">{data.firstName}</p>
+                <p className="text-base font-medium text-slate-900 mt-1">{data.firstName}</p>
               </div>
               <div>
                 <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
                   {fieldLabels.middleName}
                 </label>
-                <p className="text-lg font-medium text-slate-900 mt-1">{data.middleName || 'N/A'}</p>
+                <p className="text-base font-medium text-slate-900 mt-1">{data.middleName || 'N/A'}</p>
               </div>
               <div>
                 <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
                   {fieldLabels.lastName}
                 </label>
-                <p className="text-lg font-medium text-slate-900 mt-1">{data.lastName}</p>
+                <p className="text-base font-medium text-slate-900 mt-1">{data.lastName}</p>
               </div>
               <div>
                 <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
                   {fieldLabels.gender}
                 </label>
-                <p className="text-lg font-medium text-slate-900 mt-1">{data.gender || 'N/A'}</p>
+                <p className="text-base font-medium text-slate-900 mt-1">{data.gender || 'N/A'}</p>
               </div>
               <div>
                 <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
                   {fieldLabels.dateOfBirth}
                 </label>
-                <p className="text-lg font-medium text-slate-900 mt-1">{formatDate(data.dateOfBirth)}</p>
+                <p className="text-base font-medium text-slate-900 mt-1">{formatDate(data.dateOfBirth)}</p>
               </div>
               <div>
                 <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
                   {fieldLabels.phone}
                 </label>
-                <p className="text-lg font-medium text-slate-900 mt-1">{data.phone || 'N/A'}</p>
+                <p className="text-base font-medium text-slate-900 mt-1">{data.phone || 'N/A'}</p>
               </div>
               <div>
                 <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
                   {fieldLabels.email}
                 </label>
-                <p className="text-lg font-medium text-slate-900 mt-1">{data.email || 'N/A'}</p>
+                <p className="text-base font-medium text-slate-900 mt-1">{data.email || 'N/A'}</p>
               </div>
-              <div className="md:col-span-2">
+              <div>
                 <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
                   {fieldLabels.address}
                 </label>
-                <p className="text-lg font-medium text-slate-900 mt-1">{data.address || 'N/A'}</p>
+                <p className="text-base font-medium text-slate-900 mt-1">{data.address || 'N/A'}</p>
               </div>
             </div>
           </div>
 
           {/* Employment Information Section */}
           <div>
-            <h3 className="text-lg font-semibold text-slate-900 mb-4">Employment Information</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <h3 className="text-lg font-semibold text-slate-900 mb-4 pb-2 border-b">Employment Information</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
               <div>
                 <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
                   {fieldLabels.department}
                 </label>
-                <p className="text-lg font-medium text-slate-900 mt-1">{data.department || 'N/A'}</p>
+                <p className="text-base font-medium text-slate-900 mt-1">{data.department || 'N/A'}</p>
               </div>
               <div>
                 <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
                   {fieldLabels.position}
                 </label>
-                <p className="text-lg font-medium text-slate-900 mt-1">{data.position || 'N/A'}</p>
+                <p className="text-base font-medium text-slate-900 mt-1">{data.position || 'N/A'}</p>
               </div>
               <div>
                 <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
                   {fieldLabels.hireDate}
                 </label>
-                <p className="text-lg font-medium text-slate-900 mt-1">{formatDate(data.hireDate)}</p>
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
-                  {fieldLabels.employmentType}
-                </label>
-                <p className="text-lg font-medium text-slate-900 mt-1">{data.employmentType || 'N/A'}</p>
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
-                  {fieldLabels.baseSalary}
-                </label>
-                <p className="text-lg font-medium text-slate-900 mt-1">{formatCurrency(data.baseSalary)}</p>
+                <p className="text-base font-medium text-slate-900 mt-1">{formatDate(data.hireDate)}</p>
               </div>
               <div>
                 <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
@@ -290,52 +295,90 @@ export default function EmployeeDetailPage() {
             </div>
           </div>
 
+          {/* Salary & Allowances Section */}
+          <div>
+            <h3 className="text-lg font-semibold text-slate-900 mb-4 pb-2 border-b">Salary & Allowances Breakdown</h3>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+              <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
+                <label className="text-xs font-medium text-slate-500 block">Base Salary</label>
+                <p className="text-base font-bold font-mono text-slate-900 mt-1">{formatCurrency(data.baseSalary)}</p>
+              </div>
+              <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
+                <label className="text-xs font-medium text-slate-500 block">Transport Allowance</label>
+                <p className="text-base font-bold font-mono text-slate-900 mt-1">{formatCurrency(data.transportAllowance)}</p>
+              </div>
+              <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
+                <label className="text-xs font-medium text-slate-500 block">Position Allowance</label>
+                <p className="text-base font-bold font-mono text-slate-900 mt-1">{formatCurrency(data.positionAllowance)}</p>
+              </div>
+              <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
+                <label className="text-xs font-medium text-slate-500 block">Phone Allowance</label>
+                <p className="text-base font-bold font-mono text-slate-900 mt-1">{formatCurrency(data.phoneAllowance)}</p>
+              </div>
+              <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
+                <label className="text-xs font-medium text-slate-500 block">Other Allowance</label>
+                <p className="text-base font-bold font-mono text-slate-900 mt-1">{formatCurrency(data.otherAllowance)}</p>
+              </div>
+            </div>
+
+            <div className="mt-4 p-4 rounded-xl bg-indigo-50/70 border border-indigo-200 flex flex-wrap items-center justify-between gap-4">
+              <div>
+                <span className="text-xs font-medium text-indigo-700 uppercase tracking-wider block">Total Monthly Allowances</span>
+                <p className="text-lg font-bold font-mono text-indigo-900 mt-0.5">{formatCurrency(totalAll)}</p>
+              </div>
+              <div className="text-right">
+                <span className="text-xs font-medium text-indigo-700 uppercase tracking-wider block">Total Monthly Gross Compensation</span>
+                <p className="text-2xl font-extrabold font-mono text-indigo-950 mt-0.5">{formatCurrency(totalGross)}</p>
+              </div>
+            </div>
+          </div>
+
           {/* Banking Information Section */}
           <div>
-            <h3 className="text-lg font-semibold text-slate-900 mb-4">Banking Information</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <h3 className="text-lg font-semibold text-slate-900 mb-4 pb-2 border-b">Banking & Tax Information</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
               <div>
                 <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
                   {fieldLabels.bankName}
                 </label>
-                <p className="text-lg font-medium text-slate-900 mt-1">{data.bankName || 'N/A'}</p>
+                <p className="text-base font-medium text-slate-900 mt-1">{data.bankName || 'N/A'}</p>
               </div>
               <div>
                 <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
                   {fieldLabels.bankAccount}
                 </label>
-                <p className="text-lg font-medium text-slate-900 mt-1">{data.bankAccount || 'N/A'}</p>
+                <p className="text-base font-mono font-medium text-slate-900 mt-1">{data.bankAccount || 'N/A'}</p>
               </div>
               <div>
                 <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
                   {fieldLabels.tin}
                 </label>
-                <p className="text-lg font-medium text-slate-900 mt-1">{data.tin || 'N/A'}</p>
+                <p className="text-base font-mono font-medium text-slate-900 mt-1">{data.tin || 'N/A'}</p>
               </div>
               <div>
                 <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
                   {fieldLabels.pensionNo}
                 </label>
-                <p className="text-lg font-medium text-slate-900 mt-1">{data.pensionNo || 'N/A'}</p>
+                <p className="text-base font-mono font-medium text-slate-900 mt-1">{data.pensionNo || 'N/A'}</p>
               </div>
             </div>
           </div>
 
           {/* Emergency Contact Section */}
           <div>
-            <h3 className="text-lg font-semibold text-slate-900 mb-4">Emergency Contact</h3>
+            <h3 className="text-lg font-semibold text-slate-900 mb-4 pb-2 border-b">Emergency Contact</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
                   {fieldLabels.emergencyContact}
                 </label>
-                <p className="text-lg font-medium text-slate-900 mt-1">{data.emergencyContact || 'N/A'}</p>
+                <p className="text-base font-medium text-slate-900 mt-1">{data.emergencyContact || 'N/A'}</p>
               </div>
               <div>
                 <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
                   {fieldLabels.emergencyPhone}
                 </label>
-                <p className="text-lg font-medium text-slate-900 mt-1">{data.emergencyPhone || 'N/A'}</p>
+                <p className="text-base font-medium text-slate-900 mt-1">{data.emergencyPhone || 'N/A'}</p>
               </div>
             </div>
           </div>

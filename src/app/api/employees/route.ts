@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
       whereClause.OR = [
         { firstName: { contains: search, mode: 'insensitive' } },
         { lastName: { contains: search, mode: 'insensitive' } },
-        { employeeId: { contains: search, mode: 'insensitive' } },
+        { employeeNo: { contains: search, mode: 'insensitive' } },
       ];
     }
     if (department) {
@@ -77,6 +77,11 @@ export async function POST(request: NextRequest) {
       hireDate,
       employmentType,
       baseSalary,
+      salary,
+      transportAllowance,
+      positionAllowance,
+      phoneAllowance,
+      otherAllowance,
       bankAccount,
       bankName,
       tin,
@@ -85,6 +90,12 @@ export async function POST(request: NextRequest) {
       emergencyPhone,
       status,
     } = body;
+
+    const parsedBaseSalary = baseSalary !== undefined && baseSalary !== '' ? parseFloat(baseSalary) : (salary !== undefined && salary !== '' ? parseFloat(salary) : 0);
+    const parsedTransportAllowance = transportAllowance !== undefined && transportAllowance !== '' ? parseFloat(transportAllowance) : 0;
+    const parsedPositionAllowance = positionAllowance !== undefined && positionAllowance !== '' ? parseFloat(positionAllowance) : 0;
+    const parsedPhoneAllowance = phoneAllowance !== undefined && phoneAllowance !== '' ? parseFloat(phoneAllowance) : 0;
+    const parsedOtherAllowance = otherAllowance !== undefined && otherAllowance !== '' ? parseFloat(otherAllowance) : 0;
 
     if (!firstName || !lastName || !hireDate) {
       return NextResponse.json(
@@ -95,7 +106,7 @@ export async function POST(request: NextRequest) {
 
     // Generate employee number
     const count = await prisma.employee.count();
-    const employeeNo = `EMP-${String(count + 1).padStart(5, '0')}`;
+    const employeeNo = body.employeeId || `EMP-${String(count + 1).padStart(5, '0')}`;
 
     const employee = await prisma.employee.create({
       data: {
@@ -114,7 +125,11 @@ export async function POST(request: NextRequest) {
         position: position || null,
         hireDate: new Date(hireDate),
         employmentType: employmentType || 'Permanent',
-        baseSalary: baseSalary || 0,
+        baseSalary: isNaN(parsedBaseSalary) ? 0 : parsedBaseSalary,
+        transportAllowance: isNaN(parsedTransportAllowance) ? 0 : parsedTransportAllowance,
+        positionAllowance: isNaN(parsedPositionAllowance) ? 0 : parsedPositionAllowance,
+        phoneAllowance: isNaN(parsedPhoneAllowance) ? 0 : parsedPhoneAllowance,
+        otherAllowance: isNaN(parsedOtherAllowance) ? 0 : parsedOtherAllowance,
         bankAccount: bankAccount || null,
         bankName: bankName || null,
         tin: tin || null,

@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { Card, CardHeader, CardBody, CardFooter, Button, Input, Select } from '@/components/ui';
+import { DollarSign } from 'lucide-react';
 
 interface FormData {
   firstName: string;
@@ -13,7 +14,11 @@ interface FormData {
   department: string;
   position: string;
   hireDate: string;
-  salary: string;
+  salary: string; // Base Salary
+  transportAllowance: string;
+  positionAllowance: string;
+  phoneAllowance: string;
+  otherAllowance: string;
   bankName: string;
   bankAccount: string;
   status: 'Active' | 'Inactive';
@@ -26,26 +31,72 @@ interface FormErrors {
 export default function EditEmployeePage() {
   const router = useRouter();
   const params = useParams();
-  const employeeId = params?.id;
+  const employeeId = params?.id as string;
 
-  // Mock data - replace with actual API call
+  const [loading, setLoading] = useState(true);
   const [formData, setFormData] = useState<FormData>({
-    firstName: 'John',
-    lastName: 'Doe',
-    email: 'john.doe@example.com',
-    phone: '+251911223344',
-    employeeId: 'EMP001',
-    department: 'Operations',
-    position: 'Manager',
-    hireDate: '2023-01-15',
-    salary: '25000',
-    bankName: 'Commercial Bank of Ethiopia',
-    bankAccount: '1234567890',
+    firstName: '',
+    lastName: '',
+    email: '',
+    phone: '',
+    employeeId: '',
+    department: '',
+    position: '',
+    hireDate: '',
+    salary: '',
+    transportAllowance: '',
+    positionAllowance: '',
+    phoneAllowance: '',
+    otherAllowance: '',
+    bankName: '',
+    bankAccount: '',
     status: 'Active',
   });
 
   const [errors, setErrors] = useState<FormErrors>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (!employeeId) return;
+
+    const fetchEmployee = async () => {
+      setLoading(true);
+      try {
+        const res = await fetch(`/api/employees/${employeeId}`);
+        const result = await res.json();
+        if (!res.ok || !result.success) {
+          throw new Error(result.error || 'Failed to fetch employee');
+        }
+
+        const emp = result.data;
+        setFormData({
+          firstName: emp.firstName || '',
+          lastName: emp.lastName || '',
+          email: emp.email || '',
+          phone: emp.phone || '',
+          employeeId: emp.employeeNo || '',
+          department: emp.department || '',
+          position: emp.position || '',
+          hireDate: emp.hireDate ? new Date(emp.hireDate).toISOString().split('T')[0] : '',
+          salary: emp.baseSalary !== undefined && emp.baseSalary !== null ? String(emp.baseSalary) : '',
+          transportAllowance: emp.transportAllowance !== undefined && emp.transportAllowance !== null ? String(emp.transportAllowance) : '',
+          positionAllowance: emp.positionAllowance !== undefined && emp.positionAllowance !== null ? String(emp.positionAllowance) : '',
+          phoneAllowance: emp.phoneAllowance !== undefined && emp.phoneAllowance !== null ? String(emp.phoneAllowance) : '',
+          otherAllowance: emp.otherAllowance !== undefined && emp.otherAllowance !== null ? String(emp.otherAllowance) : '',
+          bankName: emp.bankName || '',
+          bankAccount: emp.bankAccount || '',
+          status: (emp.status as any) || 'Active',
+        });
+      } catch (err: any) {
+        console.error('Error fetching employee:', err);
+        setErrors({ fetch: err.message || 'Failed to load employee details' });
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchEmployee();
+  }, [employeeId]);
 
   const validateForm = (): boolean => {
     const newErrors: FormErrors = {};
@@ -64,11 +115,20 @@ export default function EditEmployeePage() {
     if (!formData.phone.trim()) {
       newErrors.phone = 'Phone is required';
     }
-    if (!formData.employeeId.trim()) {
-      newErrors.employeeId = 'Employee ID is required';
-    }
     if (formData.salary && isNaN(parseFloat(formData.salary))) {
-      newErrors.salary = 'Salary must be a number';
+      newErrors.salary = 'Base salary must be a number';
+    }
+    if (formData.transportAllowance && isNaN(parseFloat(formData.transportAllowance))) {
+      newErrors.transportAllowance = 'Transport allowance must be a number';
+    }
+    if (formData.positionAllowance && isNaN(parseFloat(formData.positionAllowance))) {
+      newErrors.positionAllowance = 'Position allowance must be a number';
+    }
+    if (formData.phoneAllowance && isNaN(parseFloat(formData.phoneAllowance))) {
+      newErrors.phoneAllowance = 'Phone allowance must be a number';
+    }
+    if (formData.otherAllowance && isNaN(parseFloat(formData.otherAllowance))) {
+      newErrors.otherAllowance = 'Other allowance must be a number';
     }
 
     setErrors(newErrors);
@@ -94,6 +154,14 @@ export default function EditEmployeePage() {
     }
   };
 
+  const baseSalaryNum = parseFloat(formData.salary) || 0;
+  const transportNum = parseFloat(formData.transportAllowance) || 0;
+  const positionNum = parseFloat(formData.positionAllowance) || 0;
+  const phoneNum = parseFloat(formData.phoneAllowance) || 0;
+  const otherNum = parseFloat(formData.otherAllowance) || 0;
+  const totalAllowances = transportNum + positionNum + phoneNum + otherNum;
+  const totalGrossSalary = baseSalaryNum + totalAllowances;
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -103,38 +171,66 @@ export default function EditEmployeePage() {
 
     setIsSubmitting(true);
     try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      const res = await fetch(`/api/employees/${employeeId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...formData,
+          baseSalary: baseSalaryNum,
+          transportAllowance: transportNum,
+          positionAllowance: positionNum,
+          phoneAllowance: phoneNum,
+          otherAllowance: otherNum,
+        }),
+      });
 
-      console.log('Form submitted:', formData);
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to update employee');
+      }
+
       alert('Employee updated successfully!');
-      router.push('/dashboard/employees');
-    } catch (error) {
+      router.push(`/dashboard/employees/${employeeId}`);
+    } catch (error: any) {
       console.error('Error submitting form:', error);
-      setErrors({ submit: 'Failed to update employee' });
+      setErrors({ submit: error.message || 'Failed to update employee' });
     } finally {
       setIsSubmitting(false);
     }
   };
 
   const handleCancel = () => {
-    router.push('/dashboard/employees');
+    router.push(`/dashboard/employees/${employeeId}`);
   };
 
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[50vh]">
+        <div className="text-center space-y-4">
+          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="text-slate-600 text-sm">Loading employee details...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 max-w-5xl mx-auto">
       {/* Breadcrumb */}
       <div className="flex items-center gap-2 text-sm text-slate-600">
         <button
-          onClick={handleCancel}
+          onClick={() => router.push('/dashboard/employees')}
           className="text-blue-600 hover:text-blue-700 font-medium"
         >
           Employees
         </button>
         <span>/</span>
-        <span className="text-slate-900 font-medium">
+        <button
+          onClick={handleCancel}
+          className="text-blue-600 hover:text-blue-700 font-medium"
+        >
           {formData.firstName} {formData.lastName}
-        </span>
+        </button>
         <span>/</span>
         <span className="text-slate-900 font-medium">Edit</span>
       </div>
@@ -142,7 +238,7 @@ export default function EditEmployeePage() {
       {/* Page Header */}
       <div>
         <h1 className="text-3xl font-bold text-slate-900">Edit Employee</h1>
-        <p className="text-slate-600 mt-2">Update employee information and details</p>
+        <p className="text-slate-600 mt-2">Update employee details, salary, and allowances</p>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
@@ -206,13 +302,12 @@ export default function EditEmployeePage() {
           <CardBody className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <Input
-                label="Employee ID"
+                label="Employee ID / Number"
                 name="employeeId"
                 value={formData.employeeId}
                 onChange={handleInputChange}
-                error={errors.employeeId}
-                placeholder="e.g., EMP001"
-                required
+                disabled
+                className="bg-gray-100 cursor-not-allowed"
               />
               <Select
                 label="Department"
@@ -226,6 +321,8 @@ export default function EditEmployeePage() {
                   { value: 'Sales', label: 'Sales' },
                   { value: 'Warehouse', label: 'Warehouse' },
                   { value: 'IT', label: 'IT' },
+                  { value: 'Management', label: 'Management' },
+                  { value: 'Logistics', label: 'Logistics' },
                 ]}
               />
             </div>
@@ -236,7 +333,7 @@ export default function EditEmployeePage() {
                 name="position"
                 value={formData.position}
                 onChange={handleInputChange}
-                placeholder="e.g., Manager, Operator"
+                placeholder="e.g., Operations Manager, Sales Representative"
               />
               <Input
                 label="Hire Date"
@@ -249,21 +346,105 @@ export default function EditEmployeePage() {
           </CardBody>
         </Card>
 
-        {/* Salary Information Section */}
-        <Card>
-          <CardHeader>
-            <h2 className="text-xl font-bold text-slate-900">Salary Information</h2>
+        {/* Salary & Allowances Section */}
+        <Card className="border-indigo-100">
+          <CardHeader className="bg-slate-50/70 border-b border-slate-100">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 rounded-md bg-indigo-600 text-white">
+                <DollarSign className="w-4 h-4" />
+              </div>
+              <div>
+                <h2 className="text-lg font-bold text-slate-900">Salary & Allowances</h2>
+                <p className="text-xs text-slate-500">Configure base salary and monthly allowances (Transport, Position, Phone)</p>
+              </div>
+            </div>
           </CardHeader>
           <CardBody className="space-y-6">
-            <Input
-              label="Salary (ETB)"
-              name="salary"
-              type="number"
-              value={formData.salary}
-              onChange={handleInputChange}
-              error={errors.salary}
-              placeholder="0.00"
-            />
+            {/* Base Salary */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <Input
+                label="Base Salary (ETB) *"
+                name="salary"
+                type="number"
+                step="0.01"
+                value={formData.salary}
+                onChange={handleInputChange}
+                error={errors.salary}
+                placeholder="e.g., 25000.00"
+                required
+              />
+              <Input
+                label="Transport Allowance (ETB)"
+                name="transportAllowance"
+                type="number"
+                step="0.01"
+                value={formData.transportAllowance}
+                onChange={handleInputChange}
+                error={errors.transportAllowance}
+                placeholder="e.g., 3000.00"
+              />
+            </div>
+
+            {/* Position, Phone, and Other Allowances */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <Input
+                label="Position Allowance (ETB)"
+                name="positionAllowance"
+                type="number"
+                step="0.01"
+                value={formData.positionAllowance}
+                onChange={handleInputChange}
+                error={errors.positionAllowance}
+                placeholder="e.g., 5000.00"
+              />
+              <Input
+                label="Phone Allowance (ETB)"
+                name="phoneAllowance"
+                type="number"
+                step="0.01"
+                value={formData.phoneAllowance}
+                onChange={handleInputChange}
+                error={errors.phoneAllowance}
+                placeholder="e.g., 1000.00"
+              />
+              <Input
+                label="Other Allowance (ETB)"
+                name="otherAllowance"
+                type="number"
+                step="0.01"
+                value={formData.otherAllowance}
+                onChange={handleInputChange}
+                error={errors.otherAllowance}
+                placeholder="e.g., 500.00"
+              />
+            </div>
+
+            {/* Total Compensation Summary Box */}
+            <div className="bg-gradient-to-br from-slate-50 to-indigo-50/40 p-4 rounded-xl border border-indigo-100/80">
+              <h3 className="text-xs font-semibold text-slate-700 uppercase tracking-wider mb-3">
+                Monthly Compensation Breakdown
+              </h3>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                <div className="bg-white p-3 rounded-lg border border-slate-200">
+                  <span className="text-xs text-slate-500 block">Base Salary:</span>
+                  <span className="text-base font-bold text-slate-900 font-mono">
+                    ETB {baseSalaryNum.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                  </span>
+                </div>
+                <div className="bg-white p-3 rounded-lg border border-slate-200">
+                  <span className="text-xs text-slate-500 block">Total Allowances:</span>
+                  <span className="text-base font-bold text-indigo-600 font-mono">
+                    ETB {totalAllowances.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                  </span>
+                </div>
+                <div className="bg-white p-3 rounded-lg border border-indigo-200 sm:col-span-2">
+                  <span className="text-xs text-indigo-700 font-medium block">Total Gross Monthly Compensation:</span>
+                  <span className="text-xl font-extrabold text-indigo-950 font-mono">
+                    ETB {totalGrossSalary.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                  </span>
+                </div>
+              </div>
+            </div>
           </CardBody>
         </Card>
 
@@ -273,21 +454,23 @@ export default function EditEmployeePage() {
             <h2 className="text-xl font-bold text-slate-900">Bank Information</h2>
           </CardHeader>
           <CardBody className="space-y-6">
-            <Input
-              label="Bank Name"
-              name="bankName"
-              value={formData.bankName}
-              onChange={handleInputChange}
-              placeholder="e.g., Commercial Bank of Ethiopia"
-            />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <Input
+                label="Bank Name"
+                name="bankName"
+                value={formData.bankName}
+                onChange={handleInputChange}
+                placeholder="e.g., Commercial Bank of Ethiopia (CBE), Awash Bank"
+              />
 
-            <Input
-              label="Bank Account Number"
-              name="bankAccount"
-              value={formData.bankAccount}
-              onChange={handleInputChange}
-              placeholder="e.g., 1234567890"
-            />
+              <Input
+                label="Bank Account Number"
+                name="bankAccount"
+                value={formData.bankAccount}
+                onChange={handleInputChange}
+                placeholder="e.g., 100012345678"
+              />
+            </div>
           </CardBody>
         </Card>
 
@@ -320,7 +503,7 @@ export default function EditEmployeePage() {
                 size="lg"
                 isLoading={isSubmitting}
               >
-                Update Employee
+                Save Changes
               </Button>
               <Button
                 type="button"

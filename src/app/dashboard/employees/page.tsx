@@ -8,7 +8,7 @@ import type { ColumnDef } from '@/components/ui';
 import { useApiList } from '@/hooks/useApi';
 
 interface Employee {
-  id: number;
+  id: string | number;
   employeeNo: string;
   firstName: string;
   lastName: string;
@@ -18,6 +18,10 @@ interface Employee {
   email: string;
   employmentType: string;
   baseSalary: number;
+  transportAllowance?: number;
+  positionAllowance?: number;
+  phoneAllowance?: number;
+  otherAllowance?: number;
   status: string;
 }
 

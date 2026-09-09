@@ -78,6 +78,20 @@ interface Item {
   unit: string;
 }
 
+const parseItemPrice = (ai: any): number => {
+  const unitPrice = Number(ai.unitPrice ?? ai.pricePerUnit ?? ai.price ?? 0);
+  const qty = Number(ai.qty ?? ai.quantity ?? 1);
+  const totalAmt = Number(ai.totalAmount ?? ai.amount ?? 0);
+  if (unitPrice > 0) return unitPrice;
+  if (totalAmt > 0 && qty > 0) {
+    if (ai.priceType === 'incl' || ai.vatIncluded === true || ai.priceType === 'inclusive') {
+      return (totalAmt / 1.15) / qty;
+    }
+    return totalAmt / qty;
+  }
+  return 0;
+};
+
 export default function EditAggregateDispatchPage() {
   const router = useRouter();
   const params = useParams();
@@ -120,14 +134,14 @@ export default function EditAggregateDispatchPage() {
   const [items, setItems] = useState<Item[]>([]);
   const [filteredItems, setFilteredItems] = useState<Item[]>([]);
 
-  // Item IDs sets per customer / agreement
+  // Map: key (agreementId/customerId) → Set of item IDs
   const [customerAgreementItems, setCustomerAgreementItems] = useState<Map<string, Set<string>>>(new Map());
-  // Map: `${agreementId}_${itemId}` and `${customerId}_${itemId}` → customer agreement price
+  // Map: `${agreementId}_${itemId}` / `${agrId}_${name}` / `${custId}_${itemId}` → unit price
   const [customerAgreementPrices, setCustomerAgreementPrices] = useState<Map<string, number>>(new Map());
 
-  // Item IDs sets per supplier / agreement
+  // Map: key (agreementId/supplierId) → Set of item IDs
   const [supplierAgreementItems, setSupplierAgreementItems] = useState<Map<string, Set<string>>>(new Map());
-  // Map: `${agreementId}_${itemId}` and `${supplierId}_${itemId}` → supplier agreement price
+  // Map: `${agreementId}_${itemId}` / `${agrId}_${name}` / `${suppId}_${itemId}` → unit price
   const [supplierAgreementPrices, setSupplierAgreementPrices] = useState<Map<string, number>>(new Map());
 
   // Form state
@@ -200,14 +214,17 @@ export default function EditAggregateDispatchPage() {
           setTrucks(currentTransporter?.trucks || []);
         }
 
-        // Database items map (strictly Item table)
+        // Database items map
         const dbItemMap = new Map<string, Item>();
+        const dbItemsList: Item[] = [];
         if (itemsRes.ok) {
           const iData = await itemsRes.json();
           (iData.data || []).forEach((i: Item) => {
             dbItemMap.set(i.id, i);
+            dbItemsList.push(i);
           });
         }
+        setItems(dbItemsList);
 
         // Parse customer agreements and price mappings
         const rawCustAgreements: CustomerAgreement[] = [];
@@ -223,8 +240,18 @@ export default function EditAggregateDispatchPage() {
             try {
               const agrItems = typeof agr.items === 'string' ? JSON.parse(agr.items) : (agr.items || []);
               agrItems.forEach((ai: any) => {
-                const targetItemId = ai.itemId || (ai.id && dbItemMap.has(ai.id) ? ai.id : null);
-                if (targetItemId && dbItemMap.has(targetItemId)) {
+                const rawId = ai.itemId || ai.id;
+                const rawName = ai.itemName || ai.name || ai.description || '';
+                let dbItem = rawId ? dbItemMap.get(rawId) : null;
+                if (!dbItem && rawName) {
+                  dbItem = dbItemsList.find((i) => i.name.toLowerCase() === rawName.toLowerCase()) || null;
+                }
+
+                const targetItemId = dbItem?.id || rawId;
+                const targetItemName = (dbItem?.name || rawName).toLowerCase();
+                const price = parseItemPrice(ai);
+
+                if (targetItemId) {
                   if (custId) {
                     if (!custItemsMap.has(custId)) custItemsMap.set(custId, new Set());
                     custItemsMap.get(custId)!.add(targetItemId);
@@ -234,24 +261,14 @@ export default function EditAggregateDispatchPage() {
                     custItemsMap.get(agrId)!.add(targetItemId);
                   }
 
-                  const unitPrice = Number(ai.unitPrice ?? ai.pricePerUnit ?? ai.price ?? 0);
-                  const qty = Number(ai.qty ?? ai.quantity ?? 1);
-                  const totalAmt = Number(ai.totalAmount ?? ai.amount ?? 0);
-                  let price = 0;
-                  if (unitPrice > 0) {
-                    price = unitPrice;
-                  } else if (totalAmt > 0 && qty > 0) {
-                    if (ai.priceType === 'incl' || ai.vatIncluded === true || ai.priceType === 'inclusive') {
-                      price = (totalAmt / 1.15) / qty;
-                    } else {
-                      price = totalAmt / qty;
-                    }
-                  }
-
                   if (price > 0) {
-                    if (agrId) custPricesMap.set(`${agrId}_${targetItemId}`, price);
-                    if (custId && !custPricesMap.has(`${custId}_${targetItemId}`)) {
-                      custPricesMap.set(`${custId}_${targetItemId}`, price);
+                    if (agrId) {
+                      custPricesMap.set(`${agrId}_${targetItemId}`, price);
+                      if (targetItemName) custPricesMap.set(`${agrId}_${targetItemName}`, price);
+                    }
+                    if (custId) {
+                      if (!custPricesMap.has(`${custId}_${targetItemId}`)) custPricesMap.set(`${custId}_${targetItemId}`, price);
+                      if (targetItemName && !custPricesMap.has(`${custId}_${targetItemName}`)) custPricesMap.set(`${custId}_${targetItemName}`, price);
                     }
                   }
                 }
@@ -277,8 +294,18 @@ export default function EditAggregateDispatchPage() {
             try {
               const agrItems = typeof agr.items === 'string' ? JSON.parse(agr.items) : (agr.items || []);
               agrItems.forEach((ai: any) => {
-                const targetItemId = ai.itemId || (ai.id && dbItemMap.has(ai.id) ? ai.id : null);
-                if (targetItemId && dbItemMap.has(targetItemId)) {
+                const rawId = ai.itemId || ai.id;
+                const rawName = ai.itemName || ai.name || ai.description || '';
+                let dbItem = rawId ? dbItemMap.get(rawId) : null;
+                if (!dbItem && rawName) {
+                  dbItem = dbItemsList.find((i) => i.name.toLowerCase() === rawName.toLowerCase()) || null;
+                }
+
+                const targetItemId = dbItem?.id || rawId;
+                const targetItemName = (dbItem?.name || rawName).toLowerCase();
+                const price = parseItemPrice(ai);
+
+                if (targetItemId) {
                   if (suppId) {
                     if (!suppItemsMap.has(suppId)) suppItemsMap.set(suppId, new Set());
                     suppItemsMap.get(suppId)!.add(targetItemId);
@@ -288,24 +315,14 @@ export default function EditAggregateDispatchPage() {
                     suppItemsMap.get(agrId)!.add(targetItemId);
                   }
 
-                  const unitPrice = Number(ai.unitPrice ?? ai.pricePerUnit ?? ai.price ?? 0);
-                  const qty = Number(ai.qty ?? ai.quantity ?? 1);
-                  const totalAmt = Number(ai.totalAmount ?? ai.amount ?? 0);
-                  let price = 0;
-                  if (unitPrice > 0) {
-                    price = unitPrice;
-                  } else if (totalAmt > 0 && qty > 0) {
-                    if (ai.priceType === 'incl' || ai.vatIncluded === true || ai.priceType === 'inclusive') {
-                      price = (totalAmt / 1.15) / qty;
-                    } else {
-                      price = totalAmt / qty;
-                    }
-                  }
-
                   if (price > 0) {
-                    if (agrId) suppPricesMap.set(`${agrId}_${targetItemId}`, price);
-                    if (suppId && !suppPricesMap.has(`${suppId}_${targetItemId}`)) {
-                      suppPricesMap.set(`${suppId}_${targetItemId}`, price);
+                    if (agrId) {
+                      suppPricesMap.set(`${agrId}_${targetItemId}`, price);
+                      if (targetItemName) suppPricesMap.set(`${agrId}_${targetItemName}`, price);
+                    }
+                    if (suppId) {
+                      if (!suppPricesMap.has(`${suppId}_${targetItemId}`)) suppPricesMap.set(`${suppId}_${targetItemId}`, price);
+                      if (targetItemName && !suppPricesMap.has(`${suppId}_${targetItemName}`)) suppPricesMap.set(`${suppId}_${targetItemName}`, price);
                     }
                   }
                 }
@@ -316,10 +333,6 @@ export default function EditAggregateDispatchPage() {
         setSupplierAgreements(rawSuppAgreements);
         setSupplierAgreementItems(suppItemsMap);
         setSupplierAgreementPrices(suppPricesMap);
-
-        // Final items list strictly contains items from the Item database table
-        const allItemsList = Array.from(dbItemMap.values());
-        setItems(allItemsList);
 
         // Determine initial customer agreement and supplier agreement IDs
         const initCustAgrId = delivery.customerAgreement?.id || 
@@ -426,11 +439,20 @@ export default function EditAggregateDispatchPage() {
   // Helper to get Customer Unit Price
   const lookupCustomerPrice = (custId: string, agrId: string, targetItemId: string): number | undefined => {
     if (!targetItemId) return undefined;
+    const dbItem = items.find((i) => i.id === targetItemId);
+    const itemName = dbItem?.name ? dbItem.name.toLowerCase() : '';
+
     if (agrId && customerAgreementPrices.has(`${agrId}_${targetItemId}`)) {
       return customerAgreementPrices.get(`${agrId}_${targetItemId}`);
     }
+    if (agrId && itemName && customerAgreementPrices.has(`${agrId}_${itemName}`)) {
+      return customerAgreementPrices.get(`${agrId}_${itemName}`);
+    }
     if (custId && customerAgreementPrices.has(`${custId}_${targetItemId}`)) {
       return customerAgreementPrices.get(`${custId}_${targetItemId}`);
+    }
+    if (custId && itemName && customerAgreementPrices.has(`${custId}_${itemName}`)) {
+      return customerAgreementPrices.get(`${custId}_${itemName}`);
     }
     return undefined;
   };
@@ -438,28 +460,66 @@ export default function EditAggregateDispatchPage() {
   // Helper to get Supplier Unit Price
   const lookupSupplierPrice = (suppId: string, agrId: string, targetItemId: string): number | undefined => {
     if (!targetItemId) return undefined;
+    const dbItem = items.find((i) => i.id === targetItemId);
+    const itemName = dbItem?.name ? dbItem.name.toLowerCase() : '';
+
     if (agrId && supplierAgreementPrices.has(`${agrId}_${targetItemId}`)) {
       return supplierAgreementPrices.get(`${agrId}_${targetItemId}`);
+    }
+    if (agrId && itemName && supplierAgreementPrices.has(`${agrId}_${itemName}`)) {
+      return supplierAgreementPrices.get(`${agrId}_${itemName}`);
     }
     if (suppId && supplierAgreementPrices.has(`${suppId}_${targetItemId}`)) {
       return supplierAgreementPrices.get(`${suppId}_${targetItemId}`);
     }
+    if (suppId && itemName && supplierAgreementPrices.has(`${suppId}_${itemName}`)) {
+      return supplierAgreementPrices.get(`${suppId}_${itemName}`);
+    }
     return undefined;
+  };
+
+  // Helper to extract first item ID from customer agreement
+  const getFirstItemFromCustAgr = (agrId: string): string => {
+    if (!agrId) return '';
+    const itemIds = customerAgreementItems.get(agrId);
+    if (itemIds && itemIds.size > 0) {
+      return Array.from(itemIds)[0];
+    }
+    return '';
+  };
+
+  // Helper to extract first item ID from supplier agreement
+  const getFirstItemFromSuppAgr = (agrId: string): string => {
+    if (!agrId) return '';
+    const itemIds = supplierAgreementItems.get(agrId);
+    if (itemIds && itemIds.size > 0) {
+      return Array.from(itemIds)[0];
+    }
+    return '';
   };
 
   // When Customer is changed
   const handleCustomerChange = (newCustId: string) => {
-    // Find active agreements for this customer
     const matchingAgreements = customerAgreements.filter((a) => a.customerId === newCustId);
     const newSelectedAgrId = matchingAgreements.length > 0 ? matchingAgreements[0].id : '';
 
-    const autoCustPrice = lookupCustomerPrice(newCustId, newSelectedAgrId, formData.itemId);
+    // Check if current item exists in new customer agreement
+    let targetItemId = formData.itemId;
+    const custAgrItems = newSelectedAgrId ? customerAgreementItems.get(newSelectedAgrId) : customerAgreementItems.get(newCustId);
+    if ((!targetItemId || (custAgrItems && !custAgrItems.has(targetItemId))) && custAgrItems && custAgrItems.size > 0) {
+      targetItemId = Array.from(custAgrItems)[0];
+    }
+
+    const autoCustPrice = lookupCustomerPrice(newCustId, newSelectedAgrId, targetItemId);
+    const autoSuppPrice = lookupSupplierPrice(formData.supplierId, formData.selectedSupplierAgreementId, targetItemId);
 
     setFormData((prev) => ({
       ...prev,
       customerId: newCustId,
       selectedCustomerAgreementId: newSelectedAgrId,
+      itemId: targetItemId,
       customerPrice: autoCustPrice !== undefined ? String(autoCustPrice) : prev.customerPrice,
+      aggregateValue: autoSuppPrice !== undefined ? String(autoSuppPrice) : prev.aggregateValue,
     }));
   };
 
@@ -468,29 +528,46 @@ export default function EditAggregateDispatchPage() {
     const agr = customerAgreements.find((a) => a.id === newAgrId);
     const custId = agr?.customerId || formData.customerId;
 
-    const autoCustPrice = lookupCustomerPrice(custId, newAgrId, formData.itemId);
+    let targetItemId = formData.itemId;
+    const agrItemIds = customerAgreementItems.get(newAgrId);
+    if ((!targetItemId || (agrItemIds && !agrItemIds.has(targetItemId))) && agrItemIds && agrItemIds.size > 0) {
+      targetItemId = Array.from(agrItemIds)[0];
+    }
+
+    const autoCustPrice = lookupCustomerPrice(custId, newAgrId, targetItemId);
+    const autoSuppPrice = lookupSupplierPrice(formData.supplierId, formData.selectedSupplierAgreementId, targetItemId);
 
     setFormData((prev) => ({
       ...prev,
       customerId: custId,
       selectedCustomerAgreementId: newAgrId,
+      itemId: targetItemId,
       customerPrice: autoCustPrice !== undefined ? String(autoCustPrice) : prev.customerPrice,
+      aggregateValue: autoSuppPrice !== undefined ? String(autoSuppPrice) : prev.aggregateValue,
     }));
   };
 
   // When Supplier is changed
   const handleSupplierChange = (newSuppId: string) => {
-    // Find active agreements for this supplier
     const matchingAgreements = supplierAgreements.filter((a) => a.supplierId === newSuppId);
     const newSelectedAgrId = matchingAgreements.length > 0 ? matchingAgreements[0].id : '';
 
-    const autoSuppPrice = lookupSupplierPrice(newSuppId, newSelectedAgrId, formData.itemId);
+    let targetItemId = formData.itemId;
+    const suppAgrItems = newSelectedAgrId ? supplierAgreementItems.get(newSelectedAgrId) : supplierAgreementItems.get(newSuppId);
+    if ((!targetItemId || (suppAgrItems && !suppAgrItems.has(targetItemId))) && suppAgrItems && suppAgrItems.size > 0) {
+      targetItemId = Array.from(suppAgrItems)[0];
+    }
+
+    const autoSuppPrice = lookupSupplierPrice(newSuppId, newSelectedAgrId, targetItemId);
+    const autoCustPrice = lookupCustomerPrice(formData.customerId, formData.selectedCustomerAgreementId, targetItemId);
 
     setFormData((prev) => ({
       ...prev,
       supplierId: newSuppId,
       selectedSupplierAgreementId: newSelectedAgrId,
+      itemId: targetItemId,
       aggregateValue: autoSuppPrice !== undefined ? String(autoSuppPrice) : prev.aggregateValue,
+      customerPrice: autoCustPrice !== undefined ? String(autoCustPrice) : prev.customerPrice,
     }));
   };
 
@@ -499,13 +576,22 @@ export default function EditAggregateDispatchPage() {
     const agr = supplierAgreements.find((a) => a.id === newAgrId);
     const suppId = agr?.supplierId || formData.supplierId;
 
-    const autoSuppPrice = lookupSupplierPrice(suppId, newAgrId, formData.itemId);
+    let targetItemId = formData.itemId;
+    const agrItemIds = supplierAgreementItems.get(newAgrId);
+    if ((!targetItemId || (agrItemIds && !agrItemIds.has(targetItemId))) && agrItemIds && agrItemIds.size > 0) {
+      targetItemId = Array.from(agrItemIds)[0];
+    }
+
+    const autoSuppPrice = lookupSupplierPrice(suppId, newAgrId, targetItemId);
+    const autoCustPrice = lookupCustomerPrice(formData.customerId, formData.selectedCustomerAgreementId, targetItemId);
 
     setFormData((prev) => ({
       ...prev,
       supplierId: suppId,
       selectedSupplierAgreementId: newAgrId,
+      itemId: targetItemId,
       aggregateValue: autoSuppPrice !== undefined ? String(autoSuppPrice) : prev.aggregateValue,
+      customerPrice: autoCustPrice !== undefined ? String(autoCustPrice) : prev.customerPrice,
     }));
   };
 
@@ -760,7 +846,7 @@ export default function EditAggregateDispatchPage() {
                   </div>
                   <div>
                     <h3 className="text-sm font-semibold text-emerald-950">Customer & Sales Agreement</h3>
-                    <p className="text-[11px] text-emerald-700">Select customer and associated agreement for pricing</p>
+                    <p className="text-[11px] text-emerald-700">Select customer and agreement to pull customer unit price</p>
                   </div>
                 </div>
 
@@ -826,7 +912,7 @@ export default function EditAggregateDispatchPage() {
                   </div>
                   <div>
                     <h3 className="text-sm font-semibold text-amber-950">Supplier & Purchase Agreement</h3>
-                    <p className="text-[11px] text-amber-700">Select supplier and associated agreement for pricing</p>
+                    <p className="text-[11px] text-amber-700">Select supplier and agreement to pull supplier unit price</p>
                   </div>
                 </div>
 
@@ -945,11 +1031,23 @@ export default function EditAggregateDispatchPage() {
                   className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border px-3 py-2 text-sm"
                 >
                   <option value="">Select Item</option>
-                  {filteredItems.map((i) => (
-                    <option key={i.id} value={i.id}>
-                      {i.name} ({i.unit})
-                    </option>
-                  ))}
+                  {filteredItems.map((i) => {
+                    const custPrice = lookupCustomerPrice(formData.customerId, formData.selectedCustomerAgreementId, i.id);
+                    const suppPrice = lookupSupplierPrice(formData.supplierId, formData.selectedSupplierAgreementId, i.id);
+                    let priceHint = '';
+                    if (custPrice !== undefined && suppPrice !== undefined) {
+                      priceHint = ` — Cust: ${custPrice.toLocaleString()} ETB | Supp: ${suppPrice.toLocaleString()} ETB`;
+                    } else if (custPrice !== undefined) {
+                      priceHint = ` — Cust: ${custPrice.toLocaleString()} ETB`;
+                    } else if (suppPrice !== undefined) {
+                      priceHint = ` — Supp: ${suppPrice.toLocaleString()} ETB`;
+                    }
+                    return (
+                      <option key={i.id} value={i.id}>
+                        {i.name} ({i.unit}){priceHint}
+                      </option>
+                    );
+                  })}
                 </select>
               </div>
 
@@ -1055,7 +1153,7 @@ export default function EditAggregateDispatchPage() {
                 <div className="flex items-center justify-between mb-1">
                   <label className="block text-xs font-medium text-gray-700">Customer Value (ETB/m³) *</label>
                   <span className="text-[10px] text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200 font-medium">
-                    {formData.selectedCustomerAgreementId ? 'From Sales Agr' : 'Per-Dispatch'}
+                    {formData.selectedCustomerAgreementId ? '✓ Synced from Sales Agr' : 'Per-Dispatch'}
                   </span>
                 </div>
                 <Input
@@ -1072,7 +1170,7 @@ export default function EditAggregateDispatchPage() {
                 <div className="flex items-center justify-between mb-1">
                   <label className="block text-xs font-medium text-gray-700">Supplier Value (ETB/m³) *</label>
                   <span className="text-[10px] text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 font-medium">
-                    {formData.selectedSupplierAgreementId ? 'From Supp Agr' : 'Per-Dispatch'}
+                    {formData.selectedSupplierAgreementId ? '✓ Synced from Supp Agr' : 'Per-Dispatch'}
                   </span>
                 </div>
                 <Input

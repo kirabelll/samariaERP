@@ -2,8 +2,9 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { Card, CardHeader, CardBody, CardFooter, Button, Input, Select } from '@/components/ui';
+import { Card, CardHeader, CardBody, CardFooter, Button, Input } from '@/components/ui';
 import { ConfirmDialog } from '@/components/ui/Modal';
+import { Building2, FileText, CheckCircle2, AlertCircle } from 'lucide-react';
 
 interface Customer {
   id?: string;
@@ -19,6 +20,41 @@ interface Supplier {
   code: string;
   agreementId?: string;
   displayName?: string;
+}
+
+interface CustomerAgreement {
+  id: string;
+  agreementNo: string;
+  customerId: string;
+  status: string;
+  validFrom: string;
+  validTo: string;
+  offloadingSite?: string | null;
+  totalAmount?: number;
+  items?: any;
+  customer?: {
+    id: string;
+    companyName: string;
+    code?: string;
+  };
+}
+
+interface SupplierAgreement {
+  id: string;
+  agreementNo: string;
+  supplierId: string;
+  status: string;
+  validFrom: string;
+  validTo: string;
+  loadingSite?: string | null;
+  offloadingSite?: string | null;
+  totalAmount?: number;
+  items?: any;
+  supplier?: {
+    id: string;
+    companyName: string;
+    code?: string;
+  };
 }
 
 interface Transporter {
@@ -76,26 +112,31 @@ export default function EditAggregateDispatchPage() {
 
   // Reference options
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [customerAgreements, setCustomerAgreements] = useState<CustomerAgreement[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [supplierAgreements, setSupplierAgreements] = useState<SupplierAgreement[]>([]);
   const [transporters, setTransporters] = useState<Transporter[]>([]);
   const [trucks, setTrucks] = useState<Truck[]>([]);
   const [items, setItems] = useState<Item[]>([]);
   const [filteredItems, setFilteredItems] = useState<Item[]>([]);
 
-  // Map: customerId → Set of itemIds from their AGGREGATE sales agreements
+  // Item IDs sets per customer / agreement
   const [customerAgreementItems, setCustomerAgreementItems] = useState<Map<string, Set<string>>>(new Map());
-  // Map: `${customerId}_${itemId}` → customer agreement price
+  // Map: `${agreementId}_${itemId}` and `${customerId}_${itemId}` → customer agreement price
   const [customerAgreementPrices, setCustomerAgreementPrices] = useState<Map<string, number>>(new Map());
-  // Map: supplierId → Set of itemIds from their AGGREGATE supplier agreements
+
+  // Item IDs sets per supplier / agreement
   const [supplierAgreementItems, setSupplierAgreementItems] = useState<Map<string, Set<string>>>(new Map());
-  // Map: `${supplierId}_${itemId}` → supplier agreement price
+  // Map: `${agreementId}_${itemId}` and `${supplierId}_${itemId}` → supplier agreement price
   const [supplierAgreementPrices, setSupplierAgreementPrices] = useState<Map<string, number>>(new Map());
 
   // Form state
   const [formData, setFormData] = useState({
     dispatchNo: '',
     customerId: '',
+    selectedCustomerAgreementId: '',
     supplierId: '',
+    selectedSupplierAgreementId: '',
     transporterId: '',
     truckId: '',
     itemId: '',
@@ -104,8 +145,8 @@ export default function EditAggregateDispatchPage() {
     loadedVolume: '',
     deliveredVolume: '',
     transportRate: '',
-    aggregateValue: '',
-    customerPrice: '',
+    aggregateValue: '', // Supplier rate
+    customerPrice: '',  // Customer rate
     status: 'Dispatched',
     dispatchDate: '',
     deliveryDate: '',
@@ -168,23 +209,30 @@ export default function EditAggregateDispatchPage() {
           });
         }
 
-        // Parse customer agreement items (customerId -> Set of itemIds from Item table)
+        // Parse customer agreements and price mappings
+        const rawCustAgreements: CustomerAgreement[] = [];
         const custItemsMap = new Map<string, Set<string>>();
         const custPricesMap = new Map<string, number>();
+
         if (custAgreementsRes.ok) {
           const custAgrData = await custAgreementsRes.json();
           (custAgrData.data || []).forEach((agr: any) => {
+            rawCustAgreements.push(agr);
             const custId = agr.customerId || agr.customer?.id;
-            if (!custId) return;
+            const agrId = agr.id;
             try {
               const agrItems = typeof agr.items === 'string' ? JSON.parse(agr.items) : (agr.items || []);
               agrItems.forEach((ai: any) => {
                 const targetItemId = ai.itemId || (ai.id && dbItemMap.has(ai.id) ? ai.id : null);
                 if (targetItemId && dbItemMap.has(targetItemId)) {
-                  if (!custItemsMap.has(custId)) {
-                    custItemsMap.set(custId, new Set());
+                  if (custId) {
+                    if (!custItemsMap.has(custId)) custItemsMap.set(custId, new Set());
+                    custItemsMap.get(custId)!.add(targetItemId);
                   }
-                  custItemsMap.get(custId)!.add(targetItemId);
+                  if (agrId) {
+                    if (!custItemsMap.has(agrId)) custItemsMap.set(agrId, new Set());
+                    custItemsMap.get(agrId)!.add(targetItemId);
+                  }
 
                   const unitPrice = Number(ai.unitPrice ?? ai.pricePerUnit ?? ai.price ?? 0);
                   const qty = Number(ai.qty ?? ai.quantity ?? 1);
@@ -200,34 +248,45 @@ export default function EditAggregateDispatchPage() {
                     }
                   }
 
-                  if (price > 0 && !custPricesMap.has(`${custId}_${targetItemId}`)) {
-                    custPricesMap.set(`${custId}_${targetItemId}`, price);
+                  if (price > 0) {
+                    if (agrId) custPricesMap.set(`${agrId}_${targetItemId}`, price);
+                    if (custId && !custPricesMap.has(`${custId}_${targetItemId}`)) {
+                      custPricesMap.set(`${custId}_${targetItemId}`, price);
+                    }
                   }
                 }
               });
             } catch { /* ignore */ }
           });
         }
+        setCustomerAgreements(rawCustAgreements);
         setCustomerAgreementItems(custItemsMap);
         setCustomerAgreementPrices(custPricesMap);
 
-        // Parse supplier agreement items & prices (supplierId -> Set of itemIds and prices)
+        // Parse supplier agreements and price mappings
+        const rawSuppAgreements: SupplierAgreement[] = [];
         const suppItemsMap = new Map<string, Set<string>>();
         const suppPricesMap = new Map<string, number>();
+
         if (suppAgreementsRes.ok) {
           const suppAgrData = await suppAgreementsRes.json();
           (suppAgrData.data || []).forEach((agr: any) => {
+            rawSuppAgreements.push(agr);
             const suppId = agr.supplierId || agr.supplier?.id;
-            if (!suppId) return;
+            const agrId = agr.id;
             try {
               const agrItems = typeof agr.items === 'string' ? JSON.parse(agr.items) : (agr.items || []);
               agrItems.forEach((ai: any) => {
                 const targetItemId = ai.itemId || (ai.id && dbItemMap.has(ai.id) ? ai.id : null);
                 if (targetItemId && dbItemMap.has(targetItemId)) {
-                  if (!suppItemsMap.has(suppId)) {
-                    suppItemsMap.set(suppId, new Set());
+                  if (suppId) {
+                    if (!suppItemsMap.has(suppId)) suppItemsMap.set(suppId, new Set());
+                    suppItemsMap.get(suppId)!.add(targetItemId);
                   }
-                  suppItemsMap.get(suppId)!.add(targetItemId);
+                  if (agrId) {
+                    if (!suppItemsMap.has(agrId)) suppItemsMap.set(agrId, new Set());
+                    suppItemsMap.get(agrId)!.add(targetItemId);
+                  }
 
                   const unitPrice = Number(ai.unitPrice ?? ai.pricePerUnit ?? ai.price ?? 0);
                   const qty = Number(ai.qty ?? ai.quantity ?? 1);
@@ -243,14 +302,18 @@ export default function EditAggregateDispatchPage() {
                     }
                   }
 
-                  if (price > 0 && !suppPricesMap.has(`${suppId}_${targetItemId}`)) {
-                    suppPricesMap.set(`${suppId}_${targetItemId}`, price);
+                  if (price > 0) {
+                    if (agrId) suppPricesMap.set(`${agrId}_${targetItemId}`, price);
+                    if (suppId && !suppPricesMap.has(`${suppId}_${targetItemId}`)) {
+                      suppPricesMap.set(`${suppId}_${targetItemId}`, price);
+                    }
                   }
                 }
               });
             } catch { /* ignore */ }
           });
         }
+        setSupplierAgreements(rawSuppAgreements);
         setSupplierAgreementItems(suppItemsMap);
         setSupplierAgreementPrices(suppPricesMap);
 
@@ -258,21 +321,42 @@ export default function EditAggregateDispatchPage() {
         const allItemsList = Array.from(dbItemMap.values());
         setItems(allItemsList);
 
-        // Pre-fill form values
-        const initialCustPrice = delivery.customerPrice != null 
-          ? String(delivery.customerPrice) 
-          : (delivery.customerId && delivery.itemId && custPricesMap.has(`${delivery.customerId}_${delivery.itemId}`)
-              ? String(custPricesMap.get(`${delivery.customerId}_${delivery.itemId}`))
-              : (delivery.aggregateValue != null ? String(delivery.aggregateValue) : ''));
+        // Determine initial customer agreement and supplier agreement IDs
+        const initCustAgrId = delivery.customerAgreement?.id || 
+          (rawCustAgreements.find((a) => a.customerId === delivery.customerId)?.id || '');
 
-        const initialSuppPrice = delivery.supplierId && delivery.itemId && suppPricesMap.has(`${delivery.supplierId}_${delivery.itemId}`)
-          ? String(suppPricesMap.get(`${delivery.supplierId}_${delivery.itemId}`))
-          : (delivery.supplierPrice != null ? String(delivery.supplierPrice) : (delivery.aggregateValue != null ? String(delivery.aggregateValue) : ''));
+        const initSuppAgrId = delivery.supplierAgreement?.id || 
+          (rawSuppAgreements.find((a) => a.supplierId === delivery.supplierId)?.id || '');
+
+        // Determine initial prices
+        let initialCustPrice = '';
+        if (delivery.customerPrice != null) {
+          initialCustPrice = String(delivery.customerPrice);
+        } else if (initCustAgrId && delivery.itemId && custPricesMap.has(`${initCustAgrId}_${delivery.itemId}`)) {
+          initialCustPrice = String(custPricesMap.get(`${initCustAgrId}_${delivery.itemId}`));
+        } else if (delivery.customerId && delivery.itemId && custPricesMap.has(`${delivery.customerId}_${delivery.itemId}`)) {
+          initialCustPrice = String(custPricesMap.get(`${delivery.customerId}_${delivery.itemId}`));
+        } else if (delivery.aggregateValue != null) {
+          initialCustPrice = String(delivery.aggregateValue);
+        }
+
+        let initialSuppPrice = '';
+        if (delivery.aggregateValue != null && Number(delivery.aggregateValue) > 0) {
+          initialSuppPrice = String(delivery.aggregateValue);
+        } else if (initSuppAgrId && delivery.itemId && suppPricesMap.has(`${initSuppAgrId}_${delivery.itemId}`)) {
+          initialSuppPrice = String(suppPricesMap.get(`${initSuppAgrId}_${delivery.itemId}`));
+        } else if (delivery.supplierId && delivery.itemId && suppPricesMap.has(`${delivery.supplierId}_${delivery.itemId}`)) {
+          initialSuppPrice = String(suppPricesMap.get(`${delivery.supplierId}_${delivery.itemId}`));
+        } else if (delivery.supplierPrice != null) {
+          initialSuppPrice = String(delivery.supplierPrice);
+        }
 
         setFormData({
           dispatchNo: delivery.dispatchNo || '',
           customerId: delivery.customerId || '',
+          selectedCustomerAgreementId: initCustAgrId,
           supplierId: delivery.supplierId || '',
+          selectedSupplierAgreementId: initSuppAgrId,
           transporterId: delivery.transporterId || '',
           truckId: delivery.truckId || '',
           itemId: delivery.itemId || '',
@@ -299,13 +383,14 @@ export default function EditAggregateDispatchPage() {
     fetchAllData();
   }, [id]);
 
-  // Dynamically filter items list based on selected customer & supplier
+  // Dynamically filter items list based on selected customer/agreement & supplier/agreement
   useEffect(() => {
     let available = [...items];
 
-    // Filter by customer's agreement items if customer is selected and has agreement items
-    if (formData.customerId && customerAgreementItems.has(formData.customerId)) {
-      const custItemIds = customerAgreementItems.get(formData.customerId)!;
+    // Filter by customer agreement items
+    const custKey = formData.selectedCustomerAgreementId || formData.customerId;
+    if (custKey && customerAgreementItems.has(custKey)) {
+      const custItemIds = customerAgreementItems.get(custKey)!;
       const filteredByCust = available.filter(
         (i) => custItemIds.has(i.id) || i.id === formData.itemId
       );
@@ -314,9 +399,10 @@ export default function EditAggregateDispatchPage() {
       }
     }
 
-    // Intersect with supplier's agreement items if supplier is selected
-    if (formData.supplierId && supplierAgreementItems.has(formData.supplierId)) {
-      const suppItemIds = supplierAgreementItems.get(formData.supplierId)!;
+    // Intersect with supplier agreement items
+    const suppKey = formData.selectedSupplierAgreementId || formData.supplierId;
+    if (suppKey && supplierAgreementItems.has(suppKey)) {
+      const suppItemIds = supplierAgreementItems.get(suppKey)!;
       const filteredBySupp = available.filter(
         (i) => suppItemIds.has(i.id) || i.id === formData.itemId
       );
@@ -326,7 +412,123 @@ export default function EditAggregateDispatchPage() {
     }
 
     setFilteredItems(available);
-  }, [formData.customerId, formData.supplierId, formData.itemId, items, customerAgreementItems, supplierAgreementItems]);
+  }, [
+    formData.customerId,
+    formData.selectedCustomerAgreementId,
+    formData.supplierId,
+    formData.selectedSupplierAgreementId,
+    formData.itemId,
+    items,
+    customerAgreementItems,
+    supplierAgreementItems,
+  ]);
+
+  // Helper to get Customer Unit Price
+  const lookupCustomerPrice = (custId: string, agrId: string, targetItemId: string): number | undefined => {
+    if (!targetItemId) return undefined;
+    if (agrId && customerAgreementPrices.has(`${agrId}_${targetItemId}`)) {
+      return customerAgreementPrices.get(`${agrId}_${targetItemId}`);
+    }
+    if (custId && customerAgreementPrices.has(`${custId}_${targetItemId}`)) {
+      return customerAgreementPrices.get(`${custId}_${targetItemId}`);
+    }
+    return undefined;
+  };
+
+  // Helper to get Supplier Unit Price
+  const lookupSupplierPrice = (suppId: string, agrId: string, targetItemId: string): number | undefined => {
+    if (!targetItemId) return undefined;
+    if (agrId && supplierAgreementPrices.has(`${agrId}_${targetItemId}`)) {
+      return supplierAgreementPrices.get(`${agrId}_${targetItemId}`);
+    }
+    if (suppId && supplierAgreementPrices.has(`${suppId}_${targetItemId}`)) {
+      return supplierAgreementPrices.get(`${suppId}_${targetItemId}`);
+    }
+    return undefined;
+  };
+
+  // When Customer is changed
+  const handleCustomerChange = (newCustId: string) => {
+    // Find active agreements for this customer
+    const matchingAgreements = customerAgreements.filter((a) => a.customerId === newCustId);
+    const newSelectedAgrId = matchingAgreements.length > 0 ? matchingAgreements[0].id : '';
+
+    const autoCustPrice = lookupCustomerPrice(newCustId, newSelectedAgrId, formData.itemId);
+
+    setFormData((prev) => ({
+      ...prev,
+      customerId: newCustId,
+      selectedCustomerAgreementId: newSelectedAgrId,
+      customerPrice: autoCustPrice !== undefined ? String(autoCustPrice) : prev.customerPrice,
+    }));
+  };
+
+  // When Customer Agreement is changed
+  const handleCustomerAgreementChange = (newAgrId: string) => {
+    const agr = customerAgreements.find((a) => a.id === newAgrId);
+    const custId = agr?.customerId || formData.customerId;
+
+    const autoCustPrice = lookupCustomerPrice(custId, newAgrId, formData.itemId);
+
+    setFormData((prev) => ({
+      ...prev,
+      customerId: custId,
+      selectedCustomerAgreementId: newAgrId,
+      customerPrice: autoCustPrice !== undefined ? String(autoCustPrice) : prev.customerPrice,
+    }));
+  };
+
+  // When Supplier is changed
+  const handleSupplierChange = (newSuppId: string) => {
+    // Find active agreements for this supplier
+    const matchingAgreements = supplierAgreements.filter((a) => a.supplierId === newSuppId);
+    const newSelectedAgrId = matchingAgreements.length > 0 ? matchingAgreements[0].id : '';
+
+    const autoSuppPrice = lookupSupplierPrice(newSuppId, newSelectedAgrId, formData.itemId);
+
+    setFormData((prev) => ({
+      ...prev,
+      supplierId: newSuppId,
+      selectedSupplierAgreementId: newSelectedAgrId,
+      aggregateValue: autoSuppPrice !== undefined ? String(autoSuppPrice) : prev.aggregateValue,
+    }));
+  };
+
+  // When Supplier Agreement is changed
+  const handleSupplierAgreementChange = (newAgrId: string) => {
+    const agr = supplierAgreements.find((a) => a.id === newAgrId);
+    const suppId = agr?.supplierId || formData.supplierId;
+
+    const autoSuppPrice = lookupSupplierPrice(suppId, newAgrId, formData.itemId);
+
+    setFormData((prev) => ({
+      ...prev,
+      supplierId: suppId,
+      selectedSupplierAgreementId: newAgrId,
+      aggregateValue: autoSuppPrice !== undefined ? String(autoSuppPrice) : prev.aggregateValue,
+    }));
+  };
+
+  // When Item is changed
+  const handleItemChange = (selectedItemId: string) => {
+    const autoCustPrice = lookupCustomerPrice(
+      formData.customerId,
+      formData.selectedCustomerAgreementId,
+      selectedItemId
+    );
+    const autoSuppPrice = lookupSupplierPrice(
+      formData.supplierId,
+      formData.selectedSupplierAgreementId,
+      selectedItemId
+    );
+
+    setFormData((prev) => ({
+      ...prev,
+      itemId: selectedItemId,
+      customerPrice: autoCustPrice !== undefined ? String(autoCustPrice) : prev.customerPrice,
+      aggregateValue: autoSuppPrice !== undefined ? String(autoSuppPrice) : prev.aggregateValue,
+    }));
+  };
 
   // When transporter changes, update available trucks
   const handleTransporterChange = (transporterId: string) => {
@@ -342,48 +544,29 @@ export default function EditAggregateDispatchPage() {
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     if (name === 'customerId') {
-      const newCustId = value;
-      const newCustItemIds = customerAgreementItems.get(newCustId);
-      setFormData((prev) => {
-        const isItemValid = !prev.itemId || !newCustItemIds || newCustItemIds.has(prev.itemId);
-        const targetItem = isItemValid ? prev.itemId : '';
-        const priceKey = `${newCustId}_${targetItem}`;
-        const autoPrice = customerAgreementPrices.get(priceKey);
-        const suppPriceKey = `${prev.supplierId}_${targetItem}`;
-        const autoSuppPrice = supplierAgreementPrices.get(suppPriceKey);
-        return {
-          ...prev,
-          customerId: newCustId,
-          itemId: targetItem,
-          customerPrice: autoPrice !== undefined ? String(autoPrice) : prev.customerPrice,
-          aggregateValue: autoSuppPrice !== undefined ? String(autoSuppPrice) : prev.aggregateValue,
-        };
-      });
+      handleCustomerChange(value);
+    } else if (name === 'selectedCustomerAgreementId') {
+      handleCustomerAgreementChange(value);
     } else if (name === 'supplierId') {
-      const newSuppId = value;
-      const suppPriceKey = `${newSuppId}_${formData.itemId}`;
-      const autoSuppPrice = supplierAgreementPrices.get(suppPriceKey);
-      setFormData((prev) => ({
-        ...prev,
-        supplierId: newSuppId,
-        aggregateValue: autoSuppPrice !== undefined ? String(autoSuppPrice) : prev.aggregateValue,
-      }));
+      handleSupplierChange(value);
+    } else if (name === 'selectedSupplierAgreementId') {
+      handleSupplierAgreementChange(value);
     } else if (name === 'itemId') {
-      const selectedItemId = value;
-      const priceKey = `${formData.customerId}_${selectedItemId}`;
-      const autoPrice = customerAgreementPrices.get(priceKey);
-      const suppPriceKey = `${formData.supplierId}_${selectedItemId}`;
-      const autoSuppPrice = supplierAgreementPrices.get(suppPriceKey);
-      setFormData((prev) => ({
-        ...prev,
-        itemId: selectedItemId,
-        customerPrice: autoPrice !== undefined ? String(autoPrice) : prev.customerPrice,
-        aggregateValue: autoSuppPrice !== undefined ? String(autoSuppPrice) : prev.aggregateValue,
-      }));
+      handleItemChange(value);
     } else {
       setFormData((prev) => ({ ...prev, [name]: value }));
     }
   };
+
+  // Filtered customer agreements for the selected customer
+  const availableCustomerAgreements = formData.customerId
+    ? customerAgreements.filter((a) => a.customerId === formData.customerId)
+    : customerAgreements;
+
+  // Filtered supplier agreements for the selected supplier
+  const availableSupplierAgreements = formData.supplierId
+    ? supplierAgreements.filter((a) => a.supplierId === formData.supplierId)
+    : supplierAgreements;
 
   // Calculations
   const calculateValues = () => {
@@ -532,6 +715,9 @@ export default function EditAggregateDispatchPage() {
     );
   }
 
+  const selectedCustAgreement = customerAgreements.find((a) => a.id === formData.selectedCustomerAgreementId);
+  const selectedSuppAgreement = supplierAgreements.find((a) => a.id === formData.selectedSupplierAgreementId);
+
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
       {/* Breadcrumb */}
@@ -551,7 +737,7 @@ export default function EditAggregateDispatchPage() {
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-bold text-slate-900">Edit Aggregate Dispatch</h1>
-          <p className="text-slate-600 mt-1">Update details for dispatch {formData.dispatchNo}</p>
+          <p className="text-slate-600 mt-1">Update details & agreements for dispatch {formData.dispatchNo}</p>
         </div>
       </div>
 
@@ -559,49 +745,149 @@ export default function EditAggregateDispatchPage() {
       <form onSubmit={handleSubmit}>
         <Card>
           <CardHeader>
-            <h2 className="text-lg font-semibold text-slate-900">Dispatch Details</h2>
+            <h2 className="text-lg font-semibold text-slate-900">Dispatch & Agreement Selection</h2>
           </CardHeader>
           <CardBody className="space-y-6">
-            {/* Core Entity Selectors */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Customer */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Customer *</label>
-                <select
-                  name="customerId"
-                  required
-                  value={formData.customerId}
-                  onChange={handleInputChange}
-                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border px-3 py-2"
-                >
-                  <option value="">Select Customer</option>
-                  {customers.map((c) => (
-                    <option key={c.id || c.customerId} value={c.id || c.customerId}>
-                      {c.companyName} {c.code ? `(${c.code})` : ''}
+            
+            {/* Customer & Supplier Agreement Blocks */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              
+              {/* Customer Side */}
+              <div className="p-4 bg-emerald-50/40 border border-emerald-200 rounded-xl space-y-4">
+                <div className="flex items-center gap-2 pb-2 border-b border-emerald-100">
+                  <div className="p-1 rounded bg-emerald-600 text-white">
+                    <Building2 className="w-3.5 h-3.5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-semibold text-emerald-950">Customer & Sales Agreement</h3>
+                    <p className="text-[11px] text-emerald-700">Select customer and associated agreement for pricing</p>
+                  </div>
+                </div>
+
+                {/* Customer Dropdown */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Customer *</label>
+                  <select
+                    name="customerId"
+                    required
+                    value={formData.customerId}
+                    onChange={handleInputChange}
+                    className="block w-full rounded-md border-gray-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 border px-3 py-2 text-sm bg-white"
+                  >
+                    <option value="">Select Customer</option>
+                    {customers.map((c) => (
+                      <option key={c.id || c.customerId} value={c.id || c.customerId}>
+                        {c.companyName} {c.code ? `(${c.code})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Customer Agreement Dropdown */}
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-semibold text-slate-700">Customer Sales Agreement</label>
+                    {selectedCustAgreement && (
+                      <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded">
+                        {selectedCustAgreement.status || 'Active'}
+                      </span>
+                    )}
+                  </div>
+                  <select
+                    name="selectedCustomerAgreementId"
+                    value={formData.selectedCustomerAgreementId}
+                    onChange={handleInputChange}
+                    className="block w-full rounded-md border-gray-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 border px-3 py-2 text-sm bg-white"
+                  >
+                    <option value="">
+                      {availableCustomerAgreements.length === 0
+                        ? 'No active sales agreements found'
+                        : 'Select Customer Agreement'}
                     </option>
-                  ))}
-                </select>
+                    {availableCustomerAgreements.map((agr) => (
+                      <option key={agr.id} value={agr.id}>
+                        {agr.agreementNo} {agr.validFrom && agr.validTo ? `(${new Date(agr.validFrom).toLocaleDateString()} - ${new Date(agr.validTo).toLocaleDateString()})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  {selectedCustAgreement?.offloadingSite && (
+                    <p className="text-[11px] text-emerald-800 mt-1 truncate">
+                      Offloading Site: <span className="font-medium">{selectedCustAgreement.offloadingSite}</span>
+                    </p>
+                  )}
+                </div>
               </div>
 
-              {/* Supplier */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Supplier *</label>
-                <select
-                  name="supplierId"
-                  required
-                  value={formData.supplierId}
-                  onChange={handleInputChange}
-                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border px-3 py-2"
-                >
-                  <option value="">Select Supplier</option>
-                  {suppliers.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.companyName} {s.code ? `(${s.code})` : ''}
+              {/* Supplier Side */}
+              <div className="p-4 bg-amber-50/40 border border-amber-200 rounded-xl space-y-4">
+                <div className="flex items-center gap-2 pb-2 border-b border-amber-100">
+                  <div className="p-1 rounded bg-amber-600 text-white">
+                    <Building2 className="w-3.5 h-3.5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-semibold text-amber-950">Supplier & Purchase Agreement</h3>
+                    <p className="text-[11px] text-amber-700">Select supplier and associated agreement for pricing</p>
+                  </div>
+                </div>
+
+                {/* Supplier Dropdown */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Supplier *</label>
+                  <select
+                    name="supplierId"
+                    required
+                    value={formData.supplierId}
+                    onChange={handleInputChange}
+                    className="block w-full rounded-md border-gray-300 shadow-sm focus:border-amber-500 focus:ring-amber-500 border px-3 py-2 text-sm bg-white"
+                  >
+                    <option value="">Select Supplier</option>
+                    {suppliers.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.companyName} {s.code ? `(${s.code})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Supplier Agreement Dropdown */}
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-semibold text-slate-700">Supplier Purchase Agreement</label>
+                    {selectedSuppAgreement && (
+                      <span className="text-[10px] font-bold text-amber-800 bg-amber-100 px-2 py-0.5 rounded">
+                        {selectedSuppAgreement.status || 'Active'}
+                      </span>
+                    )}
+                  </div>
+                  <select
+                    name="selectedSupplierAgreementId"
+                    value={formData.selectedSupplierAgreementId}
+                    onChange={handleInputChange}
+                    className="block w-full rounded-md border-gray-300 shadow-sm focus:border-amber-500 focus:ring-amber-500 border px-3 py-2 text-sm bg-white"
+                  >
+                    <option value="">
+                      {availableSupplierAgreements.length === 0
+                        ? 'No active supplier agreements found'
+                        : 'Select Supplier Agreement'}
                     </option>
-                  ))}
-                </select>
+                    {availableSupplierAgreements.map((agr) => (
+                      <option key={agr.id} value={agr.id}>
+                        {agr.agreementNo} {agr.loadingSite ? `(${agr.loadingSite})` : (agr.validFrom && agr.validTo ? `(${new Date(agr.validFrom).toLocaleDateString()} - ${new Date(agr.validTo).toLocaleDateString()})` : '')}
+                      </option>
+                    ))}
+                  </select>
+                  {selectedSuppAgreement?.loadingSite && (
+                    <p className="text-[11px] text-amber-800 mt-1 truncate">
+                      Loading/Quarry Site: <span className="font-medium">{selectedSuppAgreement.loadingSite}</span>
+                    </p>
+                  )}
+                </div>
               </div>
 
+            </div>
+
+            {/* Logistics & Dispatch Info */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
               {/* Transporter */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Transporter *</label>
@@ -610,7 +896,7 @@ export default function EditAggregateDispatchPage() {
                   required
                   value={formData.transporterId}
                   onChange={(e) => handleTransporterChange(e.target.value)}
-                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border px-3 py-2"
+                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border px-3 py-2 text-sm"
                 >
                   <option value="">Select Transporter</option>
                   {transporters.map((tr) => (
@@ -630,7 +916,7 @@ export default function EditAggregateDispatchPage() {
                   value={formData.truckId}
                   onChange={handleInputChange}
                   disabled={!formData.transporterId || trucks.length === 0}
-                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border px-3 py-2 disabled:bg-gray-100"
+                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border px-3 py-2 text-sm disabled:bg-gray-100"
                 >
                   <option value="">Select Truck</option>
                   {trucks.map((truck) => (
@@ -645,9 +931,9 @@ export default function EditAggregateDispatchPage() {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Item *
-                  {formData.customerId && customerAgreementItems.has(formData.customerId) && (
-                    <span className="ml-2 text-xs font-normal text-blue-600 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
-                      Filtered by customer agreement ({filteredItems.length})
+                  {(formData.selectedCustomerAgreementId || formData.customerId) && (
+                    <span className="ml-1 text-[11px] font-normal text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200">
+                      Contracted ({filteredItems.length})
                     </span>
                   )}
                 </label>
@@ -656,7 +942,7 @@ export default function EditAggregateDispatchPage() {
                   required
                   value={formData.itemId}
                   onChange={handleInputChange}
-                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border px-3 py-2"
+                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border px-3 py-2 text-sm"
                 >
                   <option value="">Select Item</option>
                   {filteredItems.map((i) => (
@@ -675,7 +961,7 @@ export default function EditAggregateDispatchPage() {
                   required
                   value={formData.status}
                   onChange={handleInputChange}
-                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border px-3 py-2 font-medium"
+                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border px-3 py-2 text-sm font-medium"
                 >
                   <option value="Dispatched">Dispatched</option>
                   <option value="Delivered">Delivered</option>
@@ -769,7 +1055,7 @@ export default function EditAggregateDispatchPage() {
                 <div className="flex items-center justify-between mb-1">
                   <label className="block text-xs font-medium text-gray-700">Customer Value (ETB/m³) *</label>
                   <span className="text-[10px] text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200 font-medium">
-                    From Sales Agr / Per-Dispatch
+                    {formData.selectedCustomerAgreementId ? 'From Sales Agr' : 'Per-Dispatch'}
                   </span>
                 </div>
                 <Input
@@ -786,7 +1072,7 @@ export default function EditAggregateDispatchPage() {
                 <div className="flex items-center justify-between mb-1">
                   <label className="block text-xs font-medium text-gray-700">Supplier Value (ETB/m³) *</label>
                   <span className="text-[10px] text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 font-medium">
-                    From Supplier Agr / Per-Dispatch
+                    {formData.selectedSupplierAgreementId ? 'From Supp Agr' : 'Per-Dispatch'}
                   </span>
                 </div>
                 <Input

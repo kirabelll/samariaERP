@@ -655,7 +655,7 @@ export default function AggregateDetailPage() {
                     <div>
                       <span className="text-slate-500 block">Agreement No</span>
                       <Link
-                        href={`/dashboard/sales/agreements`}
+                        href={`/dashboard/sales/agreements/${delivery.customerAgreement.id}`}
                         className="font-mono font-semibold text-blue-600 hover:underline inline-flex items-center gap-0.5"
                       >
                         <span>{delivery.customerAgreement.agreementNo}</span>
@@ -823,7 +823,7 @@ export default function AggregateDetailPage() {
                     <div>
                       <span className="text-slate-500 block">Agreement No</span>
                       <Link
-                        href={`/dashboard/purchasing/agreements`}
+                        href={`/dashboard/supplier-agreements/${delivery.supplierAgreement.id}`}
                         className="font-mono font-semibold text-blue-600 hover:underline inline-flex items-center gap-0.5"
                       >
                         <span>{delivery.supplierAgreement.agreementNo}</span>
@@ -944,6 +944,13 @@ export default function AggregateDetailPage() {
                   <p className="text-xs text-slate-500 mt-1 max-w-xs mx-auto">
                     Pricing defaults to aggregate value ({delivery.aggregateValue.toFixed(2)} ETB/m³).
                   </p>
+                  <Link
+                    href="/dashboard/supplier-agreements/new"
+                    className="inline-flex items-center gap-1 mt-3 px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-600 text-white hover:bg-amber-700 transition-colors"
+                  >
+                    <span>Create Supplier Agreement</span>
+                    <ArrowRight className="w-3 h-3" />
+                  </Link>
                 </div>
               )}
             </CardBody>

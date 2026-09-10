@@ -803,36 +803,49 @@ export default function EditCementLiftingPage() {
                           Exact match or excess delivered (No shortage)
                         </p>
                       )}
-              Financial Summary
-            </h3>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-center sm:text-left">
-              <div>
-                <span className="text-xs text-slate-400 block mb-1">Customer Unit Price</span>
-                <span className="text-lg font-bold text-blue-300">
-                  ETB {Number(originalLifting.customerUnitPrice || selectedPurchase?.unitPrice || 0).toLocaleString('en-US')}
-                </span>
-                {originalLifting.customerAgreementNo && (
-                  <span className="text-[11px] text-slate-400 block">{originalLifting.customerAgreementNo}</span>
-                )}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-slate-400 italic">Enter buyer weight to calculate shortage</p>
+                  )}
+                </div>
               </div>
-              <div>
-                <span className="text-xs text-slate-400 block mb-1">Factory Weight</span>
-                <span className="text-lg font-bold text-white">
-                  {formData.factoryWeight ? `${Number(formData.factoryWeight).toLocaleString('en-US')} QT` : '—'}
-                </span>
+            </CardBody>
+          </Card>
+
+          {/* Financial Summary Card */}
+          <Card className="rounded-2xl bg-gradient-to-br from-slate-900 to-slate-800 text-white border-0 shadow-lg">
+            <CardBody className="p-6 space-y-4">
+              <h3 className="text-sm font-semibold text-slate-300 uppercase tracking-wider">
+                Financial Summary
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-center sm:text-left">
+                <div>
+                  <span className="text-xs text-slate-400 block mb-1">Customer Unit Price</span>
+                  <span className="text-lg font-bold text-blue-300">
+                    ETB {Number(originalLifting.customerUnitPrice || selectedPurchase?.unitPrice || 0).toLocaleString('en-US')}
+                  </span>
+                  {originalLifting.customerAgreementNo && (
+                    <span className="text-[11px] text-slate-400 block">{originalLifting.customerAgreementNo}</span>
+                  )}
+                </div>
+                <div>
+                  <span className="text-xs text-slate-400 block mb-1">Factory Weight</span>
+                  <span className="text-lg font-bold text-white">
+                    {formData.factoryWeight ? `${Number(formData.factoryWeight).toLocaleString('en-US')} QT` : '—'}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-xs text-slate-400 block mb-1">Total Estimated Value</span>
+                  <span className="text-2xl font-black text-emerald-400">
+                    ETB {(
+                      (parseFloat(formData.factoryWeight) || 0) * 
+                      Number(originalLifting.customerUnitPrice || selectedPurchase?.unitPrice || 0)
+                    ).toLocaleString('en-US')}
+                  </span>
+                </div>
               </div>
-              <div>
-                <span className="text-xs text-slate-400 block mb-1">Total Estimated Value</span>
-                <span className="text-2xl font-black text-emerald-400">
-                  ETB {(
-                    (parseFloat(formData.factoryWeight) || 0) * 
-                    Number(originalLifting.customerUnitPrice || selectedPurchase?.unitPrice || 0)
-                  ).toLocaleString('en-US')}
-                </span>
-              </div>
-            </div>
-          </CardBody>
-        </Card>
+            </CardBody>
+          </Card>
 
         {/* Actions Bar */}
         <div className="flex items-center gap-3 pt-4">

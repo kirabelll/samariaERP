@@ -237,7 +237,6 @@ export default function CementLiftingDetailPage() {
           status: 'Delivered',
           buyerWeighbridgeQty: buyerQty,
           deliveryNoteNo: manualDeliveryNoteNo.trim() || undefined,
-          notes: manualDeliveryNotes.trim() || undefined,
         }),
       });
       const result = await res.json();
@@ -477,9 +476,6 @@ export default function CementLiftingDetailPage() {
 
               {/* Right: Delivery Form Fields */}
               <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1">Factory Weight</label>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1">Factory Dispatched Weight</label>

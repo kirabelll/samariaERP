@@ -10,15 +10,51 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '20');
     const weighbridgeType = searchParams.get('weighbridgeType');
     const truckPlateNo = searchParams.get('truckPlateNo');
+    const liftingId = searchParams.get('liftingId');
+    const search = searchParams.get('search');
 
     const skip = (page - 1) * limit;
 
     const whereClause: any = {};
-    if (weighbridgeType) {
+    if (weighbridgeType && weighbridgeType !== 'ALL') {
       whereClause.weighbridgeType = weighbridgeType;
+    }
+    if (liftingId) {
+      try {
+        const linkedLifting = await prisma.cementLifting.findUnique({
+          where: { id: liftingId },
+          select: { id: true, factoryWeighbridgeRef: true },
+        });
+        if (linkedLifting?.factoryWeighbridgeRef && linkedLifting.factoryWeighbridgeRef.trim()) {
+          whereClause.OR = [
+            { liftingId: liftingId },
+            { weighbridgeNo: { equals: linkedLifting.factoryWeighbridgeRef.trim(), mode: 'insensitive' } },
+          ];
+        } else {
+          whereClause.liftingId = liftingId;
+        }
+      } catch {
+        whereClause.liftingId = liftingId;
+      }
     }
     if (truckPlateNo) {
       whereClause.truckPlateNo = { contains: truckPlateNo, mode: 'insensitive' };
+    }
+    if (search) {
+      const searchConditions = [
+        { weighbridgeNo: { contains: search, mode: 'insensitive' } },
+        { truckPlateNo: { contains: search, mode: 'insensitive' } },
+        { operatorName: { contains: search, mode: 'insensitive' } },
+      ];
+      if (whereClause.OR) {
+        whereClause.AND = [
+          { OR: whereClause.OR },
+          { OR: searchConditions },
+        ];
+        delete whereClause.OR;
+      } else {
+        whereClause.OR = searchConditions;
+      }
     }
 
     const [data, total] = await Promise.all([

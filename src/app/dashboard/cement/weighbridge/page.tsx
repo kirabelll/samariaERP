@@ -1,9 +1,11 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { Card, CardHeader, CardBody, Button, Badge, Input, Tabs, Table, Modal, Select } from '@/components/ui';
 import { useI18n } from '@/lib/i18n';
+import { Scale, ChevronLeft, Filter, X, ArrowLeft, ExternalLink } from 'lucide-react';
 
 interface WeighbridgeEntry {
   id: string;
@@ -45,9 +47,29 @@ interface ApiResponse {
   };
 }
 
-export default function WeighbridgeRegister() {
+export default function WeighbridgeRegisterPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-center text-gray-500">Loading Weighbridge Register...</div>}>
+      <WeighbridgeRegisterContent />
+    </Suspense>
+  );
+}
+
+function WeighbridgeRegisterContent() {
   const { t } = useI18n();
-  const [activeTab, setActiveTab] = useState<string>('factory');
+  const searchParams = useSearchParams();
+  const router = useRouter();
+
+  const urlLiftingId = searchParams.get('liftingId');
+  const urlLiftingNo = searchParams.get('liftingNo');
+  const initialType = searchParams.get('type')?.toLowerCase();
+
+  const [activeTab, setActiveTab] = useState<string>(
+    initialType === 'buyer' ? 'buyer' : urlLiftingId ? 'all' : 'factory'
+  );
+  const [liftingFilter, setLiftingFilter] = useState<string | null>(urlLiftingId);
+  const [liftingNoDisplay, setLiftingNoDisplay] = useState<string | null>(urlLiftingNo);
+
   const [entries, setEntries] = useState<WeighbridgeEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -65,7 +87,7 @@ export default function WeighbridgeRegister() {
 
   const [formData, setFormData] = useState({
     weighbridgeType: 'FACTORY' as 'FACTORY' | 'BUYER',
-    liftingId: '',
+    liftingId: urlLiftingId || '',
     truckPlateNo: '',
     grossWeight: '',
     tareWeight: '',
@@ -74,11 +96,21 @@ export default function WeighbridgeRegister() {
 
   useEffect(() => {
     fetchEntries();
-  }, [activeTab, page, pageSize]);
+  }, [activeTab, page, pageSize, liftingFilter]);
 
   useEffect(() => {
     fetchLiftings();
   }, []);
+
+  // If lifting list is loaded and we have liftingFilter without liftingNoDisplay, find it
+  useEffect(() => {
+    if (liftingFilter && !liftingNoDisplay && liftings.length > 0) {
+      const found = liftings.find(l => l.id === liftingFilter);
+      if (found) {
+        setLiftingNoDisplay(found.liftingNo);
+      }
+    }
+  }, [liftingFilter, liftingNoDisplay, liftings]);
 
   const fetchLiftings = async () => {
     try {
@@ -110,8 +142,16 @@ export default function WeighbridgeRegister() {
     try {
       setLoading(true);
       setError(null);
-      const typeParam = activeTab === 'factory' ? 'FACTORY' : 'BUYER';
-      const response = await fetch(`/api/cement/weighbridge?weighbridgeType=${typeParam}&page=${page}&limit=${pageSize}`);
+      let queryUrl = `/api/cement/weighbridge?page=${page}&limit=${pageSize}`;
+      if (activeTab === 'factory') queryUrl += `&weighbridgeType=FACTORY`;
+      else if (activeTab === 'buyer') queryUrl += `&weighbridgeType=BUYER`;
+      else if (activeTab === 'all') queryUrl += `&weighbridgeType=ALL`;
+
+      if (liftingFilter) {
+        queryUrl += `&liftingId=${encodeURIComponent(liftingFilter)}`;
+      }
+
+      const response = await fetch(queryUrl);
 
       if (!response.ok) {
         throw new Error(`API error: ${response.status}`);
@@ -134,6 +174,37 @@ export default function WeighbridgeRegister() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const clearLiftingFilter = () => {
+    setLiftingFilter(null);
+    setLiftingNoDisplay(null);
+    setActiveTab('factory');
+    setPage(1);
+    router.replace('/dashboard/cement/weighbridge');
+  };
+
+  const openNewEntryModal = (type: 'FACTORY' | 'BUYER' = 'FACTORY') => {
+    let initialPlate = '';
+    let initialGross = '';
+    if (liftingFilter && liftings.length > 0) {
+      const match = liftings.find((l) => l.id === liftingFilter);
+      if (match) {
+        initialPlate = match.truckPlateNo || '';
+        if (match.factoryWeight > 0) {
+          initialGross = String(match.factoryWeight * 1000);
+        }
+      }
+    }
+    setFormData({
+      weighbridgeType: type,
+      liftingId: liftingFilter || '',
+      truckPlateNo: initialPlate,
+      grossWeight: initialGross,
+      tareWeight: '',
+      operatorName: '',
+    });
+    setShowModal(true);
   };
 
   const handleAddEntry = async () => {
@@ -166,7 +237,14 @@ export default function WeighbridgeRegister() {
 
       const result = await response.json();
       if (result.success) {
-        setFormData({ weighbridgeType: 'FACTORY', liftingId: '', truckPlateNo: '', grossWeight: '', tareWeight: '', operatorName: '' });
+        setFormData({ 
+          weighbridgeType: 'FACTORY', 
+          liftingId: liftingFilter || '', 
+          truckPlateNo: '', 
+          grossWeight: '', 
+          tareWeight: '', 
+          operatorName: '' 
+        });
         setShowModal(false);
         await fetchEntries();
       } else {
@@ -232,11 +310,12 @@ export default function WeighbridgeRegister() {
       return;
     }
 
-    const csvHeaders = ['WB No', 'Lifting', 'Coupon', 'Truck Plate', 'Gross Weight (kg)', 'Tare Weight (kg)', 'Net Weight (kg)', 'Date', 'Operator', 'Verified'];
+    const csvHeaders = ['WB No', 'Type', 'Lifting', 'Coupon', 'Truck Plate', 'Gross Weight (kg)', 'Tare Weight (kg)', 'Net Weight (kg)', 'Date', 'Operator', 'Verified'];
     const csvRows = entries.map((entry) => {
       const lifting = entry.liftingId ? liftings.find(l => l.id === entry.liftingId) : null;
       return [
         entry.weighbridgeNo,
+        entry.weighbridgeType,
         entry.liftingNo || '',
         lifting?.couponNo || '',
         entry.truckPlateNo,
@@ -271,9 +350,21 @@ export default function WeighbridgeRegister() {
       header: 'WB No',
       accessor: 'weighbridgeNo' as const,
       render: (val: string, row: WeighbridgeEntry) => (
-        <Link href={`/dashboard/cement/weighbridge/${row.id}`} className="font-semibold text-[#007AFF] hover:underline">
+        <Link href={`/dashboard/cement/weighbridge/${row.id}`} className="font-semibold text-[#007AFF] hover:underline flex items-center gap-1">
           {val}
+          <ExternalLink className="w-3 h-3 opacity-60" />
         </Link>
+      ),
+    },
+    {
+      header: 'Type',
+      accessor: 'weighbridgeType' as const,
+      render: (val: string) => (
+        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+          val === 'BUYER' ? 'bg-emerald-100 text-emerald-800' : 'bg-blue-100 text-blue-800'
+        }`}>
+          {val}
+        </span>
       ),
     },
     {
@@ -316,6 +407,15 @@ export default function WeighbridgeRegister() {
       render: (val: number) => (val ?? 0).toLocaleString('en-US'),
     },
     {
+      header: 'Net Weight (Tons)',
+      accessor: 'netWeight' as any,
+      render: (val: number) => (
+        <span className="font-semibold text-slate-900">
+          {(val / 1000 > 10 ? val / 1000 : val).toFixed(2)} Tons
+        </span>
+      ),
+    },
+    {
       header: 'Date',
       accessor: 'weighbridgeDate' as const,
       render: (val: string) => formatDate(val),
@@ -338,7 +438,7 @@ export default function WeighbridgeRegister() {
           onClick={() => handleVerify(row.id)}
           className="px-3 py-1 text-xs font-medium rounded-full bg-orange-100 text-orange-700 hover:bg-orange-200 transition-colors cursor-pointer"
         >
-          Pending — Click to Verify
+          Pending — Verify
         </button>
       ),
     },
@@ -381,7 +481,7 @@ export default function WeighbridgeRegister() {
         <div className="text-sm text-gray-600 font-medium">
           {loading
             ? 'Loading entries...'
-            : `Showing ${entries.length} of ${totalEntries} ${activeTab === 'factory' ? 'Factory' : 'Buyer'} records`}
+            : `Showing ${entries.length} of ${totalEntries} ${activeTab === 'all' ? 'All' : activeTab === 'factory' ? 'Factory' : 'Buyer'} records`}
         </div>
         <div className="flex items-center gap-2">
           <label className="text-xs text-gray-500 font-medium whitespace-nowrap">
@@ -409,6 +509,22 @@ export default function WeighbridgeRegister() {
         <div className="text-center py-8 text-gray-600">Loading entries...</div>
       ) : error ? (
         <div className="text-center py-8 text-red-600">Error: {error}</div>
+      ) : entries.length === 0 && liftingFilter ? (
+        <div className="p-8 text-center bg-slate-50 rounded-2xl border-2 border-dashed border-slate-200">
+          <Scale className="w-10 h-10 text-slate-400 mx-auto mb-2" />
+          <p className="text-base font-bold text-slate-800">No weighbridge entries linked to Lifting #{liftingNoDisplay || liftingFilter} yet</p>
+          <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
+            You can create a new Factory or Buyer weighbridge entry linked directly to this lifting order.
+          </p>
+          <div className="flex items-center justify-center gap-3 mt-4">
+            <Button size="sm" variant="primary" onClick={() => openNewEntryModal('BUYER')}>
+              + Record Buyer Weighbridge
+            </Button>
+            <Button size="sm" variant="secondary" onClick={() => openNewEntryModal('FACTORY')}>
+              + Record Factory Weighbridge
+            </Button>
+          </div>
+        </div>
       ) : (
         <Table
           data={entries}
@@ -425,69 +541,129 @@ export default function WeighbridgeRegister() {
 
   const tabs = [
     {
+      id: 'all',
+      label: 'All Records',
+      content: tableContent,
+    },
+    {
       id: 'factory',
-      label: 'Factory',
+      label: 'Factory Weighbridge',
       content: tableContent,
     },
     {
       id: 'buyer',
-      label: 'Buyer',
+      label: 'Buyer Weighbridge',
       content: tableContent,
     },
   ];
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="space-y-6 max-w-7xl mx-auto pb-12">
+      {/* Header */}
+      <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <Link
-            href="/dashboard/cement"
-            className="text-blue-600 hover:text-blue-800 text-sm font-medium"
-          >
-            &larr; Back to Cement Operations
-          </Link>
-          <h1 className="text-3xl font-bold text-gray-900 mt-4">Weighbridge Register</h1>
-          <p className="text-gray-600 mt-1">Factory & Buyer weighbridge records</p>
+          <div className="flex items-center gap-2">
+            <Link
+              href="/dashboard/cement?tab=liftings"
+              className="text-blue-600 hover:text-blue-800 text-sm font-medium flex items-center gap-1"
+            >
+              <ArrowLeft className="w-4 h-4" /> Back to Cement Operations
+            </Link>
+            {liftingFilter && (
+              <>
+                <span className="text-slate-400">/</span>
+                <Link
+                  href={`/dashboard/cement/liftings/${liftingFilter}`}
+                  className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                >
+                  Lifting #{liftingNoDisplay || liftingFilter}
+                </Link>
+              </>
+            )}
+          </div>
+          <h1 className="text-3xl font-bold text-gray-900 mt-2 flex items-center gap-2.5">
+            <Scale className="w-8 h-8 text-[#007AFF]" />
+            Weighbridge Register
+          </h1>
+          <p className="text-gray-600 mt-1">Factory & Buyer weighbridge records and scale tickets</p>
         </div>
         <div className="flex items-center gap-3">
           <button
             onClick={exportToExcel}
-            className="px-4 py-2 rounded-lg bg-green-600 text-white font-medium hover:bg-green-700 flex items-center gap-2 text-sm"
+            className="px-4 py-2 rounded-xl bg-green-600 text-white font-medium hover:bg-green-700 flex items-center gap-2 text-sm shadow-xs transition-colors"
           >
             Export Excel
           </button>
-          <Button variant="primary" size="lg" onClick={() => setShowModal(true)}>
-            + New Entry
+          <Button 
+            variant="primary" 
+            size="lg" 
+            onClick={() => openNewEntryModal('FACTORY')}
+            className="rounded-xl shadow-xs"
+          >
+            + New Weighbridge Entry
           </Button>
         </div>
       </div>
 
+      {/* Active Lifting Filter Banner */}
+      {liftingFilter && (
+        <div className="bg-blue-50/90 border-2 border-blue-200 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3 shadow-xs">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-blue-600 text-white rounded-xl">
+              <Filter className="w-5 h-5" />
+            </div>
+            <div>
+              <p className="text-sm font-bold text-blue-900">
+                Filtered by Linked Cement Lifting: <span className="font-mono bg-blue-100 px-2 py-0.5 rounded-md">{liftingNoDisplay || liftingFilter}</span>
+              </p>
+              <p className="text-xs text-blue-700 mt-0.5">
+                Showing all weighbridge records linked to this lifting ticket.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <Link href={`/dashboard/cement/liftings/${liftingFilter}`}>
+              <Button size="sm" variant="outline" className="bg-white text-xs">
+                View Lifting Details ↗
+              </Button>
+            </Link>
+            <Button size="sm" variant="secondary" onClick={clearLiftingFilter} className="text-xs flex items-center gap-1">
+              <X className="w-3.5 h-3.5" /> Clear Filter (Show All)
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <Card>
-          <CardBody className="text-center">
-            <p className="text-4xl font-bold" style={{ color: '#007AFF' }}>
+        <Card className="rounded-2xl border-slate-200/80 shadow-xs">
+          <CardBody className="text-center py-6">
+            <p className="text-4xl font-bold text-[#007AFF]">
               {totalEntries}
             </p>
-            <p className="text-sm text-gray-600 mt-1">Total Entries ({activeTab === 'factory' ? 'Factory' : 'Buyer'})</p>
+            <p className="text-sm text-gray-600 font-medium mt-1">
+              Total Entries {liftingFilter ? '(for this lifting)' : `(${activeTab === 'all' ? 'All' : activeTab === 'factory' ? 'Factory' : 'Buyer'})`}
+            </p>
           </CardBody>
         </Card>
-        <Card>
-          <CardBody className="text-center">
-            <p className="text-4xl font-bold" style={{ color: '#007AFF' }}>
-              {averageNetWeight}
+        <Card className="rounded-2xl border-slate-200/80 shadow-xs">
+          <CardBody className="text-center py-6">
+            <p className="text-4xl font-bold text-slate-900">
+              {Number(averageNetWeight).toLocaleString('en-US')}
             </p>
-            <p className="text-sm text-gray-600 mt-1">Avg Net Weight (kg)</p>
+            <p className="text-sm text-gray-600 font-medium mt-1">
+              Avg Net Weight ({Number(averageNetWeight) > 100 ? `${(Number(averageNetWeight)/1000).toFixed(2)} Tons` : 'kg'})
+            </p>
           </CardBody>
         </Card>
       </div>
 
       {/* Tabs */}
-      <Card>
-        <CardBody>
+      <Card className="rounded-2xl border-slate-200/80 shadow-xs overflow-hidden">
+        <CardBody className="p-4 sm:p-6">
           <Tabs
             tabs={tabs}
-            defaultTabId="factory"
+            defaultTabId={activeTab}
             onChange={(tabId) => {
               setActiveTab(tabId);
               setPage(1);
@@ -501,7 +677,7 @@ export default function WeighbridgeRegister() {
         isOpen={showModal}
         onClose={() => {
           setShowModal(false);
-          setFormData({ weighbridgeType: 'FACTORY', liftingId: '', truckPlateNo: '', grossWeight: '', tareWeight: '', operatorName: '' });
+          setFormData({ weighbridgeType: 'FACTORY', liftingId: liftingFilter || '', truckPlateNo: '', grossWeight: '', tareWeight: '', operatorName: '' });
         }}
         title="New Weighbridge Entry"
         body={
@@ -521,7 +697,7 @@ export default function WeighbridgeRegister() {
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Linked Lifting</label>
               <select
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
                 value={formData.liftingId}
                 onChange={(e) => {
                   const selectedId = e.target.value;
@@ -531,8 +707,6 @@ export default function WeighbridgeRegister() {
                       ...prev,
                       liftingId: selectedId,
                       truckPlateNo: lifting.truckPlateNo || prev.truckPlateNo,
-                      // For FACTORY type: pre-fill gross with factory weight (driver can adjust)
-                      // For BUYER type: pre-fill gross with factory weight as reference
                       grossWeight: lifting.factoryWeight > 0 ? String(lifting.factoryWeight) : prev.grossWeight,
                     }));
                   } else {
@@ -554,16 +728,16 @@ export default function WeighbridgeRegister() {
               {formData.liftingId && (() => {
                 const sel = liftings.find((l) => l.id === formData.liftingId);
                 return sel ? (
-                  <div className="mt-2 p-3 rounded-lg border border-blue-200" style={{ backgroundColor: '#EFF6FF' }}>
-                    <p className="text-xs font-semibold text-blue-800 mb-1">Lifting Details</p>
-                    <div className="grid grid-cols-2 gap-1 text-xs text-blue-700">
-                      <span>Lifting No:</span><span className="font-medium">{sel.liftingNo}</span>
-                      <span>Truck:</span><span className="font-medium">{sel.truckPlateNo}</span>
-                      <span>Factory Weight:</span><span className="font-medium">{sel.factoryWeight} tons</span>
-                      <span>Customer:</span><span className="font-medium">{sel.customerName || 'N/A'}</span>
-                      {sel.factoryName && <><span>Factory:</span><span className="font-medium">{sel.factoryName}</span></>}
-                      {sel.couponNo && <><span>Coupon:</span><span className="font-medium">{sel.couponNo}</span></>}
-                      <span>Status:</span><span className="font-medium">{sel.status}</span>
+                  <div className="mt-2 p-3 rounded-xl border border-blue-200 bg-blue-50/80">
+                    <p className="text-xs font-semibold text-blue-900 mb-1">Lifting Details</p>
+                    <div className="grid grid-cols-2 gap-1 text-xs text-blue-800">
+                      <span>Lifting No:</span><span className="font-semibold">{sel.liftingNo}</span>
+                      <span>Truck:</span><span className="font-semibold">{sel.truckPlateNo}</span>
+                      <span>Factory Weight:</span><span className="font-semibold">{sel.factoryWeight} tons</span>
+                      <span>Customer:</span><span className="font-semibold">{sel.customerName || 'N/A'}</span>
+                      {sel.factoryName && <><span>Factory:</span><span className="font-semibold">{sel.factoryName}</span></>}
+                      {sel.couponNo && <><span>Coupon:</span><span className="font-semibold">{sel.couponNo}</span></>}
+                      <span>Status:</span><span className="font-semibold">{sel.status}</span>
                     </div>
                   </div>
                 ) : null;
@@ -582,7 +756,7 @@ export default function WeighbridgeRegister() {
             <Input
               label="Gross Weight (kg) *"
               type="number"
-              placeholder="Enter gross weight"
+              placeholder="Enter gross weight in kg"
               value={formData.grossWeight}
               onChange={(e) =>
                 setFormData((prev) => ({ ...prev, grossWeight: e.target.value }))
@@ -592,7 +766,7 @@ export default function WeighbridgeRegister() {
             <Input
               label="Tare Weight (kg) *"
               type="number"
-              placeholder="Enter tare weight"
+              placeholder="Enter tare weight in kg"
               value={formData.tareWeight}
               onChange={(e) =>
                 setFormData((prev) => ({ ...prev, tareWeight: e.target.value }))
@@ -600,9 +774,12 @@ export default function WeighbridgeRegister() {
             />
 
             {formData.grossWeight && formData.tareWeight && (
-              <div className="p-3 rounded-lg" style={{ backgroundColor: '#F5F5F7' }}>
-                <p className="text-sm font-semibold text-gray-900">
+              <div className="p-3 rounded-xl bg-slate-100 border border-slate-200">
+                <p className="text-sm font-bold text-slate-900">
                   Net Weight: {((parseFloat(formData.grossWeight ?? '0') ?? 0) - (parseFloat(formData.tareWeight ?? '0') ?? 0)).toLocaleString('en-US')} kg
+                  <span className="text-xs font-normal text-slate-500 ml-2">
+                    ({(((parseFloat(formData.grossWeight ?? '0') ?? 0) - (parseFloat(formData.tareWeight ?? '0') ?? 0)) / 1000).toFixed(2)} Tons)
+                  </span>
                 </p>
               </div>
             )}
@@ -623,7 +800,7 @@ export default function WeighbridgeRegister() {
               variant="secondary"
               onClick={() => {
                 setShowModal(false);
-                setFormData({ weighbridgeType: 'FACTORY', liftingId: '', truckPlateNo: '', grossWeight: '', tareWeight: '', operatorName: '' });
+                setFormData({ weighbridgeType: 'FACTORY', liftingId: liftingFilter || '', truckPlateNo: '', grossWeight: '', tareWeight: '', operatorName: '' });
               }}
             >
               Cancel

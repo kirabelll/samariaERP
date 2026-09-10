@@ -21,7 +21,8 @@ import {
   Save,
   Calendar,
   Hash,
-  FileCheck
+  FileCheck,
+  ExternalLink
 } from 'lucide-react';
 
 interface Purchase {
@@ -723,11 +724,20 @@ export default function EditCementLiftingPage() {
 
         {/* Section 3: Weighbridge, Weights & Pad Number */}
         <Card className="rounded-2xl overflow-hidden border border-slate-200/80 shadow-sm">
-          <CardHeader className="bg-slate-50/80 border-b border-slate-200/80 py-3.5 px-6">
-            <h2 className="text-base font-semibold text-slate-900 flex items-center gap-2">
-              <Weight className="w-4 h-4 text-blue-600" />
-              3. Weighbridge Measurements, Delivery Pad & Documents
-            </h2>
+          <CardHeader className="bg-slate-50/80 border-b border-slate-200/80 py-3.5 px-6 flex justify-between items-center">
+            <div className="flex justify-between items-center w-full">
+              <h2 className="text-base font-semibold text-slate-900 flex items-center gap-2">
+                <Weight className="w-4 h-4 text-blue-600" />
+                3. Weighbridge Measurements, Delivery Pad & Documents
+              </h2>
+              <Link
+                href={`/dashboard/cement/weighbridge?liftingId=${id}&liftingNo=${encodeURIComponent(originalLifting.liftingNo)}`}
+                target="_blank"
+                className="text-xs text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1 hover:underline"
+              >
+                View Linked Weighbridge Entries <ExternalLink className="w-3.5 h-3.5" />
+              </Link>
+            </div>
           </CardHeader>
           <CardBody className="p-6 space-y-5">
             {/* Weights row */}

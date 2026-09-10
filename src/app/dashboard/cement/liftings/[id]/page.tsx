@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { Card, CardBody, CardHeader, Badge, Button, Input, ConfirmDialog, Modal } from '@/components/ui';
-import { ChevronLeft, Loader, Truck, Factory, Weight, FileText, Receipt, User, CreditCard, AlertTriangle, Trash2, CheckCircle, Edit } from 'lucide-react';
+import { ChevronLeft, Loader, Truck, Factory, Weight, FileText, Receipt, User, CreditCard, AlertTriangle, Trash2, CheckCircle, Edit, Scale, ExternalLink } from 'lucide-react';
 
 interface CementLifting {
   id: string;
@@ -62,8 +62,18 @@ export default function CementLiftingDetailPage() {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
-  // Buyer weighbridge data
-  const [buyerWbEntries, setBuyerWbEntries] = useState<Array<{ weighbridgeNo: string; netWeight: number; verified: boolean; weighbridgeDate: string }>>([]);
+  // Linked weighbridge data
+  interface LinkedWbEntry {
+    id: string;
+    weighbridgeNo: string;
+    weighbridgeType: string;
+    netWeight: number;
+    verified: boolean;
+    weighbridgeDate: string;
+    operatorName?: string;
+  }
+  const [linkedWbEntries, setLinkedWbEntries] = useState<LinkedWbEntry[]>([]);
+  const [buyerWbEntries, setBuyerWbEntries] = useState<LinkedWbEntry[]>([]);
   const [buyerWbTotal, setBuyerWbTotal] = useState<number>(0);
   const [manualBuyerQty, setManualBuyerQty] = useState<string>('');
   const [manualPadNumber, setManualPadNumber] = useState<string>('');
@@ -98,29 +108,35 @@ export default function CementLiftingDetailPage() {
     }
   };
 
-  const fetchBuyerWeighbridge = async () => {
+  const fetchLinkedWeighbridge = async () => {
     try {
-      const res = await fetch(`/api/cement/weighbridge?weighbridgeType=BUYER&limit=100`);
+      const res = await fetch(`/api/cement/weighbridge?liftingId=${id}&limit=100`);
       const result = await res.json();
       if (result.success && Array.isArray(result.data)) {
-        // Filter for entries linked to this lifting
-        const linked = result.data.filter((e: any) => e.liftingId === id);
-        setBuyerWbEntries(linked.map((e: any) => ({
+        const allLinked: LinkedWbEntry[] = result.data.map((e: any) => ({
+          id: e.id,
           weighbridgeNo: e.weighbridgeNo,
+          weighbridgeType: e.weighbridgeType,
           netWeight: Number(e.netWeight) || 0,
           verified: e.verified,
           weighbridgeDate: e.weighbridgeDate || e.createdAt,
-        })));
-        const verifiedTotal = linked
-          .filter((e: any) => e.verified)
-          .reduce((sum: number, e: any) => sum + (Number(e.netWeight) || 0), 0);
+          operatorName: e.operatorName,
+        }));
+        setLinkedWbEntries(allLinked);
+
+        const buyerOnly = allLinked.filter((e) => e.weighbridgeType === 'BUYER');
+        setBuyerWbEntries(buyerOnly);
+
+        const verifiedTotal = buyerOnly
+          .filter((e) => e.verified)
+          .reduce((sum: number, e) => sum + (Number(e.netWeight) || 0), 0);
         setBuyerWbTotal(verifiedTotal);
         if (verifiedTotal > 0 && !manualBuyerQty) {
           setManualBuyerQty(String(verifiedTotal / 1000 > 10 ? (verifiedTotal / 1000).toFixed(3) : verifiedTotal));
         }
       }
     } catch (err) {
-      console.error('Failed to fetch buyer weighbridge entries:', err);
+      console.error('Failed to fetch linked weighbridge entries:', err);
     }
   };
 
@@ -153,7 +169,7 @@ export default function CementLiftingDetailPage() {
   useEffect(() => {
     if (!id) return;
     fetchLifting();
-    fetchBuyerWeighbridge();
+    fetchLinkedWeighbridge();
   }, [id]);
 
   const handleAddBuyerWeighbridge = async () => {
@@ -191,7 +207,7 @@ export default function CementLiftingDetailPage() {
         setModalTareWeight('');
         setModalOperatorName('');
         await fetchLifting();
-        await fetchBuyerWeighbridge();
+        await fetchLinkedWeighbridge();
       } else {
         alert(json.error || 'Failed to create weighbridge entry');
       }
@@ -673,16 +689,23 @@ export default function CementLiftingDetailPage() {
         <div className="space-y-4">
           {/* Weighbridge */}
           <Card className="rounded-2xl">
-            <CardHeader>
-              <h3 className="text-lg font-semibold text-[#1D1D1F] flex items-center gap-2">
-                <Weight className="w-5 h-5" />
-                Weighbridge
-              </h3>
+            <CardHeader className="flex justify-between items-center">
+              <div className="flex justify-between items-center w-full">
+                <h3 className="text-lg font-semibold text-[#1D1D1F] flex items-center gap-2">
+                  <Scale className="w-5 h-5 text-[#007AFF]" />
+                  Weighbridge
+                </h3>
+                {linkedWbEntries.length > 0 && (
+                  <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+                    {linkedWbEntries.length} Linked
+                  </span>
+                )}
+              </div>
             </CardHeader>
             <CardBody className="space-y-4">
               <div>
                 <p className="text-xs font-medium text-[#86868B] uppercase tracking-wider mb-1">Factory Weighbridge Ref</p>
-                <p className="text-sm font-semibold text-[#1D1D1F]">{lifting.factoryWeighbridgeRef}</p>
+                <p className="text-sm font-semibold text-[#1D1D1F] font-mono">{lifting.factoryWeighbridgeRef}</p>
               </div>
               <div>
                 <p className="text-xs font-medium text-[#86868B] uppercase tracking-wider mb-1">Factory Weight</p>
@@ -706,6 +729,46 @@ export default function CementLiftingDetailPage() {
                   </Link>
                 </div>
               )}
+
+              {/* Linked Weighbridge Entries with Direct View Links */}
+              {linkedWbEntries.length > 0 && (
+                <div className="border-t pt-3 space-y-2">
+                  <p className="text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                    Linked Weighbridge Entries ({linkedWbEntries.length})
+                  </p>
+                  <div className="space-y-2">
+                    {linkedWbEntries.map((wb) => (
+                      <Link
+                        key={wb.id}
+                        href={`/dashboard/cement/weighbridge/${wb.id}`}
+                        className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 hover:bg-blue-50/70 border border-slate-200 hover:border-blue-300 transition-all text-xs group"
+                      >
+                        <div className="space-y-0.5">
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-bold text-slate-900 group-hover:text-blue-600 font-mono">
+                              {wb.weighbridgeNo}
+                            </span>
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${
+                              wb.weighbridgeType === 'BUYER' 
+                                ? 'bg-emerald-100 text-emerald-800' 
+                                : 'bg-blue-100 text-blue-800'
+                            }`}>
+                              {wb.weighbridgeType}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-500">
+                            Net: <strong className="text-slate-800">{(wb.netWeight / 1000 > 10 ? wb.netWeight / 1000 : wb.netWeight).toFixed(2)} Tons</strong> • {wb.verified ? 'Verified' : 'Pending'}
+                          </p>
+                        </div>
+                        <span className="text-[#007AFF] font-semibold flex items-center gap-0.5 group-hover:translate-x-0.5 transition-transform text-xs">
+                          View <ExternalLink className="w-3.5 h-3.5 ml-0.5" />
+                        </span>
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <div className="border-t pt-3 space-y-2">
                 <Button
                   size="sm"
@@ -715,8 +778,11 @@ export default function CementLiftingDetailPage() {
                 >
                   + Record Buyer Weighbridge Entry
                 </Button>
-                <Link href="/dashboard/cement/weighbridge" className="text-xs text-[#007AFF] hover:underline font-medium block">
-                  View Weighbridge Register →
+                <Link
+                  href={`/dashboard/cement/weighbridge?liftingId=${id}&liftingNo=${encodeURIComponent(lifting.liftingNo)}`}
+                  className="text-xs text-[#007AFF] hover:underline font-semibold block text-center pt-1"
+                >
+                  View in Weighbridge Register ({linkedWbEntries.length} Linked) →
                 </Link>
               </div>
             </CardBody>

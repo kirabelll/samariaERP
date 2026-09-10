@@ -26,6 +26,7 @@ interface CementLifting {
   customer: { companyName: string } | null;
   factory: { name: string } | null;
   coupon?: { couponNo: string } | null;
+  padNumber?: string | null;
   liftingDate: string;
   factoryWeight: number;
   status: string;
@@ -147,6 +148,20 @@ function CementOperationsContent() {
 
   const liftingColumns: ColumnDef<CementLifting>[] = [
     { header: 'Lifting No', accessor: 'liftingNo', sortable: true },
+    {
+      header: 'Pad # / POD',
+      accessor: 'padNumber' as any,
+      sortable: true,
+      render: (_val: any, row: CementLifting) => {
+        return row.padNumber ? (
+          <span className="text-xs font-mono font-semibold bg-amber-50 text-amber-800 border border-amber-200 px-2 py-0.5 rounded-md">
+            {row.padNumber}
+          </span>
+        ) : (
+          <span className="text-gray-400">—</span>
+        );
+      },
+    },
     { header: 'Customer', accessor: 'customer', sortable: true, render: (_val, row) => row.customer?.companyName || '-' },
     { header: 'Factory', accessor: 'factory', sortable: true, render: (_val, row) => row.factory?.name || '-' },
     {
@@ -164,9 +179,12 @@ function CementOperationsContent() {
     {
       header: 'Actions', accessor: 'id',
       render: (id, row) => (
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
           <Link href={`/dashboard/cement/liftings/${id}`}>
             <Button size="sm" variant="outline">View</Button>
+          </Link>
+          <Link href={`/dashboard/cement/liftings/${id}/edit`}>
+            <Button size="sm" variant="secondary">Edit</Button>
           </Link>
           <Button
             size="sm"

@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { Card, CardBody, CardHeader, Badge, Button, Input, ConfirmDialog, Modal } from '@/components/ui';
-import { ChevronLeft, Loader, Truck, Factory, Weight, FileText, Receipt, User, CreditCard, AlertTriangle, Trash2, CheckCircle } from 'lucide-react';
+import { ChevronLeft, Loader, Truck, Factory, Weight, FileText, Receipt, User, CreditCard, AlertTriangle, Trash2, CheckCircle, Edit } from 'lucide-react';
 
 interface CementLifting {
   id: string;
@@ -32,6 +32,7 @@ interface CementLifting {
     tonnage?: number;
   };
   deliveryNoteNo?: string;
+  padNumber?: string;
   notes?: string;
   liftingDate: string;
   status: string;
@@ -65,6 +66,7 @@ export default function CementLiftingDetailPage() {
   const [buyerWbEntries, setBuyerWbEntries] = useState<Array<{ weighbridgeNo: string; netWeight: number; verified: boolean; weighbridgeDate: string }>>([]);
   const [buyerWbTotal, setBuyerWbTotal] = useState<number>(0);
   const [manualBuyerQty, setManualBuyerQty] = useState<string>('');
+  const [manualPadNumber, setManualPadNumber] = useState<string>('');
   const [manualDeliveryNoteNo, setManualDeliveryNoteNo] = useState<string>('');
   const [manualDeliveryNotes, setManualDeliveryNotes] = useState<string>('');
   const [showDeliveryPanel, setShowDeliveryPanel] = useState<boolean>(false);
@@ -134,6 +136,9 @@ export default function CementLiftingDetailPage() {
         }
         if (data.data.deliveryNoteNo && !manualDeliveryNoteNo) {
           setManualDeliveryNoteNo(data.data.deliveryNoteNo);
+        }
+        if (data.data.padNumber && !manualPadNumber) {
+          setManualPadNumber(data.data.padNumber);
         }
       } else {
         setError(data.error || 'Failed to load lifting');
@@ -218,6 +223,7 @@ export default function CementLiftingDetailPage() {
         body: JSON.stringify({
           status: 'Delivered',
           buyerWeighbridgeQty: buyerQty,
+          padNumber: manualPadNumber.trim() || undefined,
           deliveryNoteNo: manualDeliveryNoteNo.trim() || undefined,
           notes: manualDeliveryNotes.trim() || undefined,
         }),
@@ -360,6 +366,17 @@ export default function CementLiftingDetailPage() {
             {lifting.status}
           </Badge>
 
+          {/* Edit Button */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => router.push(`/dashboard/cement/liftings/${id}/edit`)}
+            className="font-medium"
+          >
+            <Edit className="w-4 h-4 mr-1.5 text-[#007AFF]" />
+            Edit
+          </Button>
+
           {/* Status Transition Buttons */}
           {lifting.status !== 'Delivered' && lifting.status !== 'Verified' && (
             <Button
@@ -468,15 +485,31 @@ export default function CementLiftingDetailPage() {
                   </div>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1">Delivery Note / GRN No.</label>
-                  <input
-                    type="text"
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none"
-                    placeholder="e.g. DN-2026-001"
-                    value={manualDeliveryNoteNo}
-                    onChange={(e) => setManualDeliveryNoteNo(e.target.value)}
-                  />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1 flex items-center gap-1">
+                      <Receipt className="w-3.5 h-3.5 text-slate-500" />
+                      Delivery Pad / POD No. (Pad #)
+                    </label>
+                    <input
+                      type="text"
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none font-medium"
+                      placeholder="e.g. PAD-2026-001"
+                      value={manualPadNumber}
+                      onChange={(e) => setManualPadNumber(e.target.value)}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1">Delivery Note / GRN No.</label>
+                    <input
+                      type="text"
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none"
+                      placeholder="e.g. DN-2026-001"
+                      value={manualDeliveryNoteNo}
+                      onChange={(e) => setManualDeliveryNoteNo(e.target.value)}
+                    />
+                  </div>
                 </div>
 
                 <div>
@@ -611,6 +644,16 @@ export default function CementLiftingDetailPage() {
                 {lifting.coupon.tonnage && (
                   <p className="text-sm text-[#86868B] mt-1">Tonnage: {lifting.coupon.tonnage} QT</p>
                 )}
+              </div>
+            )}
+
+            {lifting.padNumber && (
+              <div>
+                <p className="text-xs font-medium text-[#86868B] uppercase tracking-wider mb-2">Delivery Pad / POD No</p>
+                <p className="text-lg font-semibold text-amber-700 font-mono flex items-center gap-2">
+                  <Receipt className="w-4 h-4 text-amber-600" />
+                  {lifting.padNumber}
+                </p>
               </div>
             )}
 

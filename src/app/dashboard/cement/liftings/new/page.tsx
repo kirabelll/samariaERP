@@ -50,6 +50,8 @@ export default function NewCementLiftingPage() {
   const [factoryWeighbridgeRef, setFactoryWeighbridgeRef] = useState('');
   const [factoryWeight, setFactoryWeight] = useState('');
   const [couponId, setCouponId] = useState('');
+  const [padNumber, setPadNumber] = useState('');
+  const [deliveryNoteNo, setDeliveryNoteNo] = useState('');
   const [liftingDate, setLiftingDate] = useState(new Date().toISOString().split('T')[0]);
 
   // Derived from selection
@@ -168,6 +170,8 @@ export default function NewCementLiftingPage() {
           factoryWeighbridgeRef,
           factoryWeight: parseFloat(factoryWeight),
           couponId: couponId || null,
+          padNumber: padNumber.trim() || null,
+          deliveryNoteNo: deliveryNoteNo.trim() || null,
           liftingDate,
         }),
       });
@@ -373,6 +377,27 @@ export default function NewCementLiftingPage() {
             {purchaseId && !loadingCoupons && coupons.length === 0 && (
               <p className="text-slate-500 text-xs mt-1">No available coupons for this purchase. You can register coupons in the Coupons page.</p>
             )}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Delivery Pad / POD Number (Pad #)</label>
+              <Input
+                placeholder="e.g., PAD-2026-001 (Optional)"
+                value={padNumber}
+                onChange={(e) => setPadNumber(e.target.value)}
+              />
+              <p className="text-xs text-slate-500 mt-1">Delivery pad or proof of delivery receipt number</p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Delivery Note / GRN No.</label>
+              <Input
+                placeholder="e.g., DN-2026-0504 (Optional)"
+                value={deliveryNoteNo}
+                onChange={(e) => setDeliveryNoteNo(e.target.value)}
+              />
+              <p className="text-xs text-slate-500 mt-1">Delivery note / goods receive note number</p>
+            </div>
           </div>
 
           {/* Weighbridge Document Upload */}

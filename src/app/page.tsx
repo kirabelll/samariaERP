@@ -20,7 +20,7 @@ export default function HomePage() {
     }
   }, [session, status, router]);
 
-  // Show a loading screen while determining auth status
+
   return (
     <div style={{
       minHeight: '100vh',

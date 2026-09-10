@@ -119,41 +119,73 @@ export async function PUT(
     }
 
     const body = await request.json();
-    const { id, createdAt, purchase, factory, truck, ...updateData } = body;
+    const { id, createdAt, purchase, factory, truck, ...rawUpdateData } = body;
 
-    // Validate status transitions
+    const updateData: any = {};
+
+    // String fields
+    if (rawUpdateData.padNumber !== undefined) updateData.padNumber = rawUpdateData.padNumber?.trim() || null;
+    if (rawUpdateData.deliveryNoteNo !== undefined) updateData.deliveryNoteNo = rawUpdateData.deliveryNoteNo?.trim() || null;
+    if (rawUpdateData.notes !== undefined) updateData.notes = rawUpdateData.notes?.trim() || null;
+    if (rawUpdateData.factoryWeighbridgeRef !== undefined) updateData.factoryWeighbridgeRef = rawUpdateData.factoryWeighbridgeRef;
+    if (rawUpdateData.registeredBy !== undefined) updateData.registeredBy = rawUpdateData.registeredBy;
+
+    // Relational ID fields
+    if (rawUpdateData.purchaseId !== undefined) updateData.purchaseId = rawUpdateData.purchaseId;
+    if (rawUpdateData.factoryId !== undefined) updateData.factoryId = rawUpdateData.factoryId;
+    if (rawUpdateData.truckId !== undefined) updateData.truckId = rawUpdateData.truckId;
+    if (rawUpdateData.customerId !== undefined) updateData.customerId = rawUpdateData.customerId;
+    if (rawUpdateData.couponId !== undefined) updateData.couponId = rawUpdateData.couponId || null;
+
+    // Date
+    if (rawUpdateData.liftingDate !== undefined) {
+      updateData.liftingDate = rawUpdateData.liftingDate ? new Date(rawUpdateData.liftingDate) : new Date();
+    }
+
+    // Numbers
+    if (rawUpdateData.factoryWeight !== undefined && rawUpdateData.factoryWeight !== null && rawUpdateData.factoryWeight !== '') {
+      updateData.factoryWeight = parseFloat(rawUpdateData.factoryWeight);
+    }
+    if (rawUpdateData.buyerWeighbridgeQty !== undefined) {
+      updateData.buyerWeighbridgeQty = (rawUpdateData.buyerWeighbridgeQty !== null && rawUpdateData.buyerWeighbridgeQty !== '')
+        ? parseFloat(rawUpdateData.buyerWeighbridgeQty)
+        : null;
+    }
+
+    // Status transition validation
     const validTransitions: Record<string, string[]> = {
-      Lifted: ['Delivered', 'Cancelled'],
-      Delivered: ['Verified', 'Lifted'],
-      Verified: [],
-      Cancelled: [],
+      Lifted: ['Lifted', 'Delivered', 'Cancelled'],
+      Delivered: ['Delivered', 'Verified', 'Lifted', 'Cancelled'],
+      Verified: ['Verified', 'Delivered', 'Lifted'],
+      Cancelled: ['Cancelled', 'Lifted'],
     };
 
-    if (updateData.status) {
+    if (rawUpdateData.status) {
       const currentStatus = lifting.status;
-      const newStatus = updateData.status;
+      const newStatus = rawUpdateData.status;
 
-      if (!validTransitions[currentStatus]?.includes(newStatus)) {
+      if (newStatus !== currentStatus && !validTransitions[currentStatus]?.includes(newStatus)) {
         return NextResponse.json(
           { success: false, error: `Cannot transition from ${currentStatus} to ${newStatus}` },
           { status: 400 }
         );
       }
+      updateData.status = newStatus;
     }
 
     // Recalculate shortage if weights are updated
-    if (updateData.buyerWeighbridgeQty !== undefined || updateData.factoryWeight !== undefined) {
-      const fw = updateData.factoryWeight ?? lifting.factoryWeight;
-      const bw = updateData.buyerWeighbridgeQty ?? lifting.buyerWeighbridgeQty;
-      if (bw !== null && bw !== undefined) {
-        updateData.shortageQty = fw - bw;
-      }
+    const fw = updateData.factoryWeight !== undefined ? updateData.factoryWeight : lifting.factoryWeight;
+    const bw = updateData.buyerWeighbridgeQty !== undefined ? updateData.buyerWeighbridgeQty : lifting.buyerWeighbridgeQty;
+    if (bw !== null && bw !== undefined) {
+      updateData.shortageQty = fw - bw;
+    } else if (updateData.buyerWeighbridgeQty === null) {
+      updateData.shortageQty = null;
     }
 
     const isConfirming = updateData.status === 'Delivered' && lifting.status === 'Lifted';
 
-    // Auto-sum verified BUYER weighbridge entries when marking as Delivered
-    if (isConfirming && !updateData.buyerWeighbridgeQty) {
+    // Auto-sum verified BUYER weighbridge entries when marking as Delivered if not explicitly provided
+    if (isConfirming && updateData.buyerWeighbridgeQty === undefined && !lifting.buyerWeighbridgeQty) {
       try {
         const buyerEntries = await prisma.cementWeighbridge.findMany({
           where: {
@@ -167,10 +199,93 @@ export async function PUT(
         if (buyerEntries.length > 0) {
           const totalBuyerWeight = buyerEntries.reduce((sum: number, e: any) => sum + Number(e.netWeight), 0);
           updateData.buyerWeighbridgeQty = totalBuyerWeight;
-          updateData.shortageQty = lifting.factoryWeight - totalBuyerWeight;
+          updateData.shortageQty = fw - totalBuyerWeight;
         }
       } catch (err) {
         console.error('[Lifting] Failed to auto-sum buyer weighbridge:', err);
+      }
+    }
+
+    // Handle coupon status changes
+    if (updateData.couponId !== undefined && updateData.couponId !== lifting.couponId) {
+      // Revert previous coupon if any
+      if (lifting.couponId) {
+        try {
+          await prisma.coupon.update({
+            where: { id: lifting.couponId },
+            data: { status: 'COLLECTED', usedDate: null },
+          });
+        } catch (cErr) {
+          console.error('[Lifting PUT] Error reverting old coupon:', cErr);
+        }
+      }
+      // Mark new coupon as USED
+      if (updateData.couponId) {
+        try {
+          await prisma.coupon.update({
+            where: { id: updateData.couponId },
+            data: { status: 'USED', usedDate: new Date() },
+          });
+        } catch (cErr) {
+          console.error('[Lifting PUT] Error marking new coupon as USED:', cErr);
+        }
+      }
+    }
+
+    // Handle factory weight change effect on factory balance and purchase balance
+    const weightDiff = (updateData.factoryWeight !== undefined) ? (updateData.factoryWeight - lifting.factoryWeight) : 0;
+    if (weightDiff !== 0) {
+      try {
+        const existingBalance = await prisma.cementBalance.findUnique({
+          where: {
+            purchaseId_factoryId: {
+              purchaseId: updateData.purchaseId || lifting.purchaseId,
+              factoryId: updateData.factoryId || lifting.factoryId,
+            },
+          },
+        });
+        if (existingBalance) {
+          const newLifted = Math.max(0, existingBalance.liftedQty + weightDiff);
+          await prisma.cementBalance.update({
+            where: {
+              purchaseId_factoryId: {
+                purchaseId: updateData.purchaseId || lifting.purchaseId,
+                factoryId: updateData.factoryId || lifting.factoryId,
+              },
+            },
+            data: {
+              liftedQty: newLifted,
+              remainingQty: Math.max(0, existingBalance.initialQty - newLifted),
+              lastUpdated: new Date(),
+            },
+          });
+        }
+
+        // Update purchase balance
+        const targetPurchaseId = updateData.purchaseId || lifting.purchaseId;
+        const totalLiftedSum = await prisma.cementLifting.aggregate({
+          where: {
+            purchaseId: targetPurchaseId,
+            id: { not: params.id },
+            status: { in: ['Lifted', 'Delivered', 'Verified'] },
+          },
+          _sum: { factoryWeight: true },
+        });
+        const currentOtherLifted = Number(totalLiftedSum._sum.factoryWeight || 0);
+        const newTotalLifted = currentOtherLifted + (updateData.factoryWeight ?? lifting.factoryWeight);
+        const purchaseRecord = await prisma.cementPurchase.findUnique({ where: { id: targetPurchaseId } });
+        if (purchaseRecord) {
+          const newPurchaseRemaining = Math.max(0, purchaseRecord.quantityTons - newTotalLifted);
+          await prisma.cementPurchase.update({
+            where: { id: targetPurchaseId },
+            data: {
+              balanceRemaining: newPurchaseRemaining,
+              status: newPurchaseRemaining > 0 ? 'Active' : 'Exhausted',
+            },
+          });
+        }
+      } catch (bErr) {
+        console.error('[Lifting PUT] Error updating balances for weight change:', bErr);
       }
     }
 
@@ -180,24 +295,19 @@ export async function PUT(
       include: { purchase: true, factory: true, truck: true },
     });
 
-    // Factory balance is already updated at lifting creation time.
-    // On delivery confirmation, we only handle shortage penalties.
+    // Shortage penalties on delivery confirmation
     let balanceResult = null;
     if (isConfirming || (updateData.status === 'Verified' && lifting.status === 'Delivered')) {
       if (isConfirming) {
-        // Auto-calculate shortage penalty and create CementPenalty record
         if (updatedLifting.shortageQty && updatedLifting.shortageQty > 0) {
-          // Penalty rate = purchase unit price per ton (e.g., ETB 4,200/ton)
           const penaltyRate = Number(updatedLifting.purchase?.unitPrice) || 0;
           const penaltyAmount = updatedLifting.shortageQty * penaltyRate;
 
-          // Update lifting penalty field
           await prisma.cementLifting.update({
             where: { id: params.id },
             data: { shortagePenalty: penaltyAmount },
           });
 
-          // Auto-create CementPenalty record
           const penCount = await prisma.cementPenalty.count();
           const penaltyNo = `PEN-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${String(penCount + 1).padStart(4, '0')}`;
 
@@ -215,7 +325,6 @@ export async function PUT(
             },
           });
 
-          // Auto-log exception for significant shortages (>2% of factory weight)
           const shortagePercent = (updatedLifting.shortageQty / updatedLifting.factoryWeight) * 100;
           if (shortagePercent > 2) {
             await prisma.exceptionLog.create({
@@ -232,7 +341,6 @@ export async function PUT(
           }
         }
 
-        // Telegram notification for delivery + balance update
         const shortageInfo = updatedLifting.shortageQty && updatedLifting.shortageQty > 0
           ? ` Shortage: ${updatedLifting.shortageQty}T (${((updatedLifting.shortageQty / updatedLifting.factoryWeight) * 100).toFixed(1)}%)`
           : '';

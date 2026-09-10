@@ -776,7 +776,6 @@ model CementLifting {
   // Coupon (optional)
   couponId              String?
   deliveryNoteNo        String?
-  notes                 String?
   liftingDate           DateTime @default(now())
   status                String   @default("Lifted") // Lifted, Delivered, Verified
   registeredBy          String?

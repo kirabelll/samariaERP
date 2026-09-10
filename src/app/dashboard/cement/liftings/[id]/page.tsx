@@ -77,7 +77,6 @@ export default function CementLiftingDetailPage() {
   const [buyerWbTotal, setBuyerWbTotal] = useState<number>(0);
   const [manualBuyerQty, setManualBuyerQty] = useState<string>('');
   const [manualDeliveryNoteNo, setManualDeliveryNoteNo] = useState<string>('');
-  const [manualDeliveryNotes, setManualDeliveryNotes] = useState<string>('');
   const [showDeliveryPanel, setShowDeliveryPanel] = useState<boolean>(false);
 
   // Manual Buyer Weighbridge Entry Modal state
@@ -481,19 +480,29 @@ export default function CementLiftingDetailPage() {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1">Factory Weight</label>
-                    <div className="p-3 bg-slate-100 rounded-lg font-bold text-xl text-slate-900">
-                      {Number(lifting.factoryWeight).toFixed(2)} <span className="text-sm font-normal text-slate-500">Tons</span>
-                    </div>
-                  </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1">Buyer Delivered Weight (Tons) *</label>
+                    <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1">Factory Dispatched Weight</label>
+                    <input
+                      type="text"
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-slate-100 text-slate-600 font-semibold"
+                      value={`${lifting.factoryWeight} Tons`}
+                      disabled
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-emerald-900 uppercase tracking-wider mb-1">
+                      Confirmed Buyer Weight (Tons) *
+                    </label>
                     <input
                       type="number"
                       step="0.001"
-                      className="w-full p-3 border border-slate-300 rounded-lg text-xl font-bold text-emerald-800 focus:ring-2 focus:ring-emerald-500 outline-none"
+                      className="w-full px-3 py-2 border-2 border-emerald-400 rounded-lg text-sm font-bold text-slate-900 focus:ring-2 focus:ring-emerald-500 outline-none bg-white"
                       placeholder="e.g. 40.00"
                       value={manualBuyerQty}
                       onChange={(e) => setManualBuyerQty(e.target.value)}
+                      required
                     />
                   </div>
                 </div>
@@ -506,17 +515,6 @@ export default function CementLiftingDetailPage() {
                     placeholder="e.g. DN-2026-001"
                     value={manualDeliveryNoteNo}
                     onChange={(e) => setManualDeliveryNoteNo(e.target.value)}
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1">Delivery Notes / Remarks</label>
-                  <input
-                    type="text"
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none"
-                    placeholder="Optional remarks or arrival condition..."
-                    value={manualDeliveryNotes}
-                    onChange={(e) => setManualDeliveryNotes(e.target.value)}
                   />
                 </div>
 

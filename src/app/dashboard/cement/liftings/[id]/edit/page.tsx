@@ -114,7 +114,6 @@ export default function EditCementLiftingPage() {
     buyerWeighbridgeQty: '',
     couponId: '',
     deliveryNoteNo: '',
-    notes: '',
     liftingDate: '',
     status: 'Lifted',
   });
@@ -247,7 +246,6 @@ export default function EditCementLiftingPage() {
           buyerWeighbridgeQty: lifting.buyerWeighbridgeQty != null ? String(lifting.buyerWeighbridgeQty) : '',
           couponId: lifting.couponId || '',
           deliveryNoteNo: lifting.deliveryNoteNo || '',
-          notes: lifting.notes || '',
           liftingDate: lifting.liftingDate ? new Date(lifting.liftingDate).toISOString().split('T')[0] : '',
           status: lifting.status || 'Lifted',
         });
@@ -719,201 +717,92 @@ export default function EditCementLiftingPage() {
           </CardBody>
         </Card>
 
-        {/* Section 3: Weighbridge, Weights & Pad Number */}
-        <Card className="rounded-2xl overflow-hidden border border-slate-200/80 shadow-sm">
-          <CardHeader className="bg-slate-50/80 border-b border-slate-200/80 py-3.5 px-6 flex justify-between items-center">
-            <div className="flex justify-between items-center w-full">
+          {/* Section 3: Weighbridge & Quantities */}
+          <Card className="rounded-2xl overflow-hidden border border-slate-200/80 shadow-sm">
+            <CardHeader className="bg-slate-50/80 border-b border-slate-200/80 py-3.5 px-6">
               <h2 className="text-base font-semibold text-slate-900 flex items-center gap-2">
-                <Weight className="w-4 h-4 text-blue-600" />
-                3. Weighbridge Measurements, Delivery Pad & Documents
+                <Scale className="w-4 h-4 text-blue-600" />
+                3. Weighbridge & Quantities
               </h2>
-              <Link
-                href={`/dashboard/cement/weighbridge?liftingId=${id}&liftingNo=${encodeURIComponent(originalLifting.liftingNo)}`}
-                target="_blank"
-                className="text-xs text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1 hover:underline"
-              >
-                View Linked Weighbridge Entries <ExternalLink className="w-3.5 h-3.5" />
-              </Link>
-            </div>
-          </CardHeader>
-          <CardBody className="p-6 space-y-5">
-            {/* Weights row */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
-                  Factory Weighbridge Ref *
-                </label>
-                <Input
-                  name="factoryWeighbridgeRef"
-                  placeholder="e.g. WB-2026-0042"
-                  value={formData.factoryWeighbridgeRef}
-                  onChange={handleInputChange}
-                  required
-                />
-                <p className="text-xs text-slate-500 mt-1">Ticket reference issued at factory weighbridge</p>
+            </CardHeader>
+            <CardBody className="p-6 space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
+                    Factory Weighbridge Ref *
+                  </label>
+                  <Input
+                    name="factoryWeighbridgeRef"
+                    placeholder="e.g. WB-2026-00123"
+                    value={formData.factoryWeighbridgeRef}
+                    onChange={handleInputChange}
+                    required
+                  />
+                  <p className="text-xs text-slate-500 mt-1">Factory scale ticket number</p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
+                    Factory Weight (QT) *
+                  </label>
+                  <Input
+                    name="factoryWeight"
+                    type="number"
+                    step="0.01"
+                    placeholder="e.g. 400.00"
+                    value={formData.factoryWeight}
+                    onChange={handleInputChange}
+                    required
+                  />
+                  <p className="text-xs text-slate-500 mt-1">
+                    Dispatched weight in Quintals (10 QT = 1 Ton)
+                  </p>
+                </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
-                  Factory Weight (Tons / QT) *
-                </label>
-                <input
-                  type="number"
-                  name="factoryWeight"
-                  step="0.01"
-                  min="0.01"
-                  placeholder="e.g. 40.00"
-                  value={formData.factoryWeight}
-                  onChange={handleInputChange}
-                  className="block w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm font-semibold text-slate-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
-                  required
-                />
-                <p className="text-xs text-slate-500 mt-1">Dispatched weight from factory scale</p>
-              </div>
-            </div>
+              {/* Buyer Weight & Shortage */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
+                    Buyer Weighbridge Weight (QT)
+                  </label>
+                  <Input
+                    name="buyerWeighbridgeQty"
+                    type="number"
+                    step="0.01"
+                    placeholder="Optional until delivery"
+                    value={formData.buyerWeighbridgeQty}
+                    onChange={handleInputChange}
+                  />
+                  <p className="text-xs text-slate-500 mt-1">Delivered weight measured at buyer destination</p>
+                </div>
 
-            {/* Buyer Weight & Shortage */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
-                  Buyer Delivered Weight (Tons / QT)
-                </label>
-                <input
-                  type="number"
-                  name="buyerWeighbridgeQty"
-                  step="0.01"
-                  min="0"
-                  placeholder="e.g. 39.80 (leave blank if not yet weighed)"
-                  value={formData.buyerWeighbridgeQty}
-                  onChange={handleInputChange}
-                  className="block w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm font-semibold text-emerald-800 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
-                />
-                <p className="text-xs text-slate-500 mt-1">Weight received at customer destination / buyer weighbridge</p>
-              </div>
-
-              {/* Shortage indicator */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
-                  Calculated Shortage
-                </label>
-                {shortageDetails ? (
-                  <div className={`p-3 rounded-xl border text-sm flex items-center justify-between ${
-                    shortageDetails.shortage > 0 
-                      ? 'bg-red-50/80 border-red-200 text-red-900 font-medium' 
-                      : 'bg-emerald-50/80 border-emerald-200 text-emerald-900 font-medium'
-                  }`}>
-                    <span>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
+                    Shortage & Penalty Preview
+                  </label>
+                  {shortageDetails ? (
+                    <div className={`p-3 rounded-xl border text-xs ${
+                      shortageDetails.shortage > 0 
+                        ? 'bg-red-50/80 border-red-200 text-red-900' 
+                        : 'bg-emerald-50/80 border-emerald-200 text-emerald-900'
+                    }`}>
                       {shortageDetails.shortage > 0 ? (
-                        <>Shortage: <strong>{shortageDetails.shortage.toFixed(2)} Tons</strong> ({shortageDetails.shortagePct.toFixed(1)}%)</>
+                        <div>
+                          <p className="font-bold flex items-center gap-1 text-red-700">
+                            <AlertTriangle className="w-3.5 h-3.5" />
+                            Shortage: {shortageDetails.shortage.toFixed(2)} QT ({shortageDetails.shortagePct.toFixed(1)}%)
+                          </p>
+                          <p className="mt-1 text-red-600">
+                            Penalty: ETB {shortageDetails.penaltyAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                          </p>
+                        </div>
                       ) : (
-                        <>No Shortage (Delivered &ge; Factory Weight)</>
+                        <p className="font-bold text-emerald-700 flex items-center gap-1">
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          Exact match or excess delivered (No shortage)
+                        </p>
                       )}
-                    </span>
-                    {shortageDetails.shortage > 0 && (
-                      <span className="text-xs font-bold text-red-700 bg-red-100 px-2 py-1 rounded-lg">
-                        Penalty: ETB {shortageDetails.penaltyAmount.toLocaleString('en-US')}
-                      </span>
-                    )}
-                  </div>
-                ) : (
-                  <div className="p-3 rounded-xl border border-dashed border-slate-200 text-xs text-slate-400">
-                    Enter buyer weight to calculate shortage
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Delivery Note */}
-            <div className="pt-2">
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
-                  Delivery Note / GRN No.
-                </label>
-                <Input
-                  name="deliveryNoteNo"
-                  placeholder="e.g. DN-2026-0504"
-                  value={formData.deliveryNoteNo}
-                  onChange={handleInputChange}
-                />
-                <p className="text-xs text-slate-500 mt-1">Official dispatch delivery note number</p>
-              </div>
-            </div>
-
-            {/* Coupon Selection */}
-            <div className="pt-2">
-              <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
-                Linked Coupon (Optional)
-              </label>
-              <select
-                name="couponId"
-                value={formData.couponId}
-                onChange={handleInputChange}
-                disabled={loadingCoupons}
-                className="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm bg-white focus:ring-2 focus:ring-[#007AFF] outline-none"
-              >
-                <option value="">-- No Coupon Linked --</option>
-                {availableCoupons.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.couponNo} ({c.tonnage ? `${c.tonnage} QT` : 'Standard'}) — {c.status}
-                  </option>
-                ))}
-              </select>
-              {loadingCoupons && (
-                <p className="text-xs text-blue-600 mt-1">Loading available coupons...</p>
-              )}
-            </div>
-          </CardBody>
-        </Card>
-
-        {/* Section 4: Status & Notes */}
-        <Card className="rounded-2xl overflow-hidden border border-slate-200/80 shadow-sm">
-          <CardHeader className="bg-slate-50/80 border-b border-slate-200/80 py-3.5 px-6">
-            <h2 className="text-base font-semibold text-slate-900 flex items-center gap-2">
-              <FileCheck className="w-4 h-4 text-blue-600" />
-              4. Status & Notes
-            </h2>
-          </CardHeader>
-          <CardBody className="p-6 space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
-                  Lifting Status
-                </label>
-                <select
-                  name="status"
-                  value={formData.status}
-                  onChange={handleInputChange}
-                  className="block w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm font-semibold focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 bg-white"
-                >
-                  <option value="Lifted">Lifted (Dispatched from Factory)</option>
-                  <option value="Delivered">Delivered (Arrived at Destination)</option>
-                  <option value="Verified">Verified (Confirmed & Reconciled)</option>
-                  <option value="Cancelled">Cancelled (Void)</option>
-                </select>
-                <p className="text-xs text-slate-500 mt-1">Change status as the delivery progresses</p>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
-                  Remarks / Notes
-                </label>
-                <textarea
-                  name="notes"
-                  rows={2}
-                  value={formData.notes}
-                  onChange={handleInputChange}
-                  placeholder="Optional delivery notes, condition on arrival, driver remarks..."
-                  className="block w-full rounded-xl border border-slate-300 px-3.5 py-2 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none"
-                />
-              </div>
-            </div>
-          </CardBody>
-        </Card>
-
-        {/* Section 5: Financial Summary */}
-        <Card className="rounded-2xl bg-gradient-to-br from-slate-900 to-slate-800 text-white shadow-md overflow-hidden">
-          <CardBody className="p-6">
-            <h3 className="text-sm font-semibold text-slate-300 uppercase tracking-wider mb-4">
               Financial Summary
             </h3>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-center sm:text-left">

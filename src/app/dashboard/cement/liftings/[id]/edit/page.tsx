@@ -113,7 +113,6 @@ export default function EditCementLiftingPage() {
     factoryWeight: '',
     buyerWeighbridgeQty: '',
     couponId: '',
-    padNumber: '',
     deliveryNoteNo: '',
     notes: '',
     liftingDate: '',
@@ -247,7 +246,6 @@ export default function EditCementLiftingPage() {
           factoryWeight: lifting.factoryWeight ? String(lifting.factoryWeight) : '',
           buyerWeighbridgeQty: lifting.buyerWeighbridgeQty != null ? String(lifting.buyerWeighbridgeQty) : '',
           couponId: lifting.couponId || '',
-          padNumber: lifting.padNumber || '',
           deliveryNoteNo: lifting.deliveryNoteNo || '',
           notes: lifting.notes || '',
           liftingDate: lifting.liftingDate ? new Date(lifting.liftingDate).toISOString().split('T')[0] : '',
@@ -368,7 +366,6 @@ export default function EditCementLiftingPage() {
         factoryWeight: parseFloat(formData.factoryWeight),
         buyerWeighbridgeQty: formData.buyerWeighbridgeQty !== '' ? parseFloat(formData.buyerWeighbridgeQty) : null,
         couponId: formData.couponId || null,
-        padNumber: formData.padNumber?.trim() || null,
         deliveryNoteNo: formData.deliveryNoteNo?.trim() || null,
         notes: formData.notes?.trim() || null,
         liftingDate: formData.liftingDate,
@@ -826,25 +823,8 @@ export default function EditCementLiftingPage() {
               </div>
             </div>
 
-            {/* Pad Number & Delivery Note (CRITICAL NEW FIELDS) */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
-              <div className="bg-amber-50/40 border border-amber-200/80 rounded-xl p-3.5">
-                <label className="block text-xs font-bold text-amber-900 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
-                  <Receipt className="w-4 h-4 text-amber-700" />
-                  Delivery Pad / POD Number (Pad #)
-                </label>
-                <Input
-                  name="padNumber"
-                  placeholder="e.g. PAD-2026-0089 or Receipt #"
-                  value={formData.padNumber}
-                  onChange={handleInputChange}
-                  className="bg-white border-amber-300 focus:border-amber-500 focus:ring-amber-500/20 font-medium"
-                />
-                <p className="text-xs text-amber-700 mt-1">
-                  Delivery pad or proof of delivery (POD) receipt number
-                </p>
-              </div>
-
+            {/* Delivery Note */}
+            <div className="pt-2">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
                   Delivery Note / GRN No.
@@ -868,19 +848,18 @@ export default function EditCementLiftingPage() {
                 name="couponId"
                 value={formData.couponId}
                 onChange={handleInputChange}
-                className="block w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 bg-white"
+                disabled={loadingCoupons}
+                className="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm bg-white focus:ring-2 focus:ring-[#007AFF] outline-none"
               >
-                <option value="">No coupon / None</option>
+                <option value="">-- No Coupon Linked --</option>
                 {availableCoupons.map((c) => (
                   <option key={c.id} value={c.id}>
-                    {c.couponNo} {c.tonnage ? `— ${c.tonnage} QT` : ''} ({c.status})
+                    {c.couponNo} ({c.tonnage ? `${c.tonnage} QT` : 'Standard'}) — {c.status}
                   </option>
                 ))}
               </select>
-              {selectedCoupon && (
-                <p className="text-xs text-purple-700 mt-1 font-medium">
-                  Linked: Coupon #{selectedCoupon.couponNo} ({selectedCoupon.status || 'Active'})
-                </p>
+              {loadingCoupons && (
+                <p className="text-xs text-blue-600 mt-1">Loading available coupons...</p>
               )}
             </div>
           </CardBody>
@@ -937,7 +916,7 @@ export default function EditCementLiftingPage() {
             <h3 className="text-sm font-semibold text-slate-300 uppercase tracking-wider mb-4">
               Financial Summary
             </h3>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-center sm:text-left">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-center sm:text-left">
               <div>
                 <span className="text-xs text-slate-400 block mb-1">Customer Unit Price</span>
                 <span className="text-lg font-bold text-blue-300">
@@ -951,12 +930,6 @@ export default function EditCementLiftingPage() {
                 <span className="text-xs text-slate-400 block mb-1">Factory Weight</span>
                 <span className="text-lg font-bold text-white">
                   {formData.factoryWeight ? `${Number(formData.factoryWeight).toLocaleString('en-US')} QT` : '—'}
-                </span>
-              </div>
-              <div>
-                <span className="text-xs text-slate-400 block mb-1">Pad Number</span>
-                <span className="text-lg font-bold text-amber-300 font-mono">
-                  {formData.padNumber || '—'}
                 </span>
               </div>
               <div>

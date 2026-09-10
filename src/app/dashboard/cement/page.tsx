@@ -148,20 +148,6 @@ function CementOperationsContent() {
 
   const liftingColumns: ColumnDef<CementLifting>[] = [
     { header: 'Lifting No', accessor: 'liftingNo', sortable: true },
-    {
-      header: 'Pad # / POD',
-      accessor: 'padNumber' as any,
-      sortable: true,
-      render: (_val: any, row: CementLifting) => {
-        return row.padNumber ? (
-          <span className="text-xs font-mono font-semibold bg-amber-50 text-amber-800 border border-amber-200 px-2 py-0.5 rounded-md">
-            {row.padNumber}
-          </span>
-        ) : (
-          <span className="text-gray-400">—</span>
-        );
-      },
-    },
     { header: 'Customer', accessor: 'customer', sortable: true, render: (_val, row) => row.customer?.companyName || '-' },
     { header: 'Factory', accessor: 'factory', sortable: true, render: (_val, row) => row.factory?.name || '-' },
     {

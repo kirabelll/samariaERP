@@ -76,7 +76,6 @@ export default function CementLiftingDetailPage() {
   const [buyerWbEntries, setBuyerWbEntries] = useState<LinkedWbEntry[]>([]);
   const [buyerWbTotal, setBuyerWbTotal] = useState<number>(0);
   const [manualBuyerQty, setManualBuyerQty] = useState<string>('');
-  const [manualPadNumber, setManualPadNumber] = useState<string>('');
   const [manualDeliveryNoteNo, setManualDeliveryNoteNo] = useState<string>('');
   const [manualDeliveryNotes, setManualDeliveryNotes] = useState<string>('');
   const [showDeliveryPanel, setShowDeliveryPanel] = useState<boolean>(false);
@@ -153,9 +152,6 @@ export default function CementLiftingDetailPage() {
         if (data.data.deliveryNoteNo && !manualDeliveryNoteNo) {
           setManualDeliveryNoteNo(data.data.deliveryNoteNo);
         }
-        if (data.data.padNumber && !manualPadNumber) {
-          setManualPadNumber(data.data.padNumber);
-        }
       } else {
         setError(data.error || 'Failed to load lifting');
       }
@@ -201,18 +197,18 @@ export default function CementLiftingDetailPage() {
       });
       const json = await res.json();
       if (json.success) {
-        alert(`Buyer weighbridge entry created! Net Weight: ${netKg.toLocaleString('en-US')} kg`);
+        alert('Buyer weighbridge entry recorded successfully!');
         setShowWbModal(false);
         setModalGrossWeight('');
         setModalTareWeight('');
         setModalOperatorName('');
-        await fetchLifting();
         await fetchLinkedWeighbridge();
+        await fetchLifting();
       } else {
-        alert(json.error || 'Failed to create weighbridge entry');
+        alert(json.error || 'Failed to record weighbridge entry');
       }
-    } catch (err) {
-      alert('Error creating weighbridge entry');
+    } catch {
+      alert('Error recording weighbridge entry');
     } finally {
       setSubmittingWb(false);
     }
@@ -221,12 +217,14 @@ export default function CementLiftingDetailPage() {
   const handleMarkDelivered = async () => {
     const buyerQty = parseFloat(manualBuyerQty);
     if (!buyerQty || buyerQty <= 0) {
-      alert('Please enter the buyer weighbridge quantity in tons before marking as Delivered.');
+      alert('Please enter a valid delivered weight in tons.');
       return;
     }
-    const shortage = (lifting?.factoryWeight || 0) - buyerQty;
+
+    const factoryW = lifting?.factoryWeight || 0;
+    const shortage = factoryW - buyerQty;
     const shortageMsg = shortage > 0
-      ? `\n\nShortage: ${shortage.toFixed(2)} tons (${((shortage / (lifting?.factoryWeight || 1)) * 100).toFixed(1)}%)\nA penalty will be auto-created.`
+      ? `\n\nShortage detected: ${shortage.toFixed(2)} tons (${factoryW > 0 ? ((shortage / factoryW) * 100).toFixed(1) : 0}%).\nA penalty will be automatically registered.`
       : '';
 
     if (!confirm(`Mark as Delivered?\n\nFactory Weight: ${lifting?.factoryWeight} tons\nBuyer Weight: ${buyerQty} tons${shortageMsg}\n\nThis will update the cement balance and purchase records.`)) return;
@@ -239,7 +237,6 @@ export default function CementLiftingDetailPage() {
         body: JSON.stringify({
           status: 'Delivered',
           buyerWeighbridgeQty: buyerQty,
-          padNumber: manualPadNumber.trim() || undefined,
           deliveryNoteNo: manualDeliveryNoteNo.trim() || undefined,
           notes: manualDeliveryNotes.trim() || undefined,
         }),
@@ -501,31 +498,15 @@ export default function CementLiftingDetailPage() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1 flex items-center gap-1">
-                      <Receipt className="w-3.5 h-3.5 text-slate-500" />
-                      Delivery Pad / POD No. (Pad #)
-                    </label>
-                    <input
-                      type="text"
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none font-medium"
-                      placeholder="e.g. PAD-2026-001"
-                      value={manualPadNumber}
-                      onChange={(e) => setManualPadNumber(e.target.value)}
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1">Delivery Note / GRN No.</label>
-                    <input
-                      type="text"
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none"
-                      placeholder="e.g. DN-2026-001"
-                      value={manualDeliveryNoteNo}
-                      onChange={(e) => setManualDeliveryNoteNo(e.target.value)}
-                    />
-                  </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1">Delivery Note / GRN No.</label>
+                  <input
+                    type="text"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none"
+                    placeholder="e.g. DN-2026-001"
+                    value={manualDeliveryNoteNo}
+                    onChange={(e) => setManualDeliveryNoteNo(e.target.value)}
+                  />
                 </div>
 
                 <div>
@@ -660,16 +641,6 @@ export default function CementLiftingDetailPage() {
                 {lifting.coupon.tonnage && (
                   <p className="text-sm text-[#86868B] mt-1">Tonnage: {lifting.coupon.tonnage} QT</p>
                 )}
-              </div>
-            )}
-
-            {lifting.padNumber && (
-              <div>
-                <p className="text-xs font-medium text-[#86868B] uppercase tracking-wider mb-2">Delivery Pad / POD No</p>
-                <p className="text-lg font-semibold text-amber-700 font-mono flex items-center gap-2">
-                  <Receipt className="w-4 h-4 text-amber-600" />
-                  {lifting.padNumber}
-                </p>
               </div>
             )}
 

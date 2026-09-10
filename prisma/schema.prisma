@@ -776,7 +776,6 @@ model CementLifting {
   // Coupon (optional)
   couponId              String?
   deliveryNoteNo        String?
-  padNumber             String?     // Delivery pad/receipt number
   notes                 String?
   liftingDate           DateTime @default(now())
   status                String   @default("Lifted") // Lifted, Delivered, Verified

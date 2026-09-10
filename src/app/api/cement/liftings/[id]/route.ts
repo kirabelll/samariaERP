@@ -124,7 +124,6 @@ export async function PUT(
     const updateData: any = {};
 
     // String fields
-    if (rawUpdateData.padNumber !== undefined) updateData.padNumber = rawUpdateData.padNumber?.trim() || null;
     if (rawUpdateData.deliveryNoteNo !== undefined) updateData.deliveryNoteNo = rawUpdateData.deliveryNoteNo?.trim() || null;
     if (rawUpdateData.notes !== undefined) updateData.notes = rawUpdateData.notes?.trim() || null;
     if (rawUpdateData.factoryWeighbridgeRef !== undefined) updateData.factoryWeighbridgeRef = rawUpdateData.factoryWeighbridgeRef;

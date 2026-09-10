@@ -388,7 +388,6 @@ export async function POST(request: NextRequest) {
         shortageQty: shortageQty || null,
         couponId: couponId || null,
         deliveryNoteNo: deliveryNoteNo || null,
-        padNumber: body.padNumber?.trim() || null,
         notes: body.notes?.trim() || null,
         liftingDate: liftingDate ? new Date(liftingDate) : new Date(),
         status: 'Lifted',

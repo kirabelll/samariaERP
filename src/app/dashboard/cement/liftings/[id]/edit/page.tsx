@@ -581,7 +581,7 @@ export default function EditCementLiftingPage() {
                   </div>
                   <div>
                     <span className="text-xs font-medium text-blue-600 block">Unit Cost</span>
-                    <span className="font-semibold text-slate-900">ETB {Number(selectedPurchase.unitPrice || 0).toLocaleString('en-US')} / Ton</span>
+                    <span className="font-semibold text-slate-900">ETB {Number(selectedPurchase.unitPrice || 0).toLocaleString('en-US')} / QT</span>
                   </div>
                   <div>
                     <span className="text-xs font-medium text-blue-600 block">Purchase Balance</span>

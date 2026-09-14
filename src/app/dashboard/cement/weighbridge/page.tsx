@@ -407,13 +407,16 @@ function WeighbridgeRegisterContent() {
       render: (val: number) => (val ?? 0).toLocaleString('en-US'),
     },
     {
-      header: 'Net Weight (Tons)',
+      header: 'Net Weight (QT)',
       accessor: 'netWeight' as any,
-      render: (val: number) => (
-        <span className="font-semibold text-slate-900">
-          {(val / 1000 > 10 ? val / 1000 : val).toFixed(2)} Tons
-        </span>
-      ),
+      render: (val: number) => {
+        const netQt = val > 1000 ? val / 100 : val;
+        return (
+          <span className="font-semibold text-slate-900">
+            {netQt.toFixed(2)} QT <span className="text-xs text-slate-500 font-normal">({(netQt / 10).toFixed(2)} T)</span>
+          </span>
+        );
+      },
     },
     {
       header: 'Date',
@@ -652,7 +655,7 @@ function WeighbridgeRegisterContent() {
               {Number(averageNetWeight).toLocaleString('en-US')}
             </p>
             <p className="text-sm text-gray-600 font-medium mt-1">
-              Avg Net Weight ({Number(averageNetWeight) > 100 ? `${(Number(averageNetWeight)/1000).toFixed(2)} Tons` : 'kg'})
+              Avg Net Weight ({Number(averageNetWeight) > 100 ? `${(Number(averageNetWeight)/100).toFixed(2)} QT (${(Number(averageNetWeight)/1000).toFixed(2)} Tons)` : 'kg'})
             </p>
           </CardBody>
         </Card>

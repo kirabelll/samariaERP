@@ -217,17 +217,17 @@ export default function CementLiftingDetailPage() {
   const handleMarkDelivered = async () => {
     const buyerQty = parseFloat(manualBuyerQty);
     if (!buyerQty || buyerQty <= 0) {
-      alert('Please enter a valid delivered weight in tons.');
+      alert('Please enter a valid delivered weight in Quintals (QT).');
       return;
     }
 
     const factoryW = lifting?.factoryWeight || 0;
     const shortage = factoryW - buyerQty;
     const shortageMsg = shortage > 0
-      ? `\n\nShortage detected: ${shortage.toFixed(2)} tons (${factoryW > 0 ? ((shortage / factoryW) * 100).toFixed(1) : 0}%).\nA penalty will be automatically registered.`
+      ? `\n\nShortage detected: ${shortage.toFixed(2)} QT (${factoryW > 0 ? ((shortage / factoryW) * 100).toFixed(1) : 0}%).\nA penalty will be automatically registered.`
       : '';
 
-    if (!confirm(`Mark as Delivered?\n\nFactory Weight: ${lifting?.factoryWeight} tons\nBuyer Weight: ${buyerQty} tons${shortageMsg}\n\nThis will update the cement balance and purchase records.`)) return;
+    if (!confirm(`Mark as Delivered?\n\nFactory Weight: ${lifting?.factoryWeight} QT (${(lifting?.factoryWeight / 10).toFixed(2)} Tons)\nBuyer Weight: ${buyerQty} QT (${(buyerQty / 10).toFixed(2)} Tons)${shortageMsg}\n\nThis will update the cement balance and purchase records.`)) return;
 
     try {
       setTransitioning(true);
@@ -242,7 +242,7 @@ export default function CementLiftingDetailPage() {
       });
       const result = await res.json();
       if (result.success) {
-        alert(`Delivery confirmed!${result.balance ? ' Balance updated.' : ''}${shortage > 0 ? ` Shortage penalty created for ${shortage.toFixed(2)} tons.` : ''}`);
+        alert(`Delivery confirmed!${result.balance ? ' Balance updated.' : ''}${shortage > 0 ? ` Shortage penalty created for ${shortage.toFixed(2)} QT (${(shortage / 10).toFixed(2)} Tons).` : ''}`);
         setShowDeliveryPanel(false);
         await fetchLifting();
       } else {
@@ -444,26 +444,34 @@ export default function CementLiftingDetailPage() {
                 <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Linked Buyer Weighbridge Entries</p>
                 {buyerWbEntries.length > 0 ? (
                   <div className="space-y-2">
-                    {buyerWbEntries.map((e, i) => (
-                      <div key={i} className="flex justify-between items-center text-sm p-3 rounded-lg bg-slate-50 border border-slate-200">
-                        <div>
-                          <span className="font-semibold text-slate-900">{e.weighbridgeNo}</span>
-                          <p className="text-xs text-slate-500">{new Date(e.weighbridgeDate).toLocaleDateString()}</p>
+                    {buyerWbEntries.map((e, i) => {
+                      const netQt = e.netWeight > 1000 ? (e.netWeight / 100) : e.netWeight;
+                      return (
+                        <div key={i} className="flex justify-between items-center text-sm p-3 rounded-lg bg-slate-50 border border-slate-200">
+                          <div>
+                            <span className="font-semibold text-slate-900">{e.weighbridgeNo}</span>
+                            <p className="text-xs text-slate-500">{new Date(e.weighbridgeDate).toLocaleDateString()}</p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-slate-800">{netQt.toFixed(2)} QT <span className="text-xs text-slate-500 font-normal">({(netQt / 10).toFixed(2)} T)</span></span>
+                            {e.verified ? (
+                              <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-semibold">Verified</span>
+                            ) : (
+                              <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-semibold">Pending</span>
+                            )}
+                          </div>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-slate-800">{(e.netWeight / 1000 > 10 ? e.netWeight / 1000 : e.netWeight).toFixed(2)} Tons</span>
-                          {e.verified ? (
-                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-semibold">Verified</span>
-                          ) : (
-                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-semibold">Pending</span>
-                          )}
+                      );
+                    })}
+                    {(() => {
+                      const totalQt = buyerWbTotal > 1000 ? (buyerWbTotal / 100) : buyerWbTotal;
+                      return (
+                        <div className="flex justify-between items-center text-sm p-3 rounded-lg bg-blue-50 border border-blue-200">
+                          <span className="font-semibold text-blue-900">Verified Total (Weighbridge)</span>
+                          <span className="font-bold text-blue-900 text-base">{totalQt.toFixed(2)} QT <span className="text-xs text-blue-700 font-normal">({(totalQt / 10).toFixed(2)} Tons)</span></span>
                         </div>
-                      </div>
-                    ))}
-                    <div className="flex justify-between items-center text-sm p-3 rounded-lg bg-blue-50 border border-blue-200">
-                      <span className="font-semibold text-blue-900">Verified Total (Weighbridge)</span>
-                      <span className="font-bold text-blue-900 text-base">{(buyerWbTotal / 1000 > 10 ? buyerWbTotal / 1000 : buyerWbTotal).toFixed(2)} Tons</span>
-                    </div>
+                      );
+                    })()}
                   </div>
                 ) : (
                   <div className="p-4 bg-slate-50 border border-dashed border-slate-300 rounded-xl text-center space-y-2">
@@ -483,24 +491,25 @@ export default function CementLiftingDetailPage() {
                     <input
                       type="text"
                       className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-slate-100 text-slate-600 font-semibold"
-                      value={`${lifting.factoryWeight} Tons`}
+                      value={`${lifting.factoryWeight} QT (${(lifting.factoryWeight / 10).toFixed(2)} Tons)`}
                       disabled
                     />
                   </div>
 
                   <div>
                     <label className="block text-xs font-semibold text-emerald-900 uppercase tracking-wider mb-1">
-                      Confirmed Buyer Weight (Tons) *
+                      Confirmed Buyer Weight (QT) *
                     </label>
                     <input
                       type="number"
-                      step="0.001"
+                      step="0.01"
                       className="w-full px-3 py-2 border-2 border-emerald-400 rounded-lg text-sm font-bold text-slate-900 focus:ring-2 focus:ring-emerald-500 outline-none bg-white"
-                      placeholder="e.g. 40.00"
+                      placeholder="e.g. 400.00"
                       value={manualBuyerQty}
                       onChange={(e) => setManualBuyerQty(e.target.value)}
                       required
                     />
+                    <p className="text-[11px] text-slate-500 mt-0.5">Enter weight in Quintals (10 QT = 1 Ton)</p>
                   </div>
                 </div>
 
@@ -522,7 +531,7 @@ export default function CementLiftingDetailPage() {
                     return (
                       <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-800 flex items-center gap-2">
                         <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />
-                        <span>Shortage detected: <strong>{shortage.toFixed(2)} Tons ({pct}%)</strong>. Confirming delivery will automatically create a shortage penalty.</span>
+                        <span>Shortage detected: <strong>{shortage.toFixed(2)} QT ({pct}%) / {(shortage / 10).toFixed(2)} Tons</strong>. Confirming delivery will automatically create a shortage penalty.</span>
                       </div>
                     );
                   }
@@ -694,18 +703,21 @@ export default function CementLiftingDetailPage() {
               </div>
               <div>
                 <p className="text-xs font-medium text-[#86868B] uppercase tracking-wider mb-1">Factory Weight</p>
-                <p className="text-3xl font-bold text-[#007AFF]">{Number(lifting.factoryWeight || 0).toLocaleString('en-US')} Tons</p>
+                <p className="text-3xl font-bold text-[#007AFF]">{Number(lifting.factoryWeight || 0).toLocaleString('en-US')} QT</p>
+                <p className="text-xs text-slate-500 font-medium mt-0.5">({(Number(lifting.factoryWeight || 0) / 10).toFixed(2)} Tons)</p>
               </div>
               {lifting.buyerWeighbridgeQty != null && lifting.buyerWeighbridgeQty > 0 && (
                 <div>
                   <p className="text-xs font-medium text-[#86868B] uppercase tracking-wider mb-1">Buyer Weighbridge</p>
-                  <p className="text-2xl font-bold text-[#1D1D1F]">{Number(lifting.buyerWeighbridgeQty).toLocaleString('en-US')} Tons</p>
+                  <p className="text-2xl font-bold text-[#1D1D1F]">{Number(lifting.buyerWeighbridgeQty).toLocaleString('en-US')} QT</p>
+                  <p className="text-xs text-slate-500 font-medium mt-0.5">({(Number(lifting.buyerWeighbridgeQty) / 10).toFixed(2)} Tons)</p>
                 </div>
               )}
               {lifting.shortageQty != null && lifting.shortageQty > 0 && (
                 <div className="border-t pt-3">
                   <p className="text-xs font-medium text-red-500 uppercase tracking-wider mb-1">Shortage</p>
-                  <p className="text-xl font-bold text-red-600">{Number(lifting.shortageQty).toLocaleString('en-US')} Tons</p>
+                  <p className="text-xl font-bold text-red-600">{Number(lifting.shortageQty).toLocaleString('en-US')} QT</p>
+                  <p className="text-xs text-red-500 font-medium mt-0.5">({(Number(lifting.shortageQty) / 10).toFixed(2)} Tons)</p>
                   {lifting.shortagePenalty != null && lifting.shortagePenalty > 0 && (
                     <p className="text-sm text-red-500 mt-1">Penalty: ETB {Number(lifting.shortagePenalty).toLocaleString('en-US')}</p>
                   )}
@@ -722,34 +734,37 @@ export default function CementLiftingDetailPage() {
                     Linked Weighbridge Entries ({linkedWbEntries.length})
                   </p>
                   <div className="space-y-2">
-                    {linkedWbEntries.map((wb) => (
-                      <Link
-                        key={wb.id}
-                        href={`/dashboard/cement/weighbridge/${wb.id}`}
-                        className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 hover:bg-blue-50/70 border border-slate-200 hover:border-blue-300 transition-all text-xs group"
-                      >
-                        <div className="space-y-0.5">
-                          <div className="flex items-center gap-1.5">
-                            <span className="font-bold text-slate-900 group-hover:text-blue-600 font-mono">
-                              {wb.weighbridgeNo}
-                            </span>
-                            <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${
-                              wb.weighbridgeType === 'BUYER' 
-                                ? 'bg-emerald-100 text-emerald-800' 
-                                : 'bg-blue-100 text-blue-800'
-                            }`}>
-                              {wb.weighbridgeType}
-                            </span>
+                    {linkedWbEntries.map((wb) => {
+                      const netQt = wb.netWeight > 1000 ? (wb.netWeight / 100) : wb.netWeight;
+                      return (
+                        <Link
+                          key={wb.id}
+                          href={`/dashboard/cement/weighbridge/${wb.id}`}
+                          className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 hover:bg-blue-50/70 border border-slate-200 hover:border-blue-300 transition-all text-xs group"
+                        >
+                          <div className="space-y-0.5">
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-bold text-slate-900 group-hover:text-blue-600 font-mono">
+                                {wb.weighbridgeNo}
+                              </span>
+                              <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${
+                                wb.weighbridgeType === 'BUYER' 
+                                  ? 'bg-emerald-100 text-emerald-800' 
+                                  : 'bg-blue-100 text-blue-800'
+                              }`}>
+                                {wb.weighbridgeType}
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-slate-500">
+                              Net: <strong className="text-slate-800">{netQt.toFixed(2)} QT ({(netQt / 10).toFixed(2)} T)</strong> • {wb.verified ? 'Verified' : 'Pending'}
+                            </p>
                           </div>
-                          <p className="text-[11px] text-slate-500">
-                            Net: <strong className="text-slate-800">{(wb.netWeight / 1000 > 10 ? wb.netWeight / 1000 : wb.netWeight).toFixed(2)} Tons</strong> • {wb.verified ? 'Verified' : 'Pending'}
-                          </p>
-                        </div>
-                        <span className="text-[#007AFF] font-semibold flex items-center gap-0.5 group-hover:translate-x-0.5 transition-transform text-xs">
-                          View <ExternalLink className="w-3.5 h-3.5 ml-0.5" />
-                        </span>
-                      </Link>
-                    ))}
+                          <span className="text-[#007AFF] font-semibold flex items-center gap-0.5 group-hover:translate-x-0.5 transition-transform text-xs">
+                            View <ExternalLink className="w-3.5 h-3.5 ml-0.5" />
+                          </span>
+                        </Link>
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -784,7 +799,7 @@ export default function CementLiftingDetailPage() {
                   Customer Agreement Unit Price
                 </p>
                 <p className="text-lg font-bold text-[#007AFF]">
-                  ETB {effectiveUnitPrice.toLocaleString('en-US')} / Ton
+                  ETB {effectiveUnitPrice.toLocaleString('en-US')} / QT
                 </p>
                 {lifting.customerAgreementNo && (
                   <p className="text-[11px] text-slate-500 mt-0.5">
@@ -798,7 +813,7 @@ export default function CementLiftingDetailPage() {
                     Factory Purchase Cost
                   </p>
                   <p className="text-sm text-slate-600 font-medium">
-                    ETB {Number(lifting.purchase.unitPrice).toLocaleString('en-US')} / Ton
+                    ETB {Number(lifting.purchase.unitPrice).toLocaleString('en-US')} / QT
                   </p>
                 </div>
               )}
@@ -926,7 +941,7 @@ export default function CementLiftingDetailPage() {
           <div className="space-y-4">
             <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-800">
               <p className="font-semibold mb-1">Lifting: {lifting?.liftingNo}</p>
-              <p>Truck: {lifting?.truck?.plateNo || 'N/A'} | Factory Weight: {lifting?.factoryWeight} tons</p>
+              <p>Truck: {lifting?.truck?.plateNo || 'N/A'} | Factory Weight: {lifting?.factoryWeight} QT ({(Number(lifting?.factoryWeight || 0) / 10).toFixed(2)} Tons)</p>
             </div>
             <Input
               label="Gross Weight (kg) *"
@@ -944,7 +959,7 @@ export default function CementLiftingDetailPage() {
             />
             {modalGrossWeight && modalTareWeight && (
               <div className="p-3 bg-gray-100 rounded-lg text-sm font-semibold text-gray-900">
-                Net Weight: {(parseFloat(modalGrossWeight) - parseFloat(modalTareWeight)).toLocaleString('en-US')} kg ({((parseFloat(modalGrossWeight) - parseFloat(modalTareWeight)) / 1000).toFixed(2)} tons)
+                Net Weight: {(parseFloat(modalGrossWeight) - parseFloat(modalTareWeight)).toLocaleString('en-US')} kg ({(((parseFloat(modalGrossWeight) - parseFloat(modalTareWeight))) / 100).toFixed(2)} QT / {(((parseFloat(modalGrossWeight) - parseFloat(modalTareWeight))) / 1000).toFixed(2)} Tons)
               </div>
             )}
             <Input

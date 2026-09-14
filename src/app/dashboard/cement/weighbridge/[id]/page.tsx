@@ -123,7 +123,7 @@ export default function WeighbridgeDetailPage() {
   useEffect(() => {
     if (entry) {
       if (!deliveredQty) {
-        setDeliveredQty((entry.netWeight / 1000).toFixed(3));
+        setDeliveredQty((entry.netWeight / 100).toFixed(2));
       }
       if (!deliveryNoteNo) {
         setDeliveryNoteNo(entry.lifting?.deliveryNoteNo || `DN-${entry.weighbridgeNo}`);
@@ -191,7 +191,7 @@ export default function WeighbridgeDetailPage() {
 
     const parsedQty = parseFloat(deliveredQty);
     if (isNaN(parsedQty) || parsedQty <= 0) {
-      alert('Please enter a valid delivered weight in tons.');
+      alert('Please enter a valid delivered weight in Quintals (QT).');
       return;
     }
 
@@ -200,11 +200,11 @@ export default function WeighbridgeDetailPage() {
 
     const confirmMsg = shortage > 0
       ? `Confirm delivery for lifting ${entry.lifting.liftingNo}?\n\n` +
-        `• Factory Weight: ${factoryW.toFixed(2)} Tons\n` +
-        `• Delivered Weight: ${parsedQty.toFixed(2)} Tons\n` +
-        `• Shortage Detected: ${shortage.toFixed(2)} Tons (${factoryW > 0 ? ((shortage / factoryW) * 100).toFixed(1) : 0}%)\n\n` +
+        `• Factory Weight: ${factoryW.toFixed(2)} QT (${(factoryW / 10).toFixed(2)} Tons)\n` +
+        `• Delivered Weight: ${parsedQty.toFixed(2)} QT (${(parsedQty / 10).toFixed(2)} Tons)\n` +
+        `• Shortage Detected: ${shortage.toFixed(2)} QT (${factoryW > 0 ? ((shortage / factoryW) * 100).toFixed(1) : 0}%)\n\n` +
         `A shortage penalty will be automatically registered.`
-      : `Confirm delivery for lifting ${entry.lifting.liftingNo} with ${parsedQty.toFixed(2)} Tons delivered?`;
+      : `Confirm delivery for lifting ${entry.lifting.liftingNo} with ${parsedQty.toFixed(2)} QT (${(parsedQty / 10).toFixed(2)} Tons) delivered?`;
 
     if (!confirm(confirmMsg)) return;
 
@@ -399,10 +399,11 @@ export default function WeighbridgeDetailPage() {
         </Card>
         <Card className="rounded-2xl border-l-4 border-l-purple-500 bg-purple-50/50">
           <CardBody>
-            <p className="text-xs font-medium text-purple-700 uppercase tracking-wider mb-1">Net Weight (Tons)</p>
+            <p className="text-xs font-medium text-purple-700 uppercase tracking-wider mb-1">Net Weight (Quintals)</p>
             <p className="text-2xl font-bold text-purple-800">
-              {(entry.netWeight / 1000).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span className="text-sm font-normal text-purple-600">Tons</span>
+              {(entry.netWeight / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span className="text-sm font-normal text-purple-600">QT</span>
             </p>
+            <p className="text-xs text-purple-600 mt-0.5">({(entry.netWeight / 1000).toFixed(2)} Tons)</p>
           </CardBody>
         </Card>
       </div>
@@ -473,7 +474,7 @@ export default function WeighbridgeDetailPage() {
                     <option value="">-- Choose Lifting Order to Link --</option>
                     {liftings.map((l) => (
                       <option key={l.id} value={l.id}>
-                        {l.liftingNo} — {l.factoryWeight} Tons — Truck: {l.truckPlateNo || 'N/A'} — {l.customerName || 'N/A'} [{l.status}]
+                        {l.liftingNo} — {l.factoryWeight} QT — Truck: {l.truckPlateNo || 'N/A'} — {l.customerName || 'N/A'} [{l.status}]
                       </option>
                     ))}
                   </select>
@@ -493,11 +494,11 @@ export default function WeighbridgeDetailPage() {
           ) : (
             /* Linked Lifting: Weight Comparison & Delivery Form */
             (() => {
-              const factoryW = entry.lifting.factoryWeight || 0; // Tons
-              const currentBuyerW = deliveredQty !== '' ? parseFloat(deliveredQty) || 0 : entry.netWeight / 1000;
-              const diffTons = currentBuyerW - factoryW;
-              const shortageTons = factoryW > currentBuyerW ? factoryW - currentBuyerW : 0;
-              const shortagePct = factoryW > 0 ? (shortageTons / factoryW) * 100 : 0;
+              const factoryW = entry.lifting.factoryWeight || 0; // QT
+              const currentBuyerW = deliveredQty !== '' ? parseFloat(deliveredQty) || 0 : entry.netWeight / 100;
+              const diffQT = currentBuyerW - factoryW;
+              const shortageQT = factoryW > currentBuyerW ? factoryW - currentBuyerW : 0;
+              const shortagePct = factoryW > 0 ? (shortageQT / factoryW) * 100 : 0;
 
               return (
                 <div className="space-y-6">
@@ -509,12 +510,12 @@ export default function WeighbridgeDetailPage() {
                         <span className="bg-slate-200 text-slate-700 px-2 py-0.5 rounded text-[10px]">Dispatch</span>
                       </div>
                       <div className="text-2xl font-black text-slate-900">
-                        {factoryW.toFixed(2)} <span className="text-sm font-normal text-slate-500">Tons</span>
+                        {factoryW.toFixed(2)} <span className="text-sm font-normal text-slate-500">QT</span>
                       </div>
                       <div className="mt-2 text-xs text-slate-600 space-y-0.5">
                         <p>Ref: <span className="font-mono font-medium">{entry.lifting.factoryWeighbridgeRef || '—'}</span></p>
                         <p>Factory: <span className="font-medium">{entry.lifting.factory?.name || '—'}</span></p>
-                        <p className="text-slate-400">({(factoryW * 10).toFixed(0)} QT / {(factoryW * 1000).toLocaleString()} kg)</p>
+                        <p className="text-slate-400">({(factoryW / 10).toFixed(2)} Tons / {(factoryW * 100).toLocaleString()} kg)</p>
                       </div>
                     </div>
 
@@ -522,27 +523,27 @@ export default function WeighbridgeDetailPage() {
                     <div className="p-4 rounded-xl border text-center flex flex-col items-center justify-center space-y-1 bg-white shadow-xs">
                       <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Weight Difference</span>
                       <div className={`text-xl font-bold ${
-                        diffTons === 0
+                        diffQT === 0
                           ? 'text-emerald-600'
-                          : diffTons < 0
+                          : diffQT < 0
                           ? shortagePct > 2 ? 'text-red-600' : 'text-amber-600'
                           : 'text-blue-600'
                       }`}>
-                        {diffTons > 0 ? `+${diffTons.toFixed(2)}` : diffTons.toFixed(2)} Tons
+                        {diffQT > 0 ? `+${diffQT.toFixed(2)}` : diffQT.toFixed(2)} QT
                       </div>
                       <div className="text-xs text-slate-500">
-                        {diffTons === 0 ? (
+                        {diffQT === 0 ? (
                           <span className="text-emerald-600 font-medium">Exact Match (0.00%)</span>
-                        ) : diffTons < 0 ? (
+                        ) : diffQT < 0 ? (
                           <span className={`font-semibold ${shortagePct > 2 ? 'text-red-600' : 'text-amber-600'}`}>
-                            Shortage: {shortageTons.toFixed(2)} Tons ({shortagePct.toFixed(1)}%)
+                            Shortage: {shortageQT.toFixed(2)} QT ({shortagePct.toFixed(1)}%)
                           </span>
                         ) : (
-                          <span className="text-blue-600 font-medium">Excess: +{diffTons.toFixed(2)} Tons</span>
+                          <span className="text-blue-600 font-medium">Excess: +{diffQT.toFixed(2)} QT</span>
                         )}
                       </div>
                       <div className="text-[11px] text-slate-400">
-                        {(diffTons * 1000).toFixed(0)} kg difference
+                        {(diffQT * 100).toFixed(0)} kg difference ({(diffQT / 10).toFixed(2)} Tons)
                       </div>
                     </div>
 
@@ -553,12 +554,12 @@ export default function WeighbridgeDetailPage() {
                         <span className="bg-blue-200 text-blue-800 px-2 py-0.5 rounded text-[10px]">Destination</span>
                       </div>
                       <div className="text-2xl font-black text-blue-900">
-                        {currentBuyerW.toFixed(2)} <span className="text-sm font-normal text-blue-600">Tons</span>
+                        {currentBuyerW.toFixed(2)} <span className="text-sm font-normal text-blue-600">QT</span>
                       </div>
                       <div className="mt-2 text-xs text-blue-800/80 space-y-0.5">
                         <p>Weighbridge: <span className="font-mono font-medium">{entry.weighbridgeNo}</span></p>
                         <p>Plate: <span className="font-medium">{entry.truckPlateNo}</span></p>
-                        <p className="text-blue-600/70">({(currentBuyerW * 10).toFixed(0)} QT / {(currentBuyerW * 1000).toLocaleString()} kg)</p>
+                        <p className="text-blue-600/70">({(currentBuyerW / 10).toFixed(2)} Tons / {(currentBuyerW * 100).toLocaleString()} kg)</p>
                       </div>
                     </div>
                   </div>
@@ -593,16 +594,16 @@ export default function WeighbridgeDetailPage() {
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs text-emerald-800 pt-2 border-t border-emerald-200/60">
                         <div>
                           <span className="text-emerald-700/70 block">Factory Weight:</span>
-                          <span className="font-semibold text-sm">{entry.lifting.factoryWeight} Tons</span>
+                          <span className="font-semibold text-sm">{entry.lifting.factoryWeight} QT</span>
                         </div>
                         <div>
                           <span className="text-emerald-700/70 block">Delivered Weight:</span>
-                          <span className="font-semibold text-sm">{entry.lifting.buyerWeighbridgeQty ?? (entry.netWeight / 1000)} Tons</span>
+                          <span className="font-semibold text-sm">{entry.lifting.buyerWeighbridgeQty ?? (entry.netWeight / 100)} QT</span>
                         </div>
                         <div>
                           <span className="text-emerald-700/70 block">Calculated Shortage:</span>
                           <span className={`font-semibold text-sm ${entry.lifting.shortageQty && entry.lifting.shortageQty > 0 ? 'text-red-700' : 'text-emerald-900'}`}>
-                            {entry.lifting.shortageQty && entry.lifting.shortageQty > 0 ? `${entry.lifting.shortageQty} Tons` : 'None (0 Tons)'}
+                            {entry.lifting.shortageQty && entry.lifting.shortageQty > 0 ? `${entry.lifting.shortageQty} QT` : 'None (0 QT)'}
                           </span>
                         </div>
                       </div>
@@ -632,17 +633,17 @@ export default function WeighbridgeDetailPage() {
 
                         <div>
                           <label className="block text-xs font-semibold text-slate-700 mb-1">
-                            Confirmed Buyer Weight (Tons)
+                            Confirmed Buyer Weight (QT)
                           </label>
                           <input
                             type="number"
-                            step="0.001"
+                            step="0.01"
                             className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-semibold focus:ring-2 focus:ring-[#007AFF] focus:border-[#007AFF] outline-none"
                             value={deliveredQty}
                             onChange={(e) => setDeliveredQty(e.target.value)}
                             required
                           />
-                          <p className="text-[11px] text-slate-400 mt-1">Measured net weight: {(entry.netWeight / 1000).toFixed(3)} Tons</p>
+                          <p className="text-[11px] text-slate-400 mt-1">Measured net weight: {(entry.netWeight / 100).toFixed(2)} QT ({(entry.netWeight / 1000).toFixed(2)} Tons)</p>
                         </div>
 
                         <div>
@@ -790,7 +791,7 @@ export default function WeighbridgeDetailPage() {
                   <div className="pt-2 border-t border-slate-100 grid grid-cols-2 gap-2 text-xs">
                     <div>
                       <span className="text-slate-500">Factory Weight:</span>
-                      <p className="font-semibold text-slate-900">{entry.lifting.factoryWeight} Tons</p>
+                      <p className="font-semibold text-slate-900">{entry.lifting.factoryWeight} QT</p>
                     </div>
                     <div>
                       <span className="text-slate-500">Status:</span>

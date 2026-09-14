@@ -54,27 +54,27 @@ export async function PUT(
     const updatedEmployee = await prisma.employee.update({
       where: { id: params.id },
       data: {
-        firstName: body.firstName || employee.firstName,
-        middleName: body.middleName !== undefined ? body.middleName : employee.middleName,
-        lastName: body.lastName || employee.lastName,
-        firstNameAm: body.firstNameAm !== undefined ? body.firstNameAm : employee.firstNameAm,
-        lastNameAm: body.lastNameAm !== undefined ? body.lastNameAm : employee.lastNameAm,
-        gender: body.gender !== undefined ? body.gender : employee.gender,
-        dateOfBirth: body.dateOfBirth ? new Date(body.dateOfBirth) : (body.dateOfBirth === null ? null : employee.dateOfBirth),
-        phone: body.phone !== undefined ? body.phone : employee.phone,
-        email: body.email !== undefined ? body.email : employee.email,
-        address: body.address !== undefined ? body.address : employee.address,
-        department: body.department !== undefined ? body.department : employee.department,
-        position: body.position !== undefined ? body.position : employee.position,
+        firstName: body.firstName ? body.firstName.trim() : employee.firstName,
+        middleName: body.middleName !== undefined ? (body.middleName ? body.middleName.trim() : null) : employee.middleName,
+        lastName: body.lastName ? body.lastName.trim() : employee.lastName,
+        firstNameAm: body.firstNameAm !== undefined ? (body.firstNameAm ? body.firstNameAm.trim() : null) : employee.firstNameAm,
+        lastNameAm: body.lastNameAm !== undefined ? (body.lastNameAm ? body.lastNameAm.trim() : null) : employee.lastNameAm,
+        gender: body.gender !== undefined ? (body.gender ? body.gender.trim() : null) : employee.gender,
+        dateOfBirth: body.dateOfBirth ? new Date(body.dateOfBirth) : (body.dateOfBirth === null || body.dateOfBirth === '' ? null : employee.dateOfBirth),
+        phone: body.phone !== undefined ? (body.phone ? body.phone.trim() : null) : employee.phone,
+        email: body.email !== undefined ? (body.email ? body.email.trim() : null) : employee.email,
+        address: body.address !== undefined ? (body.address ? body.address.trim() : null) : employee.address,
+        department: body.department !== undefined ? (body.department ? body.department.trim() : null) : employee.department,
+        position: body.position !== undefined ? (body.position ? body.position.trim() : null) : employee.position,
         employmentType: body.employmentType !== undefined ? body.employmentType : employee.employmentType,
         hireDate: body.hireDate ? new Date(body.hireDate) : employee.hireDate,
         baseSalary: body.baseSalary !== undefined ? Number(body.baseSalary) : (body.salary !== undefined ? Number(body.salary) : employee.baseSalary),
-        bankAccount: body.bankAccount !== undefined ? body.bankAccount : employee.bankAccount,
-        bankName: body.bankName !== undefined ? body.bankName : employee.bankName,
-        tin: body.tin !== undefined ? body.tin : employee.tin,
-        pensionNo: body.pensionNo !== undefined ? body.pensionNo : employee.pensionNo,
-        emergencyContact: body.emergencyContact !== undefined ? body.emergencyContact : employee.emergencyContact,
-        emergencyPhone: body.emergencyPhone !== undefined ? body.emergencyPhone : employee.emergencyPhone,
+        bankAccount: body.bankAccount !== undefined ? (body.bankAccount ? body.bankAccount.trim() : null) : employee.bankAccount,
+        bankName: body.bankName !== undefined ? (body.bankName ? body.bankName.trim() : null) : employee.bankName,
+        tin: body.tin !== undefined ? (body.tin ? body.tin.trim() : null) : employee.tin,
+        pensionNo: body.pensionNo !== undefined ? (body.pensionNo ? body.pensionNo.trim() : null) : employee.pensionNo,
+        emergencyContact: body.emergencyContact !== undefined ? (body.emergencyContact ? body.emergencyContact.trim() : null) : employee.emergencyContact,
+        emergencyPhone: body.emergencyPhone !== undefined ? (body.emergencyPhone ? body.emergencyPhone.trim() : null) : employee.emergencyPhone,
         status: body.status || employee.status,
       },
     });
@@ -105,13 +105,27 @@ export async function DELETE(
       );
     }
 
-    // Soft delete - set status to Inactive
-    const deletedEmployee = await prisma.employee.update({
-      where: { id: params.id },
-      data: { status: 'Inactive' },
-    });
-
-    return NextResponse.json({ success: true, message: 'Employee deleted successfully', data: deletedEmployee });
+    // Clean up associated records in transaction then delete employee
+    try {
+      await prisma.$transaction([
+        prisma.attendance.deleteMany({ where: { employeeId: params.id } }),
+        prisma.leaveRequest.deleteMany({ where: { employeeId: params.id } }),
+        prisma.employeeAdvance.deleteMany({ where: { employeeId: params.id } }),
+        prisma.employee.delete({ where: { id: params.id } }),
+      ]);
+      return NextResponse.json({ success: true, message: 'Employee deleted successfully' });
+    } catch (fkError: any) {
+      // If linked payroll records or foreign keys prevent hard delete, mark inactive
+      const softDeleted = await prisma.employee.update({
+        where: { id: params.id },
+        data: { status: 'Inactive' },
+      });
+      return NextResponse.json({
+        success: true,
+        message: 'Employee has historical payroll records and was set to Inactive',
+        data: softDeleted,
+      });
+    }
   } catch (error: any) {
     console.error('Error deleting employee:', error);
     return NextResponse.json(

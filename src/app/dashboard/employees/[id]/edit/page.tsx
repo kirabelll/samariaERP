@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { Card, CardHeader, CardBody, CardFooter, Button, Input, Select } from '@/components/ui';
-import { DollarSign } from 'lucide-react';
+import { DollarSign, Trash2 } from 'lucide-react';
 
 interface FormData {
   firstName: string;
@@ -69,6 +69,7 @@ export default function EditEmployeePage() {
 
   const [errors, setErrors] = useState<FormErrors>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     if (!employeeId) return;
@@ -83,29 +84,46 @@ export default function EditEmployeePage() {
         }
 
         const emp = result.data;
+
+        // Safely extract YYYY-MM-DD without timezone shifting
+        const formatDateToInput = (d: any): string => {
+          if (!d) return '';
+          if (typeof d === 'string') {
+            if (d.includes('T')) return d.split('T')[0];
+            return d.slice(0, 10);
+          }
+          try {
+            const dt = new Date(d);
+            if (isNaN(dt.getTime())) return '';
+            return dt.toISOString().split('T')[0];
+          } catch {
+            return '';
+          }
+        };
+
         setFormData({
-          firstName: emp.firstName || '',
-          lastName: emp.lastName || '',
-          middleName: emp.middleName || '',
-          firstNameAm: emp.firstNameAm || '',
-          lastNameAm: emp.lastNameAm || '',
-          gender: emp.gender || '',
-          dateOfBirth: emp.dateOfBirth ? new Date(emp.dateOfBirth).toISOString().split('T')[0] : '',
-          email: emp.email || '',
-          phone: emp.phone || '',
-          address: emp.address || '',
-          tin: emp.tin || '',
-          pensionNo: emp.pensionNo || '',
-          emergencyContact: emp.emergencyContact || '',
-          emergencyPhone: emp.emergencyPhone || '',
-          employeeId: emp.employeeNo || '',
-          department: emp.department || '',
-          position: emp.position || '',
-          employmentType: emp.employmentType || 'Permanent',
-          hireDate: emp.hireDate ? new Date(emp.hireDate).toISOString().split('T')[0] : '',
+          firstName: emp.firstName ?? '',
+          lastName: emp.lastName ?? '',
+          middleName: emp.middleName ?? '',
+          firstNameAm: emp.firstNameAm ?? '',
+          lastNameAm: emp.lastNameAm ?? '',
+          gender: emp.gender ?? '',
+          dateOfBirth: formatDateToInput(emp.dateOfBirth),
+          email: emp.email ?? '',
+          phone: emp.phone ?? '',
+          address: emp.address ?? '',
+          tin: emp.tin ?? '',
+          pensionNo: emp.pensionNo ?? '',
+          emergencyContact: emp.emergencyContact ?? '',
+          emergencyPhone: emp.emergencyPhone ?? '',
+          employeeId: emp.employeeNo ?? emp.employeeId ?? '',
+          department: emp.department ?? '',
+          position: emp.position ?? '',
+          employmentType: emp.employmentType ?? 'Permanent',
+          hireDate: formatDateToInput(emp.hireDate),
           salary: emp.baseSalary !== undefined && emp.baseSalary !== null ? String(emp.baseSalary) : '',
-          bankName: emp.bankName || '',
-          bankAccount: emp.bankAccount || '',
+          bankName: emp.bankName ?? '',
+          bankAccount: emp.bankAccount ?? '',
           status: (emp.status as any) || 'Active',
         });
       } catch (err: any) {
@@ -202,6 +220,32 @@ export default function EditEmployeePage() {
     router.push(`/dashboard/employees/${employeeId}`);
   };
 
+  const handleDelete = async () => {
+    const empName = `${formData.firstName} ${formData.lastName}`.trim() || 'this employee';
+    const empCode = formData.employeeId ? ` (${formData.employeeId})` : '';
+    if (!confirm(`Are you sure you want to delete ${empName}${empCode}?\n\nThis action cannot be undone.`)) {
+      return;
+    }
+
+    setIsDeleting(true);
+    try {
+      const res = await fetch(`/api/employees/${employeeId}`, {
+        method: 'DELETE',
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to delete employee');
+      }
+      alert(data.message || 'Employee deleted successfully');
+      router.push('/dashboard/employees');
+    } catch (err: any) {
+      console.error('Error deleting employee:', err);
+      alert(err.message || 'Failed to delete employee');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[50vh]">
@@ -235,9 +279,21 @@ export default function EditEmployeePage() {
       </div>
 
       {/* Page Header */}
-      <div>
-        <h1 className="text-3xl font-bold text-slate-900">Edit Employee</h1>
-        <p className="text-slate-600 mt-2">Update employee personal details, employment terms, and base salary</p>
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold text-slate-900">Edit Employee</h1>
+          <p className="text-slate-600 mt-2">Update employee personal details, employment terms, and base salary</p>
+        </div>
+        <Button
+          type="button"
+          variant="danger"
+          size="sm"
+          onClick={handleDelete}
+          isLoading={isDeleting}
+          className="flex items-center gap-1.5"
+        >
+          <Trash2 className="w-4 h-4" /> Delete Employee
+        </Button>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
@@ -535,7 +591,7 @@ export default function EditEmployeePage() {
 
         {/* Buttons */}
         <Card>
-          <CardFooter>
+          <CardFooter className="flex flex-wrap items-center justify-between gap-4">
             <div className="flex gap-4">
               <Button
                 type="submit"
@@ -554,6 +610,16 @@ export default function EditEmployeePage() {
                 Cancel
               </Button>
             </div>
+            <Button
+              type="button"
+              variant="danger"
+              size="lg"
+              onClick={handleDelete}
+              isLoading={isDeleting}
+              className="flex items-center gap-1.5"
+            >
+              <Trash2 className="w-4 h-4" /> Delete Employee
+            </Button>
           </CardFooter>
         </Card>
 

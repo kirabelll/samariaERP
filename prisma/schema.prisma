@@ -776,6 +776,9 @@ model CementLifting {
   // Coupon (optional)
   couponId              String?
   deliveryNoteNo        String?
+  podNumber             String?     // POD Number (Proof of Delivery)
+  padNumber             String?     // Pad Number
+  notes                 String?
   liftingDate           DateTime @default(now())
   status                String   @default("Lifted") // Lifted, Delivered, Verified
   registeredBy          String?

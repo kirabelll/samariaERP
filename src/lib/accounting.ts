@@ -835,6 +835,44 @@ export async function journalCementPurchaseApproved(purchase: any) {
 }
 
 /**
+ * Cement Lifting → Debit Cement COGS, Credit Cement Inventory
+ */
+export async function journalCementLifting(lifting: any) {
+  try {
+    const qty = Number(lifting.factoryWeight) || 0;
+    const unitPrice = Number(lifting.purchase?.unitPrice) || 0;
+    const amount = qty * unitPrice;
+    if (amount <= 0) return { created: false, reason: 'Zero amount' };
+
+    const ref = `Cement lifting ${lifting.liftingNo} — ${qty} Qty @ ETB ${unitPrice}`;
+
+    return await createJournalEntries({
+      lines: [
+        {
+          accountCode: ACCOUNTS.CEMENT_COGS,
+          accountFallbackName: 'Cement Cost of Goods Sold',
+          debit: amount,
+          credit: 0,
+          description: ref,
+        },
+        {
+          accountCode: ACCOUNTS.CEMENT_INVENTORY,
+          accountFallbackName: 'Cement Inventory',
+          debit: 0,
+          credit: amount,
+          description: ref,
+        },
+      ],
+      refModule: 'CEMENT_LIFTING',
+      refId: lifting.id,
+    });
+  } catch (error: any) {
+    console.error('Auto-journal for lifting failed:', error);
+    return { created: false, reason: error.message };
+  }
+}
+
+/**
  * Goods Received Voucher (GRV) Received → Debit Inventory, Credit Supplier AP Account
  */
 export async function journalGoodsReceive(grv: any) {

@@ -32,6 +32,7 @@ interface CementLifting {
     tonnage?: number;
   };
   deliveryNoteNo?: string;
+  podNumber?: string;
   padNumber?: string;
   notes?: string;
   liftingDate: string;
@@ -644,6 +645,25 @@ export default function CementLiftingDetailPage() {
                 <p className="text-lg font-semibold text-[#1D1D1F] flex items-center gap-2">
                   <FileText className="w-4 h-4 text-[#86868B]" />
                   {lifting.deliveryNoteNo}
+                </p>
+              </div>
+            )}
+
+            {(lifting.podNumber || lifting.padNumber) && (
+              <div>
+                <p className="text-xs font-medium text-[#86868B] uppercase tracking-wider mb-2">POD Number</p>
+                <p className="text-lg font-semibold text-blue-600 flex items-center gap-2">
+                  <Receipt className="w-4 h-4 text-blue-500" />
+                  {lifting.podNumber || lifting.padNumber}
+                </p>
+              </div>
+            )}
+
+            {lifting.notes && (
+              <div>
+                <p className="text-xs font-medium text-[#86868B] uppercase tracking-wider mb-2">Notes</p>
+                <p className="text-sm text-slate-700 bg-slate-50 p-2.5 rounded-lg border border-slate-200">
+                  {lifting.notes}
                 </p>
               </div>
             )}

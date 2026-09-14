@@ -125,6 +125,12 @@ export async function PUT(
 
     // String fields
     if (rawUpdateData.deliveryNoteNo !== undefined) updateData.deliveryNoteNo = rawUpdateData.deliveryNoteNo?.trim() || null;
+    if (rawUpdateData.podNumber !== undefined || rawUpdateData.padNumber !== undefined) {
+      const podVal = rawUpdateData.podNumber !== undefined ? rawUpdateData.podNumber?.trim() : rawUpdateData.padNumber?.trim();
+      updateData.podNumber = podVal || null;
+      updateData.padNumber = podVal || null;
+    }
+    if (rawUpdateData.notes !== undefined) updateData.notes = rawUpdateData.notes?.trim() || null;
     if (rawUpdateData.factoryWeighbridgeRef !== undefined) updateData.factoryWeighbridgeRef = rawUpdateData.factoryWeighbridgeRef;
     if (rawUpdateData.registeredBy !== undefined) updateData.registeredBy = rawUpdateData.registeredBy;
 

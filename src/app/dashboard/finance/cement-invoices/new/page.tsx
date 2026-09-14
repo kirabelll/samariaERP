@@ -17,6 +17,8 @@ interface LiftingData {
   liftingDate: string;
   status: string;
   deliveryNoteNo?: string;
+  podNumber?: string;
+  padNumber?: string;
   couponId?: string;
   coupon?: {
     id: string;
@@ -341,6 +343,12 @@ export default function CreateCementInvoicePage() {
               <div>
                 <p className="text-xs font-medium text-[#86868B] uppercase tracking-wider mb-1">Delivery Note</p>
                 <p className="text-sm font-semibold text-[#1D1D1F]">{lifting.deliveryNoteNo}</p>
+              </div>
+            )}
+            {(lifting.podNumber || lifting.padNumber) && (
+              <div>
+                <p className="text-xs font-medium text-[#86868B] uppercase tracking-wider mb-1">POD Number</p>
+                <p className="text-sm font-semibold text-blue-600">{lifting.podNumber || lifting.padNumber}</p>
               </div>
             )}
             {lifting.coupon && (

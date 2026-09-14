@@ -381,6 +381,9 @@ export interface CementLifting {
   shortagePenalty?: number;
   couponId?: string;
   deliveryNoteNo?: string;
+  podNumber?: string;
+  padNumber?: string;
+  notes?: string;
   liftingDate: Date;
   status: string;
   registeredBy?: string;

@@ -22,7 +22,9 @@ import {
   Calendar,
   Hash,
   FileCheck,
-  ExternalLink
+  ExternalLink,
+  Scale,
+  CheckCircle2
 } from 'lucide-react';
 
 interface Purchase {
@@ -67,6 +69,7 @@ interface CementLifting {
   shortagePenalty?: number | null;
   couponId?: string | null;
   deliveryNoteNo?: string | null;
+  podNumber?: string | null;
   padNumber?: string | null;
   notes?: string | null;
   liftingDate: string;
@@ -114,6 +117,8 @@ export default function EditCementLiftingPage() {
     buyerWeighbridgeQty: '',
     couponId: '',
     deliveryNoteNo: '',
+    podNumber: '',
+    notes: '',
     liftingDate: '',
     status: 'Lifted',
   });
@@ -246,6 +251,8 @@ export default function EditCementLiftingPage() {
           buyerWeighbridgeQty: lifting.buyerWeighbridgeQty != null ? String(lifting.buyerWeighbridgeQty) : '',
           couponId: lifting.couponId || '',
           deliveryNoteNo: lifting.deliveryNoteNo || '',
+          podNumber: lifting.podNumber || lifting.padNumber || '',
+          notes: lifting.notes || '',
           liftingDate: lifting.liftingDate ? new Date(lifting.liftingDate).toISOString().split('T')[0] : '',
           status: lifting.status || 'Lifted',
         });
@@ -365,6 +372,8 @@ export default function EditCementLiftingPage() {
         buyerWeighbridgeQty: formData.buyerWeighbridgeQty !== '' ? parseFloat(formData.buyerWeighbridgeQty) : null,
         couponId: formData.couponId || null,
         deliveryNoteNo: formData.deliveryNoteNo?.trim() || null,
+        podNumber: formData.podNumber?.trim() || null,
+        padNumber: formData.podNumber?.trim() || null,
         notes: formData.notes?.trim() || null,
         liftingDate: formData.liftingDate,
         status: formData.status,
@@ -808,6 +817,90 @@ export default function EditCementLiftingPage() {
                     <p className="text-xs text-slate-400 italic">Enter buyer weight to calculate shortage</p>
                   )}
                 </div>
+              </div>
+            </CardBody>
+          </Card>
+
+          {/* Section 4: Delivery Documentation & References */}
+          <Card className="rounded-2xl overflow-hidden border border-slate-200/80 shadow-sm">
+            <CardHeader className="bg-slate-50/80 border-b border-slate-200/80 py-3.5 px-6">
+              <h2 className="text-base font-semibold text-slate-900 flex items-center gap-2">
+                <FileText className="w-4 h-4 text-blue-600" />
+                4. Documentation & Delivery Reference (Optional)
+              </h2>
+            </CardHeader>
+            <CardBody className="p-6 space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
+                    POD Number (Proof of Delivery / Pad #)
+                  </label>
+                  <Input
+                    name="podNumber"
+                    placeholder="e.g. POD-88921 or PAD-0045"
+                    value={formData.podNumber}
+                    onChange={handleInputChange}
+                  />
+                  <p className="text-xs text-slate-500 mt-1">Proof of delivery or customer pad number</p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
+                    Delivery Note No (DN #)
+                  </label>
+                  <Input
+                    name="deliveryNoteNo"
+                    placeholder="e.g. DN-2026-0045"
+                    value={formData.deliveryNoteNo}
+                    onChange={handleInputChange}
+                  />
+                  <p className="text-xs text-slate-500 mt-1">Delivery note or invoice reference number</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
+                    Lifting Date
+                  </label>
+                  <Input
+                    type="date"
+                    name="liftingDate"
+                    value={formData.liftingDate}
+                    onChange={handleInputChange}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
+                    Operational Status
+                  </label>
+                  <select
+                    name="status"
+                    value={formData.status}
+                    onChange={handleInputChange}
+                    className="block w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 bg-white font-medium"
+                  >
+                    <option value="Lifted">Lifted</option>
+                    <option value="Delivered">Delivered</option>
+                    <option value="Verified">Verified</option>
+                    <option value="Cancelled">Cancelled</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
+                  Notes / Remarks
+                </label>
+                <textarea
+                  name="notes"
+                  rows={2}
+                  value={formData.notes}
+                  onChange={handleInputChange}
+                  placeholder="Additional notes about this lifting or delivery..."
+                  className="block w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 bg-white"
+                />
               </div>
             </CardBody>
           </Card>

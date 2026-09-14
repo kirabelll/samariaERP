@@ -23,6 +23,10 @@ export async function GET(request: NextRequest) {
     if (search) {
       whereClause.OR = [
         { liftingNo: { contains: search, mode: 'insensitive' } },
+        { factoryWeighbridgeRef: { contains: search, mode: 'insensitive' } },
+        { deliveryNoteNo: { contains: search, mode: 'insensitive' } },
+        { podNumber: { contains: search, mode: 'insensitive' } },
+        { padNumber: { contains: search, mode: 'insensitive' } },
       ];
     }
     if (customer) {
@@ -146,6 +150,9 @@ export async function POST(request: NextRequest) {
       buyerWeighbridgeQty,
       couponId,
       deliveryNoteNo,
+      podNumber,
+      padNumber,
+      notes,
       liftingDate,
       registeredBy,
       overrideCreditLimit,
@@ -388,6 +395,9 @@ export async function POST(request: NextRequest) {
         shortageQty: shortageQty || null,
         couponId: couponId || null,
         deliveryNoteNo: deliveryNoteNo || null,
+        podNumber: podNumber ? String(podNumber).trim() : (padNumber ? String(padNumber).trim() : null),
+        padNumber: padNumber ? String(padNumber).trim() : (podNumber ? String(podNumber).trim() : null),
+        notes: notes ? String(notes).trim() : null,
         liftingDate: liftingDate ? new Date(liftingDate) : new Date(),
         status: 'Lifted',
         registeredBy: registeredBy || null,

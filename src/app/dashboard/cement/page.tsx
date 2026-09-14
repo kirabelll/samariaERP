@@ -26,7 +26,9 @@ interface CementLifting {
   customer: { companyName: string } | null;
   factory: { name: string } | null;
   coupon?: { couponNo: string } | null;
+  podNumber?: string | null;
   padNumber?: string | null;
+  deliveryNoteNo?: string | null;
   liftingDate: string;
   factoryWeight: number;
   status: string;
@@ -147,7 +149,21 @@ function CementOperationsContent() {
   ];
 
   const liftingColumns: ColumnDef<CementLifting>[] = [
-    { header: 'Lifting No', accessor: 'liftingNo', sortable: true },
+    {
+      header: 'Lifting No / POD',
+      accessor: 'liftingNo',
+      sortable: true,
+      render: (val, row) => (
+        <div>
+          <span className="font-semibold text-slate-900">{val}</span>
+          {(row.podNumber || row.padNumber) && (
+            <div className="text-xs text-blue-600 font-medium">
+              POD: {row.podNumber || row.padNumber}
+            </div>
+          )}
+        </div>
+      ),
+    },
     { header: 'Customer', accessor: 'customer', sortable: true, render: (_val, row) => row.customer?.companyName || '-' },
     { header: 'Factory', accessor: 'factory', sortable: true, render: (_val, row) => row.factory?.name || '-' },
     {
@@ -275,6 +291,7 @@ function CementOperationsContent() {
           'Factory / Supplier',
           'Purchase Reference',
           'Coupon No',
+          'POD Number',
           'Delivery Note No',
           'Factory Weighbridge Ref',
           'Factory Weight (Tons)',
@@ -303,6 +320,7 @@ function CementOperationsContent() {
             `"${(r.factory?.name || r.purchase?.factory?.name || '').replace(/"/g, '""')}"`,
             `"${(r.purchase?.purchaseNo || '').replace(/"/g, '""')}"`,
             `"${(couponNo || '').replace(/"/g, '""')}"`,
+            `"${(r.podNumber || r.padNumber || '').replace(/"/g, '""')}"`,
             `"${(r.deliveryNoteNo || '').replace(/"/g, '""')}"`,
             `"${(r.factoryWeighbridgeRef || '').replace(/"/g, '""')}"`,
             r.factoryWeight != null ? r.factoryWeight : '',

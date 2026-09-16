@@ -222,22 +222,26 @@ function DataTable<T extends Record<string, any>>({
         let bValue = b[sortConfig.key as keyof T];
 
         if (aValue && typeof aValue === 'object') {
-          aValue = aValue.companyName || aValue.name || aValue.couponNo || String(aValue);
+          aValue = aValue.companyName || aValue.name || aValue.couponNo || aValue.title || aValue.code || String(aValue);
         }
         if (bValue && typeof bValue === 'object') {
-          bValue = bValue.companyName || bValue.name || bValue.couponNo || String(bValue);
+          bValue = bValue.companyName || bValue.name || bValue.couponNo || bValue.title || bValue.code || String(bValue);
         }
 
+        if (aValue == null && bValue == null) return 0;
         if (aValue == null) return 1;
         if (bValue == null) return -1;
 
-        if (aValue < bValue) {
-          return sortConfig.direction === 'asc' ? -1 : 1;
+        if (typeof aValue === 'number' && typeof bValue === 'number') {
+          return sortConfig.direction === 'asc' ? aValue - bValue : bValue - aValue;
         }
-        if (aValue > bValue) {
-          return sortConfig.direction === 'asc' ? 1 : -1;
-        }
-        return 0;
+
+        const strA = String(aValue);
+        const strB = String(bValue);
+
+        // Natural numeric alphanumeric comparison (e.g. 01995, LIFT-001, LIFT-2, LIFT-10)
+        const cmp = strA.localeCompare(strB, undefined, { numeric: true, sensitivity: 'base' });
+        return sortConfig.direction === 'asc' ? cmp : -cmp;
       });
     }
     return sorted;

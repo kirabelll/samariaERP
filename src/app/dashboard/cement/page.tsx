@@ -49,6 +49,8 @@ function CementOperationsContent() {
   const [activeTab, setActiveTab] = useState<'purchases' | 'liftings'>(initialTab);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [liftingSortBy, setLiftingSortBy] = useState('liftingNo');
+  const [liftingSortOrder, setLiftingSortOrder] = useState<'asc' | 'desc'>('asc');
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 10;
 
@@ -68,7 +70,11 @@ function CementOperationsContent() {
     page: activeTab === 'liftings' ? currentPage : 1,
     limit: pageSize,
     search: activeTab === 'liftings' ? searchTerm : '',
-    filters: activeTab === 'liftings' ? { status: statusFilter } : {},
+    filters: activeTab === 'liftings' ? {
+      status: statusFilter,
+      sortBy: liftingSortBy,
+      sortOrder: liftingSortOrder,
+    } : {},
   });
 
   const handleDelete = async () => {
@@ -395,7 +401,7 @@ function CementOperationsContent() {
 
       <Card>
         <CardBody>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <Input placeholder={`Search ${activeTab}...`} value={searchTerm} onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }} />
             <Select
               options={activeTab === 'purchases' ? [
@@ -416,9 +422,40 @@ function CementOperationsContent() {
               value={statusFilter}
               onChange={(e) => { setStatusFilter(e.target.value); setCurrentPage(1); }}
             />
+            {activeTab === 'liftings' && (
+              <>
+                <Select
+                  options={[
+                    { value: 'liftingNo', label: 'Sort: Lifting No / POD' },
+                    { value: 'podNumber', label: 'Sort: POD Number' },
+                    { value: 'liftingDate', label: 'Sort: Lifting Date' },
+                    { value: 'factoryWeight', label: 'Sort: Weight (QT)' },
+                    { value: 'status', label: 'Sort: Status' },
+                    { value: 'createdAt', label: 'Sort: Date Created' },
+                  ]}
+                  value={liftingSortBy}
+                  onChange={(e) => { setLiftingSortBy(e.target.value); setCurrentPage(1); }}
+                />
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => { setLiftingSortOrder((prev) => (prev === 'asc' ? 'desc' : 'asc')); setCurrentPage(1); }}
+                    className="flex-1 flex items-center justify-center gap-2 px-3 py-2 border rounded-lg bg-white hover:bg-slate-50 text-sm font-medium text-slate-700 shadow-sm transition-all"
+                    title={`Current order: ${liftingSortOrder === 'asc' ? 'Ascending (1→9 / A→Z)' : 'Descending (9→1 / Z→A)'}`}
+                  >
+                    <span>{liftingSortOrder === 'asc' ? '⬆️ Ascending (A-Z / 1-9)' : '⬇️ Descending (Z-A / 9-1)'}</span>
+                  </button>
+                </div>
+              </>
+            )}
           </div>
-          <div className="mt-4 text-sm text-gray-600">
-            {activeData.loading ? 'Loading...' : `Showing ${activeData.data.length} of ${activeData.pagination.total} records`}
+          <div className="mt-4 text-sm text-gray-600 flex items-center justify-between">
+            <span>{activeData.loading ? 'Loading...' : `Showing ${activeData.data.length} of ${activeData.pagination.total} records`}</span>
+            {activeTab === 'liftings' && (
+              <span className="text-xs text-slate-500 font-medium">
+                Sorted by <span className="font-semibold text-slate-700">{liftingSortBy === 'liftingNo' ? 'Lifting No / POD' : liftingSortBy}</span> ({liftingSortOrder.toUpperCase()})
+              </span>
+            )}
           </div>
         </CardBody>
       </Card>

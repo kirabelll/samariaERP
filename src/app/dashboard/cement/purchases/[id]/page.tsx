@@ -55,6 +55,7 @@ export default function CementPurchaseDetailPage() {
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [liftingSortOrder, setLiftingSortOrder] = useState<'asc' | 'desc'>('asc');
 
   const handleDelete = async () => {
     setDeleting(true);
@@ -642,7 +643,19 @@ export default function CementPurchaseDetailPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-slate-200">
-                    <th className="px-4 py-2 text-left text-xs font-semibold text-slate-500 uppercase">Lifting No</th>
+                    <th className="px-4 py-2 text-left text-xs font-semibold text-slate-500 uppercase">
+                      <button
+                        type="button"
+                        onClick={() => setLiftingSortOrder((prev) => (prev === 'asc' ? 'desc' : 'asc'))}
+                        className="flex items-center gap-1.5 hover:text-blue-600 transition-colors cursor-pointer uppercase text-xs font-semibold"
+                        title={`Click to sort ${liftingSortOrder === 'asc' ? 'Descending (9→1)' : 'Ascending (1→9)'}`}
+                      >
+                        <span>Lifting No / POD</span>
+                        <span className="text-blue-600 text-[11px] font-bold bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200">
+                          {liftingSortOrder === 'asc' ? '↑ Asc' : '↓ Desc'}
+                        </span>
+                      </button>
+                    </th>
                     <th className="px-4 py-2 text-left text-xs font-semibold text-slate-500 uppercase">Truck</th>
                     <th className="px-4 py-2 text-left text-xs font-semibold text-slate-500 uppercase">Factory Weight</th>
                     <th className="px-4 py-2 text-left text-xs font-semibold text-slate-500 uppercase">Status</th>
@@ -650,9 +663,21 @@ export default function CementPurchaseDetailPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {[...purchase.liftings].sort((a: any, b: any) => String(a.liftingNo || '').localeCompare(String(b.liftingNo || ''), undefined, { numeric: true, sensitivity: 'base' })).map((l: any) => (
+                  {[...purchase.liftings].sort((a: any, b: any) => {
+                    const podA = String(a.podNumber || a.padNumber || a.liftingNo || '');
+                    const podB = String(b.podNumber || b.padNumber || b.liftingNo || '');
+                    const cmp = podA.localeCompare(podB, undefined, { numeric: true, sensitivity: 'base' });
+                    return liftingSortOrder === 'asc' ? cmp : -cmp;
+                  }).map((l: any) => (
                     <tr key={l.id} className="border-b border-slate-100">
-                      <td className="px-4 py-2 text-slate-900 font-medium">{l.liftingNo}</td>
+                      <td className="px-4 py-2 text-slate-900 font-medium">
+                        <span className="block font-semibold">{l.liftingNo}</span>
+                        {(l.podNumber || l.padNumber) && (
+                          <span className="block text-xs text-blue-600 font-medium">
+                            POD: {l.podNumber || l.padNumber}
+                          </span>
+                        )}
+                      </td>
                       <td className="px-4 py-2 text-slate-900">{l.truck?.plateNo || '—'}</td>
                       <td className="px-4 py-2 text-slate-900">{Number(l.factoryWeight || 0).toLocaleString('en-US')} QT</td>
                       <td className="px-4 py-2">

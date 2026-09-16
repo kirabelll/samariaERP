@@ -41,6 +41,9 @@ interface CouponDetail {
     factoryWeight: number;
     liftingDate: string;
     status: string;
+    podNumber?: string;
+    padNumber?: string;
+    deliveryNoteNo?: string;
     truck?: { plateNo: string; driverName?: string };
     factory?: { name: string };
   }>;
@@ -53,6 +56,7 @@ export default function CouponDetailPage() {
   const [coupon, setCoupon] = useState<CouponDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [liftingSortOrder, setLiftingSortOrder] = useState<'asc' | 'desc'>('asc');
 
   useEffect(() => {
     if (!id) return;
@@ -415,7 +419,19 @@ export default function CouponDetailPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b">
-                    <th className="text-left py-2 px-3 text-xs font-semibold text-[#86868B] uppercase">Lifting No</th>
+                    <th className="text-left py-2 px-3 text-xs font-semibold text-[#86868B] uppercase">
+                      <button
+                        type="button"
+                        onClick={() => setLiftingSortOrder((prev) => (prev === 'asc' ? 'desc' : 'asc'))}
+                        className="flex items-center gap-1.5 hover:text-blue-600 transition-colors cursor-pointer uppercase text-xs font-semibold"
+                        title={`Click to sort ${liftingSortOrder === 'asc' ? 'Descending (9→1)' : 'Ascending (1→9)'}`}
+                      >
+                        <span>Lifting No / POD</span>
+                        <span className="text-blue-600 text-[11px] font-bold bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200">
+                          {liftingSortOrder === 'asc' ? '↑ Asc' : '↓ Desc'}
+                        </span>
+                      </button>
+                    </th>
                     <th className="text-left py-2 px-3 text-xs font-semibold text-[#86868B] uppercase">Truck</th>
                     <th className="text-left py-2 px-3 text-xs font-semibold text-[#86868B] uppercase">Factory Weight</th>
                     <th className="text-left py-2 px-3 text-xs font-semibold text-[#86868B] uppercase">Date</th>
@@ -424,9 +440,21 @@ export default function CouponDetailPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {coupon.liftings.map((lifting) => (
+                  {[...coupon.liftings].sort((a: any, b: any) => {
+                    const podA = String(a.podNumber || a.padNumber || a.liftingNo || '');
+                    const podB = String(b.podNumber || b.padNumber || b.liftingNo || '');
+                    const cmp = podA.localeCompare(podB, undefined, { numeric: true, sensitivity: 'base' });
+                    return liftingSortOrder === 'asc' ? cmp : -cmp;
+                  }).map((lifting) => (
                     <tr key={lifting.id} className="border-b last:border-0">
-                      <td className="py-3 px-3 font-medium text-[#1D1D1F]">{lifting.liftingNo}</td>
+                      <td className="py-3 px-3 font-medium text-[#1D1D1F]">
+                        <span className="block">{lifting.liftingNo}</span>
+                        {(lifting.podNumber || lifting.padNumber) && (
+                          <span className="block text-xs text-blue-600 font-medium">
+                            POD: {lifting.podNumber || lifting.padNumber}
+                          </span>
+                        )}
+                      </td>
                       <td className="py-3 px-3 text-[#1D1D1F]">
                         {lifting.truck?.plateNo || '—'}
                         {lifting.truck?.driverName && (

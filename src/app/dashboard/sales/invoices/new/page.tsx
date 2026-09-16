@@ -77,6 +77,7 @@ export default function NewInvoicePage() {
   const [items, setItems] = useState<InvoiceItem[]>([]);
   const [saving, setSaving] = useState(false);
   const [applyWithholding, setApplyWithholding] = useState(false);
+  const [podSortOrder, setPodSortOrder] = useState<'asc' | 'desc'>('asc');
 
   // Data lists
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -240,7 +241,8 @@ export default function NewInvoicePage() {
             list.sort((a: any, b: any) => {
               const podA = String(a.padNumber || a.podNumber || a.liftingNo || '');
               const podB = String(b.padNumber || b.podNumber || b.liftingNo || '');
-              return podA.localeCompare(podB, undefined, { numeric: true, sensitivity: 'base' });
+              const cmp = podA.localeCompare(podB, undefined, { numeric: true, sensitivity: 'base' });
+              return podSortOrder === 'asc' ? cmp : -cmp;
             });
             setCementLiftings(list);
             setSelectedLiftingIds([]);
@@ -359,6 +361,21 @@ export default function NewInvoicePage() {
     }
     setSelectedDispatchIds(updated);
     updateItemsFromDispatches(updated, undefined, groupByCategory);
+  };
+
+  const handleToggleLiftingSort = () => {
+    const nextOrder = podSortOrder === 'asc' ? 'desc' : 'asc';
+    setPodSortOrder(nextOrder);
+    const sorted = [...cementLiftings].sort((a: any, b: any) => {
+      const podA = String(a.padNumber || a.podNumber || a.liftingNo || '');
+      const podB = String(b.padNumber || b.podNumber || b.liftingNo || '');
+      const cmp = podA.localeCompare(podB, undefined, { numeric: true, sensitivity: 'base' });
+      return nextOrder === 'asc' ? cmp : -cmp;
+    });
+    setCementLiftings(sorted);
+    if (selectedLiftingIds.length > 0) {
+      updateItemsFromLiftings(selectedLiftingIds, agreements, groupByCategory);
+    }
   };
 
   // Helper to identify and resolve exact item name from ID, code, system items, or agreements
@@ -566,7 +583,8 @@ export default function NewInvoicePage() {
     selected.sort((a, b) => {
       const podA = String(a.padNumber || a.podNumber || a.liftingNo || '');
       const podB = String(b.padNumber || b.podNumber || b.liftingNo || '');
-      return podA.localeCompare(podB, undefined, { numeric: true, sensitivity: 'base' });
+      const cmp = podA.localeCompare(podB, undefined, { numeric: true, sensitivity: 'base' });
+      return podSortOrder === 'asc' ? cmp : -cmp;
     });
 
     if (shouldGroup && selected.length > 0) {
@@ -1036,7 +1054,19 @@ export default function NewInvoicePage() {
                             className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                           />
                         </th>
-                        <th className="py-2.5 px-3">Lifting No</th>
+                        <th className="py-2.5 px-3">
+                          <button
+                            type="button"
+                            onClick={handleToggleLiftingSort}
+                            className="flex items-center gap-1.5 hover:text-blue-600 transition-colors cursor-pointer font-semibold uppercase text-xs"
+                            title={`Click to sort ${podSortOrder === 'asc' ? 'Descending (9→1)' : 'Ascending (1→9)'}`}
+                          >
+                            <span>Lifting No / POD</span>
+                            <span className="text-blue-600 text-[11px] font-bold bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200">
+                              {podSortOrder === 'asc' ? '↑ Asc' : '↓ Desc'}
+                            </span>
+                          </button>
+                        </th>
                         <th className="py-2.5 px-3">Type</th>
                         <th className="py-2.5 px-3">Factory Weight (QT)</th>
                         <th className="py-2.5 px-3">Factory</th>
@@ -1062,7 +1092,14 @@ export default function NewInvoicePage() {
                                 className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                               />
                             </td>
-                            <td className="py-2.5 px-3 font-semibold text-slate-900">{l.liftingNo}</td>
+                            <td className="py-2.5 px-3">
+                              <span className="font-semibold text-slate-900 block">{l.liftingNo}</span>
+                              {(l.podNumber || l.padNumber) && (
+                                <span className="text-xs text-blue-600 font-medium block">
+                                  POD: {l.podNumber || l.padNumber}
+                                </span>
+                              )}
+                            </td>
                             <td className="py-2.5 px-3 text-slate-600">{l.cementType}</td>
                             <td className="py-2.5 px-3 text-slate-900 font-semibold">
                               {Number(l.factoryWeight || l.quantityTons || 0).toLocaleString('en-US')} QT

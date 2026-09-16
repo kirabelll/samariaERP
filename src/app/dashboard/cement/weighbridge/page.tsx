@@ -85,6 +85,11 @@ function WeighbridgeRegisterContent() {
   const [totalPages, setTotalPages] = useState(1);
   const [totalEntries, setTotalEntries] = useState(0);
 
+  // Search & Sorting state
+  const [searchTerm, setSearchTerm] = useState('');
+  const [sortBy, setSortBy] = useState('createdAt');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+
   const [formData, setFormData] = useState({
     weighbridgeType: 'FACTORY' as 'FACTORY' | 'BUYER',
     liftingId: urlLiftingId || '',
@@ -96,7 +101,7 @@ function WeighbridgeRegisterContent() {
 
   useEffect(() => {
     fetchEntries();
-  }, [activeTab, page, pageSize, liftingFilter]);
+  }, [activeTab, page, pageSize, liftingFilter, sortBy, sortOrder, searchTerm]);
 
   useEffect(() => {
     fetchLiftings();
@@ -142,13 +147,16 @@ function WeighbridgeRegisterContent() {
     try {
       setLoading(true);
       setError(null);
-      let queryUrl = `/api/cement/weighbridge?page=${page}&limit=${pageSize}`;
+      let queryUrl = `/api/cement/weighbridge?page=${page}&limit=${pageSize}&sortBy=${encodeURIComponent(sortBy)}&sortOrder=${encodeURIComponent(sortOrder)}`;
       if (activeTab === 'factory') queryUrl += `&weighbridgeType=FACTORY`;
       else if (activeTab === 'buyer') queryUrl += `&weighbridgeType=BUYER`;
       else if (activeTab === 'all') queryUrl += `&weighbridgeType=ALL`;
 
       if (liftingFilter) {
         queryUrl += `&liftingId=${encodeURIComponent(liftingFilter)}`;
+      }
+      if (searchTerm.trim()) {
+        queryUrl += `&search=${encodeURIComponent(searchTerm.trim())}`;
       }
 
       const response = await fetch(queryUrl);
@@ -349,6 +357,7 @@ function WeighbridgeRegisterContent() {
     {
       header: 'WB No',
       accessor: 'weighbridgeNo' as const,
+      sortable: true,
       render: (val: string, row: WeighbridgeEntry) => (
         <Link href={`/dashboard/cement/weighbridge/${row.id}`} className="font-semibold text-[#007AFF] hover:underline flex items-center gap-1">
           {val}
@@ -359,6 +368,7 @@ function WeighbridgeRegisterContent() {
     {
       header: 'Type',
       accessor: 'weighbridgeType' as const,
+      sortable: true,
       render: (val: string) => (
         <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
           val === 'BUYER' ? 'bg-emerald-100 text-emerald-800' : 'bg-blue-100 text-blue-800'
@@ -370,6 +380,7 @@ function WeighbridgeRegisterContent() {
     {
       header: 'Lifting',
       accessor: 'liftingNo' as const,
+      sortable: true,
       render: (val: string | null, row: WeighbridgeEntry) => val ? (
         row.liftingId ? (
           <Link href={`/dashboard/cement/liftings/${row.liftingId}`} className="text-blue-600 hover:underline font-medium text-xs">
@@ -383,6 +394,7 @@ function WeighbridgeRegisterContent() {
     {
       header: 'Coupon',
       accessor: 'liftingId' as const,
+      sortable: true,
       render: (liftingId: string | null) => {
         if (!liftingId) return <span className="text-gray-400">—</span>;
         const lifting = liftings.find(l => l.id === liftingId);
@@ -390,25 +402,29 @@ function WeighbridgeRegisterContent() {
         return couponNo ? <span className="text-sm font-medium text-purple-600">{couponNo}</span> : <span className="text-gray-400">—</span>;
       },
     },
-    { header: 'Truck Plate', accessor: 'truckPlateNo' as const },
+    { header: 'Truck Plate', accessor: 'truckPlateNo' as const, sortable: true },
     {
       header: 'Gross Weight (kg)',
       accessor: 'grossWeight' as const,
+      sortable: true,
       render: (val: number) => (val ?? 0).toLocaleString('en-US'),
     },
     {
       header: 'Tare Weight (kg)',
       accessor: 'tareWeight' as const,
+      sortable: true,
       render: (val: number) => (val ?? 0).toLocaleString('en-US'),
     },
     {
       header: 'Net Weight (kg)',
       accessor: 'netWeight' as const,
+      sortable: true,
       render: (val: number) => (val ?? 0).toLocaleString('en-US'),
     },
     {
       header: 'Net Weight (QT)',
       accessor: 'netWeight' as any,
+      sortable: true,
       render: (val: number) => {
         const netQt = val > 1000 ? val / 100 : val;
         return (
@@ -421,16 +437,19 @@ function WeighbridgeRegisterContent() {
     {
       header: 'Date',
       accessor: 'weighbridgeDate' as const,
+      sortable: true,
       render: (val: string) => formatDate(val),
     },
     {
       header: 'Operator',
       accessor: 'operatorName' as const,
+      sortable: true,
       render: (val: string | null) => val || '-',
     },
     {
       header: 'Verified',
       accessor: 'verified' as const,
+      sortable: true,
       render: (verified: boolean, row: any) => verified ? (
         <div>
           <Badge status="Completed">Verified</Badge>
@@ -480,18 +499,53 @@ function WeighbridgeRegisterContent() {
 
   const tableContent = (
     <div className="space-y-4">
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-2 pb-1">
-        <div className="text-sm text-gray-600 font-medium">
-          {loading
-            ? 'Loading entries...'
-            : `Showing ${entries.length} of ${totalEntries} ${activeTab === 'all' ? 'All' : activeTab === 'factory' ? 'Factory' : 'Buyer'} records`}
-        </div>
+      {/* Search and Sort Toolbar */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 bg-white p-3 rounded-xl border border-slate-200/80 shadow-xs">
+        <Input
+          placeholder="Search WB No, Plate, Operator..."
+          value={searchTerm}
+          onChange={(e) => {
+            setSearchTerm(e.target.value);
+            setPage(1);
+          }}
+        />
+        <Select
+          options={[
+            { value: 'createdAt', label: 'Sort: Date Created' },
+            { value: 'weighbridgeNo', label: 'Sort: WB Number' },
+            { value: 'weighbridgeDate', label: 'Sort: Weighbridge Date' },
+            { value: 'netWeight', label: 'Sort: Net Weight' },
+            { value: 'grossWeight', label: 'Sort: Gross Weight' },
+            { value: 'tareWeight', label: 'Sort: Tare Weight' },
+            { value: 'truckPlateNo', label: 'Sort: Truck Plate' },
+            { value: 'weighbridgeType', label: 'Sort: Type' },
+            { value: 'operatorName', label: 'Sort: Operator' },
+          ]}
+          value={sortBy}
+          onChange={(e) => {
+            setSortBy(e.target.value);
+            setPage(1);
+          }}
+        />
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              setSortOrder((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+              setPage(1);
+            }}
+            className="w-full flex items-center justify-center gap-2 px-3 py-2 border border-gray-300 rounded-lg bg-white hover:bg-slate-50 text-xs font-semibold text-slate-700 shadow-xs transition-all cursor-pointer"
+            title={`Current order: ${sortOrder === 'asc' ? 'Ascending (1→9 / A→Z)' : 'Descending (9→1 / Z→A)'}`}
+          >
+            <span>{sortOrder === 'asc' ? '⬆️ Ascending (A-Z / 1-9)' : '⬇️ Descending (Z-A / 9-1)'}</span>
+          </button>
+        </div>
+        <div className="flex items-center justify-end gap-2">
           <label className="text-xs text-gray-500 font-medium whitespace-nowrap">
             Per page:
           </label>
           <select
-            className="border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            className="w-full border border-gray-300 rounded-lg px-2.5 py-2 text-xs bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             value={String(pageSize)}
             onChange={(e) => {
               setPageSize(Number(e.target.value));
@@ -506,6 +560,24 @@ function WeighbridgeRegisterContent() {
             <option value="10000">Show All</option>
           </select>
         </div>
+      </div>
+
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-1 pb-1">
+        <div className="text-sm text-gray-600 font-medium">
+          {loading
+            ? 'Loading entries...'
+            : `Showing ${entries.length} of ${totalEntries} ${activeTab === 'all' ? 'All' : activeTab === 'factory' ? 'Factory' : 'Buyer'} records`}
+        </div>
+        {searchTerm && (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setSearchTerm('')}
+            className="text-xs"
+          >
+            Clear Search Filter
+          </Button>
+        )}
       </div>
 
       {loading ? (

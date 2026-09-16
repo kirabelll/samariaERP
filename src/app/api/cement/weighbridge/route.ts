@@ -12,6 +12,26 @@ export async function GET(request: NextRequest) {
     const truckPlateNo = searchParams.get('truckPlateNo');
     const liftingId = searchParams.get('liftingId');
     const search = searchParams.get('search');
+    const sortBy = searchParams.get('sortBy') || 'createdAt';
+    const sortOrderParam = searchParams.get('sortOrder') || 'desc';
+    const sortOrder: 'asc' | 'desc' = sortOrderParam.toLowerCase() === 'asc' ? 'asc' : 'desc';
+
+    const allowedSortFields = [
+      'weighbridgeNo',
+      'weighbridgeType',
+      'truckPlateNo',
+      'grossWeight',
+      'tareWeight',
+      'netWeight',
+      'weighbridgeDate',
+      'operatorName',
+      'verified',
+      'createdAt',
+    ];
+
+    const orderBy: any = allowedSortFields.includes(sortBy)
+      ? { [sortBy]: sortOrder }
+      : { createdAt: sortOrder };
 
     const skip = (page - 1) * limit;
 
@@ -62,7 +82,7 @@ export async function GET(request: NextRequest) {
         where: whereClause,
         skip,
         take: limit,
-        orderBy: { createdAt: 'desc' },
+        orderBy,
       }),
       prisma.cementWeighbridge.count({ where: whereClause }),
     ]);

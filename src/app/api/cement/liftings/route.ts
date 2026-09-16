@@ -52,8 +52,17 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const sortBy = searchParams.get('sortBy') || 'liftingNo';
-    const sortOrder = (searchParams.get('sortOrder') || 'asc') as 'asc' | 'desc';
+    const rawSortBy = searchParams.get('sortBy') || 'liftingNo';
+    const sortOrder = searchParams.get('sortOrder')?.toLowerCase() === 'desc' ? 'desc' : 'asc';
+
+    let orderByClause: any = { liftingNo: sortOrder };
+    if (rawSortBy === 'customer') {
+      orderByClause = { customer: { companyName: sortOrder } };
+    } else if (rawSortBy === 'factory') {
+      orderByClause = { factory: { name: sortOrder } };
+    } else if (['liftingNo', 'podNumber', 'padNumber', 'deliveryNoteNo', 'liftingDate', 'factoryWeight', 'status', 'createdAt'].includes(rawSortBy)) {
+      orderByClause = { [rawSortBy]: sortOrder };
+    }
 
     const [data, total] = await Promise.all([
       prisma.cementLifting.findMany({
@@ -67,7 +76,7 @@ export async function GET(request: NextRequest) {
           customer: { select: { id: true, companyName: true, phone: true, tin: true, withholding: true, withholdRate: true } },
           invoices: { select: { id: true, invoiceNo: true, totalAmount: true, status: true } },
         },
-        orderBy: { [sortBy]: sortOrder },
+        orderBy: orderByClause,
       }),
       prisma.cementLifting.count({ where: whereClause }),
     ]);

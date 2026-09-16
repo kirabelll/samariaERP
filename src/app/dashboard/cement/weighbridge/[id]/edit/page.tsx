@@ -283,7 +283,7 @@ export default function EditWeighbridgePage() {
 
             <div className="p-4 rounded-xl bg-slate-100 border border-slate-200">
               <p className="text-sm font-semibold text-gray-900">
-                Calculated Net Weight: <span className="text-[#007AFF] text-lg">{netVal.toLocaleString('en-US')} kg</span> ({ (netVal / 1000).toFixed(2) } Tons)
+                Calculated Net Weight: <span className="text-[#007AFF] text-lg font-bold">{netVal.toLocaleString('en-US')} kg</span> ({ (netVal / 100).toFixed(2) } QT)
               </p>
             </div>
 

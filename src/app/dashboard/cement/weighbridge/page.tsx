@@ -852,8 +852,8 @@ function WeighbridgeRegisterContent() {
               <div className="p-3 rounded-xl bg-slate-100 border border-slate-200">
                 <p className="text-sm font-bold text-slate-900">
                   Net Weight: {((parseFloat(formData.grossWeight ?? '0') ?? 0) - (parseFloat(formData.tareWeight ?? '0') ?? 0)).toLocaleString('en-US')} kg
-                  <span className="text-xs font-normal text-slate-500 ml-2">
-                    ({(((parseFloat(formData.grossWeight ?? '0') ?? 0) - (parseFloat(formData.tareWeight ?? '0') ?? 0)) / 1000).toFixed(2)} Tons)
+                  <span className="text-xs font-semibold text-blue-600 ml-2">
+                    ({(((parseFloat(formData.grossWeight ?? '0') ?? 0) - (parseFloat(formData.tareWeight ?? '0') ?? 0)) / 100).toFixed(2)} QT)
                   </span>
                 </p>
               </div>

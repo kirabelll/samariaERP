@@ -10,6 +10,13 @@ export async function GET(
   try {
     const record = await prisma.payrollPeriod.findUnique({
       where: { id: params.id },
+      include: {
+        items: {
+          include: {
+            employee: true,
+          },
+        },
+      },
     });
 
     if (!record) {

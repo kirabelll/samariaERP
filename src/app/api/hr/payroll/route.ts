@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { notify } from '@/lib/telegram';
 import { requestApproval } from '@/lib/approval-workflow';
+import { calculatePayrollRow } from '@/lib/ethiopian-tax';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,9 +25,11 @@ export async function GET(request: NextRequest) {
     if (status) {
       whereClause.status = status;
     }
-    if (year) {
-      // This would require a more complex query if we need to filter by parsed year/month
-      // For now, we keep periodName filtering
+    if (month > 0) {
+      whereClause.month = month;
+    }
+    if (year > 0) {
+      whereClause.year = year;
     }
 
     const [data, total] = await Promise.all([
@@ -62,16 +65,19 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { month, year, status } = body;
+    const { month, year, status, items } = body;
 
-    if (!month || !year) {
+    const parsedMonth = parseInt(String(month));
+    const parsedYear = parseInt(String(year));
+
+    if (!parsedMonth || !parsedYear || isNaN(parsedMonth) || isNaN(parsedYear)) {
       return NextResponse.json(
-        { success: false, error: 'Missing required fields: month, year' },
+        { success: false, error: 'Missing required fields: valid month (1-12) and year' },
         { status: 400 }
       );
     }
 
-    const periodName = `${year}-${String(month).padStart(2, '0')}`;
+    const periodName = `${parsedYear}-${String(parsedMonth).padStart(2, '0')}`;
 
     const existing = await prisma.payrollPeriod.findUnique({
       where: { periodName },
@@ -79,21 +85,98 @@ export async function POST(request: NextRequest) {
 
     if (existing) {
       return NextResponse.json(
-        { success: false, error: 'Payroll period already exists' },
+        { success: false, error: `Payroll period ${periodName} already exists` },
         { status: 400 }
       );
+    }
+
+    // Determine payroll items to create
+    let itemsToCreate: any[] = [];
+
+    if (Array.isArray(items) && items.length > 0) {
+      itemsToCreate = items.map((item: any) => ({
+        employeeId: item.employeeId,
+        baseSalary: Number(item.baseSalary || 0),
+        workingDays: Number(item.workingDays || 30),
+        absentDays: Number(item.absentDays || 0),
+        overtimeHours: Number(item.overtimeHours || 0),
+        overtimePay: Number(item.overtimePay || 0),
+        allowances: Number(item.allowances || 0),
+        grossSalary: Number(item.grossSalary || (item.baseSalary || 0) + (item.allowances || 0)),
+        pensionEmployee: Number(item.pensionEmployee || 0),
+        pensionEmployer: Number(item.pensionEmployer || 0),
+        incomeTax: Number(item.incomeTax || 0),
+        otherDeductions: Number(item.otherDeductions || 0),
+        advanceDeduction: Number(item.advanceDeduction || 0),
+        totalDeductions: Number(item.totalDeductions || 0),
+        netSalary: Number(item.netSalary || 0),
+      }));
+    } else {
+      // Auto-fetch active employees and calculate
+      const employees = await prisma.employee.findMany({
+        where: { status: 'Active' },
+      });
+
+      itemsToCreate = employees.map((emp) => {
+        const calc = calculatePayrollRow({
+          employeeId: emp.id,
+          employeeNo: emp.employeeNo,
+          employeeName: `${emp.firstName} ${emp.lastName}`,
+          department: emp.department || '',
+          position: emp.position || '',
+          baseSalary: emp.baseSalary || 0,
+        });
+
+        return {
+          employeeId: emp.id,
+          baseSalary: calc.baseSalary,
+          workingDays: 30,
+          absentDays: 0,
+          overtimeHours: 0,
+          overtimePay: 0,
+          allowances: calc.allowances,
+          grossSalary: calc.grossSalary,
+          pensionEmployee: calc.pensionEmployee,
+          pensionEmployer: calc.pensionEmployer,
+          incomeTax: calc.incomeTax,
+          otherDeductions: calc.otherDeductions,
+          advanceDeduction: calc.advanceDeduction,
+          totalDeductions: calc.totalDeductions,
+          netSalary: calc.netSalary,
+        };
+      });
     }
 
     const payrollPeriod = await prisma.payrollPeriod.create({
       data: {
         periodName,
-        month,
-        year,
+        month: parsedMonth,
+        year: parsedYear,
         status: status || 'Draft',
+        items: itemsToCreate.length > 0 ? {
+          create: itemsToCreate,
+        } : undefined,
+      },
+      include: {
+        items: {
+          include: {
+            employee: true,
+          },
+        },
       },
     });
 
-    notify({ module: 'HR', event: 'payroll_processed', details: { periodName: payrollPeriod.periodName } });
+    const totalNet = payrollPeriod.items.reduce((sum, item) => sum + (item.netSalary || 0), 0);
+
+    notify({
+      module: 'HR',
+      event: 'payroll_processed',
+      details: {
+        periodName: payrollPeriod.periodName,
+        employeeCount: payrollPeriod.items.length,
+        totalNet,
+      },
+    });
 
     // Auto-submit for approval
     try {
@@ -101,8 +184,8 @@ export async function POST(request: NextRequest) {
         module: 'PayrollPeriod',
         recordId: payrollPeriod.id,
         recordRef: payrollPeriod.periodName,
-        amount: 0,
-        description: `Payroll Period ${payrollPeriod.periodName} — Ready for approval`,
+        amount: totalNet,
+        description: `Payroll Period ${payrollPeriod.periodName} (${payrollPeriod.items.length} employees, Total Net: ${totalNet.toLocaleString()} ETB) — Ready for approval`,
         requesterId: body.createdBy || '',
       });
     } catch (e) {

@@ -104,7 +104,10 @@ export async function PUT(
           select: { netWeight: true },
         });
 
-        const totalBuyerWeight = buyerEntries.reduce((sum, e) => sum + Number(e.netWeight), 0);
+        const totalBuyerWeight = buyerEntries.reduce((sum, e) => {
+          const net = Number(e.netWeight);
+          return sum + (net > 1000 ? net / 100 : net);
+        }, 0);
         const lifting = await prisma.cementLifting.findUnique({
           where: { id: targetLiftingId },
           select: { factoryWeight: true },
@@ -115,7 +118,7 @@ export async function PUT(
           await prisma.cementLifting.update({
             where: { id: targetLiftingId },
             data: {
-              buyerWeighbridgeQty: totalBuyerWeight,
+              buyerWeighbridgeQty: totalBuyerWeight > 0 ? totalBuyerWeight : null,
               shortageQty: shortage > 0 ? shortage : 0,
             },
           });
@@ -248,7 +251,10 @@ export async function PATCH(
             select: { netWeight: true },
           });
 
-          const totalBuyerWeight = buyerEntries.reduce((sum, e) => sum + Number(e.netWeight), 0);
+          const totalBuyerWeight = buyerEntries.reduce((sum, e) => {
+            const net = Number(e.netWeight);
+            return sum + (net > 1000 ? net / 100 : net);
+          }, 0);
 
           const lifting = await prisma.cementLifting.findUnique({
             where: { id: entry.liftingId },
@@ -260,7 +266,7 @@ export async function PATCH(
             await prisma.cementLifting.update({
               where: { id: entry.liftingId },
               data: {
-                buyerWeighbridgeQty: totalBuyerWeight,
+                buyerWeighbridgeQty: totalBuyerWeight > 0 ? totalBuyerWeight : null,
                 shortageQty: shortage > 0 ? shortage : 0,
               },
             });
@@ -327,7 +333,10 @@ export async function DELETE(
           select: { netWeight: true },
         });
 
-        const totalBuyerWeight = buyerEntries.reduce((sum, e) => sum + Number(e.netWeight), 0);
+        const totalBuyerWeight = buyerEntries.reduce((sum, e) => {
+          const net = Number(e.netWeight);
+          return sum + (net > 1000 ? net / 100 : net);
+        }, 0);
         const lifting = await prisma.cementLifting.findUnique({
           where: { id: entry.liftingId },
           select: { factoryWeight: true },
@@ -338,7 +347,7 @@ export async function DELETE(
           await prisma.cementLifting.update({
             where: { id: entry.liftingId },
             data: {
-              buyerWeighbridgeQty: totalBuyerWeight,
+              buyerWeighbridgeQty: totalBuyerWeight > 0 ? totalBuyerWeight : null,
               shortageQty: shortage > 0 ? shortage : 0,
             },
           });

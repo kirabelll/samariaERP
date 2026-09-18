@@ -131,7 +131,8 @@ export default function CementLiftingDetailPage() {
           .reduce((sum: number, e) => sum + (Number(e.netWeight) || 0), 0);
         setBuyerWbTotal(verifiedTotal);
         if (verifiedTotal > 0 && !manualBuyerQty) {
-          setManualBuyerQty(String(verifiedTotal / 1000 > 10 ? (verifiedTotal / 1000).toFixed(3) : verifiedTotal));
+          const totalQt = verifiedTotal > 1000 ? verifiedTotal / 100 : verifiedTotal;
+          setManualBuyerQty(String(Number(totalQt.toFixed(2))));
         }
       }
     } catch (err) {
@@ -147,7 +148,11 @@ export default function CementLiftingDetailPage() {
       if (data.success && data.data) {
         setLifting(data.data);
         if (data.data.factoryWeight && !manualBuyerQty) {
-          setManualBuyerQty(String(data.data.buyerWeighbridgeQty || data.data.factoryWeight));
+          const rawBw = data.data.buyerWeighbridgeQty;
+          const defaultBw = rawBw != null
+            ? (Number(rawBw) > 1000 ? Number(rawBw) / 100 : Number(rawBw))
+            : data.data.factoryWeight;
+          setManualBuyerQty(String(Number(Number(defaultBw).toFixed(2))));
         }
         if (data.data.deliveryNoteNo && !manualDeliveryNoteNo) {
           setManualDeliveryNoteNo(data.data.deliveryNoteNo);
@@ -706,26 +711,36 @@ export default function CementLiftingDetailPage() {
                 <p className="text-3xl font-bold text-[#007AFF]">{Number(lifting.factoryWeight || 0).toLocaleString('en-US')} QT</p>
                 <p className="text-xs text-slate-500 font-medium mt-0.5">({(Number(lifting.factoryWeight || 0) / 10).toFixed(2)} Tons)</p>
               </div>
-              {lifting.buyerWeighbridgeQty != null && lifting.buyerWeighbridgeQty > 0 && (
-                <div>
-                  <p className="text-xs font-medium text-[#86868B] uppercase tracking-wider mb-1">Buyer Weighbridge</p>
-                  <p className="text-2xl font-bold text-[#1D1D1F]">{Number(lifting.buyerWeighbridgeQty).toLocaleString('en-US')} QT</p>
-                  <p className="text-xs text-slate-500 font-medium mt-0.5">({(Number(lifting.buyerWeighbridgeQty) / 10).toFixed(2)} Tons)</p>
-                </div>
-              )}
-              {lifting.shortageQty != null && lifting.shortageQty > 0 && (
-                <div className="border-t pt-3">
-                  <p className="text-xs font-medium text-red-500 uppercase tracking-wider mb-1">Shortage</p>
-                  <p className="text-xl font-bold text-red-600">{Number(lifting.shortageQty).toLocaleString('en-US')} QT</p>
-                  <p className="text-xs text-red-500 font-medium mt-0.5">({(Number(lifting.shortageQty) / 10).toFixed(2)} Tons)</p>
-                  {lifting.shortagePenalty != null && lifting.shortagePenalty > 0 && (
-                    <p className="text-sm text-red-500 mt-1">Penalty: ETB {Number(lifting.shortagePenalty).toLocaleString('en-US')}</p>
-                  )}
-                  <Link href="/dashboard/cement/penalties" className="text-xs text-[#007AFF] hover:underline mt-1 block">
-                    View Penalties →
-                  </Link>
-                </div>
-              )}
+              {lifting.buyerWeighbridgeQty != null && lifting.buyerWeighbridgeQty > 0 && (() => {
+                const buyerQt = Number(lifting.buyerWeighbridgeQty) > 1000
+                  ? Number(lifting.buyerWeighbridgeQty) / 100
+                  : Number(lifting.buyerWeighbridgeQty);
+                return (
+                  <div>
+                    <p className="text-xs font-medium text-[#86868B] uppercase tracking-wider mb-1">Buyer Weighbridge</p>
+                    <p className="text-2xl font-bold text-[#1D1D1F]">{buyerQt.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} QT</p>
+                    <p className="text-xs text-slate-500 font-medium mt-0.5">({(buyerQt / 10).toFixed(2)} Tons)</p>
+                  </div>
+                );
+              })()}
+              {lifting.shortageQty != null && lifting.shortageQty > 0 && (() => {
+                const shortageQt = Number(lifting.shortageQty) > 1000
+                  ? Number(lifting.shortageQty) / 100
+                  : Number(lifting.shortageQty);
+                return (
+                  <div className="border-t pt-3">
+                    <p className="text-xs font-medium text-red-500 uppercase tracking-wider mb-1">Shortage</p>
+                    <p className="text-xl font-bold text-red-600">{shortageQt.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} QT</p>
+                    <p className="text-xs text-red-500 font-medium mt-0.5">({(shortageQt / 10).toFixed(2)} Tons)</p>
+                    {lifting.shortagePenalty != null && lifting.shortagePenalty > 0 && (
+                      <p className="text-sm text-red-500 mt-1">Penalty: ETB {Number(lifting.shortagePenalty).toLocaleString('en-US')}</p>
+                    )}
+                    <Link href="/dashboard/cement/penalties" className="text-xs text-[#007AFF] hover:underline mt-1 block">
+                      View Penalties →
+                    </Link>
+                  </div>
+                );
+              })()}
 
               {/* Linked Weighbridge Entries with Direct View Links */}
               {linkedWbEntries.length > 0 && (

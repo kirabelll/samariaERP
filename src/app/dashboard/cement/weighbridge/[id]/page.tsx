@@ -598,13 +598,24 @@ export default function WeighbridgeDetailPage() {
                         </div>
                         <div>
                           <span className="text-emerald-700/70 block">Delivered Weight:</span>
-                          <span className="font-semibold text-sm">{entry.lifting.buyerWeighbridgeQty ?? (entry.netWeight / 100)} QT</span>
+                          <span className="font-semibold text-sm">
+                            {entry.lifting.buyerWeighbridgeQty != null
+                              ? (Number(entry.lifting.buyerWeighbridgeQty) > 1000 ? Number(entry.lifting.buyerWeighbridgeQty) / 100 : Number(entry.lifting.buyerWeighbridgeQty))
+                              : (entry.netWeight / 100)} QT
+                          </span>
                         </div>
                         <div>
                           <span className="text-emerald-700/70 block">Calculated Shortage:</span>
-                          <span className={`font-semibold text-sm ${entry.lifting.shortageQty && entry.lifting.shortageQty > 0 ? 'text-red-700' : 'text-emerald-900'}`}>
-                            {entry.lifting.shortageQty && entry.lifting.shortageQty > 0 ? `${entry.lifting.shortageQty} QT` : 'None (0 QT)'}
-                          </span>
+                          {(() => {
+                            const shortage = entry.lifting.shortageQty != null
+                              ? (Number(entry.lifting.shortageQty) > 1000 ? Number(entry.lifting.shortageQty) / 100 : Number(entry.lifting.shortageQty))
+                              : 0;
+                            return (
+                              <span className={`font-semibold text-sm ${shortage > 0 ? 'text-red-700' : 'text-emerald-900'}`}>
+                                {shortage > 0 ? `${shortage} QT` : 'None (0 QT)'}
+                              </span>
+                            );
+                          })()}
                         </div>
                       </div>
                     </div>

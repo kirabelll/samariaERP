@@ -117,11 +117,18 @@ export async function GET(request: NextRequest) {
     // Ensure numeric fields are properly converted
     const formattedData = data.map((lifting: any) => {
       const custPrice = custPriceMap.get(lifting.customerId) || Number(lifting.purchase?.unitPrice || 0);
+      const normalizedBuyerQty = lifting.buyerWeighbridgeQty != null
+        ? (Number(lifting.buyerWeighbridgeQty) > 1000 ? Number(lifting.buyerWeighbridgeQty) / 100 : Number(lifting.buyerWeighbridgeQty))
+        : null;
+      const normalizedShortageQty = normalizedBuyerQty != null
+        ? Math.max(0, Number(lifting.factoryWeight || 0) - normalizedBuyerQty)
+        : (lifting.shortageQty != null && Number(lifting.shortageQty) > 1000 ? Number(lifting.shortageQty) / 100 : (lifting.shortageQty != null ? Number(lifting.shortageQty) : null));
+
       return {
         ...lifting,
         factoryWeight: Number(lifting.factoryWeight),
-        buyerWeighbridgeQty: lifting.buyerWeighbridgeQty ? Number(lifting.buyerWeighbridgeQty) : null,
-        shortageQty: lifting.shortageQty ? Number(lifting.shortageQty) : null,
+        buyerWeighbridgeQty: normalizedBuyerQty,
+        shortageQty: normalizedShortageQty,
         customerUnitPrice: custPrice,
         customerAgreementPrice: custPrice,
         coupon: lifting.couponId ? couponMap[lifting.couponId] || null : null,
@@ -389,7 +396,10 @@ export async function POST(request: NextRequest) {
     const liftingNo = `LIFT-${String(nextLiftingSeq).padStart(7, '0')}`;
 
     // Calculate shortage if buyer weighbridge exists
-    const shortageQty = buyerWeighbridgeQty ? factoryWeight - buyerWeighbridgeQty : null;
+    const normalizedBuyerQty = buyerWeighbridgeQty != null && buyerWeighbridgeQty !== ''
+      ? (parseFloat(buyerWeighbridgeQty) > 1000 ? parseFloat(buyerWeighbridgeQty) / 100 : parseFloat(buyerWeighbridgeQty))
+      : null;
+    const shortageQty = normalizedBuyerQty != null ? Math.max(0, factoryWeight - normalizedBuyerQty) : null;
 
     const lifting = await prisma.cementLifting.create({
       data: {
@@ -400,7 +410,7 @@ export async function POST(request: NextRequest) {
         customerId,
         factoryWeighbridgeRef,
         factoryWeight,
-        buyerWeighbridgeQty: buyerWeighbridgeQty || null,
+        buyerWeighbridgeQty: normalizedBuyerQty || null,
         shortageQty: shortageQty || null,
         couponId: couponId || null,
         deliveryNoteNo: deliveryNoteNo || null,

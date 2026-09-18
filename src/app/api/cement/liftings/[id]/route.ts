@@ -82,10 +82,20 @@ export async function GET(
       customerUnitPrice = Number(lifting.purchase.unitPrice);
     }
 
+    const normalizedBuyerQty = lifting.buyerWeighbridgeQty != null
+      ? (Number(lifting.buyerWeighbridgeQty) > 1000 ? Number(lifting.buyerWeighbridgeQty) / 100 : Number(lifting.buyerWeighbridgeQty))
+      : null;
+
+    const normalizedShortageQty = normalizedBuyerQty != null
+      ? Math.max(0, Number(lifting.factoryWeight || 0) - normalizedBuyerQty)
+      : (lifting.shortageQty != null && Number(lifting.shortageQty) > 1000 ? Number(lifting.shortageQty) / 100 : lifting.shortageQty);
+
     return NextResponse.json({
       success: true,
       data: {
         ...lifting,
+        buyerWeighbridgeQty: normalizedBuyerQty,
+        shortageQty: normalizedShortageQty,
         coupon,
         customerUnitPrice,
         customerAgreementPrice: customerUnitPrice,
@@ -146,14 +156,17 @@ export async function PUT(
       updateData.liftingDate = rawUpdateData.liftingDate ? new Date(rawUpdateData.liftingDate) : new Date();
     }
 
-    // Numbers
+    // Numerical weight fields (stored in Quintals - QT)
     if (rawUpdateData.factoryWeight !== undefined && rawUpdateData.factoryWeight !== null && rawUpdateData.factoryWeight !== '') {
       updateData.factoryWeight = parseFloat(rawUpdateData.factoryWeight);
     }
     if (rawUpdateData.buyerWeighbridgeQty !== undefined) {
-      updateData.buyerWeighbridgeQty = (rawUpdateData.buyerWeighbridgeQty !== null && rawUpdateData.buyerWeighbridgeQty !== '')
-        ? parseFloat(rawUpdateData.buyerWeighbridgeQty)
-        : null;
+      if (rawUpdateData.buyerWeighbridgeQty !== null && rawUpdateData.buyerWeighbridgeQty !== '') {
+        const parsed = parseFloat(rawUpdateData.buyerWeighbridgeQty);
+        updateData.buyerWeighbridgeQty = parsed > 1000 ? parsed / 100 : parsed;
+      } else {
+        updateData.buyerWeighbridgeQty = null;
+      }
     }
 
     // Status transition validation
@@ -178,10 +191,11 @@ export async function PUT(
     }
 
     // Recalculate shortage if weights are updated
-    const fw = updateData.factoryWeight !== undefined ? updateData.factoryWeight : lifting.factoryWeight;
-    const bw = updateData.buyerWeighbridgeQty !== undefined ? updateData.buyerWeighbridgeQty : lifting.buyerWeighbridgeQty;
-    if (bw !== null && bw !== undefined) {
-      updateData.shortageQty = fw - bw;
+    const fw = updateData.factoryWeight !== undefined ? updateData.factoryWeight : Number(lifting.factoryWeight || 0);
+    const rawBw = updateData.buyerWeighbridgeQty !== undefined ? updateData.buyerWeighbridgeQty : lifting.buyerWeighbridgeQty;
+    const bw = rawBw != null ? (Number(rawBw) > 1000 ? Number(rawBw) / 100 : Number(rawBw)) : null;
+    if (bw !== null) {
+      updateData.shortageQty = Math.max(0, fw - bw);
     } else if (updateData.buyerWeighbridgeQty === null) {
       updateData.shortageQty = null;
     }
@@ -201,9 +215,12 @@ export async function PUT(
         });
 
         if (buyerEntries.length > 0) {
-          const totalBuyerWeight = buyerEntries.reduce((sum: number, e: any) => sum + Number(e.netWeight), 0);
+          const totalBuyerWeight = buyerEntries.reduce((sum: number, e: any) => {
+            const net = Number(e.netWeight);
+            return sum + (net > 1000 ? net / 100 : net);
+          }, 0);
           updateData.buyerWeighbridgeQty = totalBuyerWeight;
-          updateData.shortageQty = fw - totalBuyerWeight;
+          updateData.shortageQty = Math.max(0, fw - totalBuyerWeight);
         }
       } catch (err) {
         console.error('[Lifting] Failed to auto-sum buyer weighbridge:', err);

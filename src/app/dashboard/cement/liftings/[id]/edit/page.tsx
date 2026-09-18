@@ -248,7 +248,9 @@ export default function EditCementLiftingPage() {
           truckId: lifting.truckId || '',
           factoryWeighbridgeRef: lifting.factoryWeighbridgeRef || '',
           factoryWeight: lifting.factoryWeight ? String(lifting.factoryWeight) : '',
-          buyerWeighbridgeQty: lifting.buyerWeighbridgeQty != null ? String(lifting.buyerWeighbridgeQty) : '',
+          buyerWeighbridgeQty: lifting.buyerWeighbridgeQty != null 
+            ? String(Number(lifting.buyerWeighbridgeQty) > 1000 ? Number(lifting.buyerWeighbridgeQty) / 100 : lifting.buyerWeighbridgeQty) 
+            : '',
           couponId: lifting.couponId || '',
           deliveryNoteNo: lifting.deliveryNoteNo || '',
           podNumber: lifting.podNumber || lifting.padNumber || '',
@@ -331,9 +333,10 @@ export default function EditCementLiftingPage() {
   // Shortage calculations
   const calculateShortage = () => {
     const fw = parseFloat(formData.factoryWeight) || 0;
-    const bw = formData.buyerWeighbridgeQty !== '' ? parseFloat(formData.buyerWeighbridgeQty) : null;
-    if (bw === null || isNaN(bw)) return null;
-    const shortage = fw - bw;
+    const rawBw = formData.buyerWeighbridgeQty !== '' ? parseFloat(formData.buyerWeighbridgeQty) : null;
+    if (rawBw === null || isNaN(rawBw)) return null;
+    const bw = rawBw > 1000 ? rawBw / 100 : rawBw;
+    const shortage = Math.max(0, fw - bw);
     const shortagePct = fw > 0 ? (shortage / fw) * 100 : 0;
     const unitPrice = originalLifting?.customerUnitPrice || originalLifting?.purchase?.unitPrice || selectedPurchase?.unitPrice || 0;
     const penaltyAmount = shortage > 0 ? shortage * unitPrice : 0;
@@ -363,13 +366,16 @@ export default function EditCementLiftingPage() {
 
     setSubmitting(true);
     try {
+      const rawBw = formData.buyerWeighbridgeQty !== '' ? parseFloat(formData.buyerWeighbridgeQty) : null;
+      const parsedBw = rawBw != null && !isNaN(rawBw) ? (rawBw > 1000 ? rawBw / 100 : rawBw) : null;
+
       const payload: any = {
         purchaseId: formData.purchaseId,
         factoryId: formData.factoryId || selectedPurchase?.factoryId,
         customerId: formData.customerId,
         factoryWeighbridgeRef: formData.factoryWeighbridgeRef.trim(),
         factoryWeight: parseFloat(formData.factoryWeight),
-        buyerWeighbridgeQty: formData.buyerWeighbridgeQty !== '' ? parseFloat(formData.buyerWeighbridgeQty) : null,
+        buyerWeighbridgeQty: parsedBw,
         couponId: formData.couponId || null,
         deliveryNoteNo: formData.deliveryNoteNo?.trim() || null,
         podNumber: formData.podNumber?.trim() || null,

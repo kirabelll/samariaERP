@@ -387,10 +387,10 @@ export default function SalesInvoiceDetailPage() {
                           {Number(lifting.factoryWeight || 0).toFixed(2)}
                         </td>
                         <td className="px-3 py-3 text-right text-slate-900">
-                          {lifting.buyerWeighbridgeQty != null ? Number(lifting.buyerWeighbridgeQty).toFixed(2) : '—'}
+                          {lifting.buyerWeighbridgeQty != null ? (Number(lifting.buyerWeighbridgeQty) > 1000 ? (Number(lifting.buyerWeighbridgeQty) / 100).toFixed(2) : Number(lifting.buyerWeighbridgeQty).toFixed(2)) : '—'}
                         </td>
                         <td className="px-3 py-3 text-right text-orange-600 font-semibold">
-                          {lifting.shortageQty != null ? Number(lifting.shortageQty).toFixed(2) : '0.00'}
+                          {lifting.shortageQty != null ? (Number(lifting.shortageQty) > 1000 ? (Number(lifting.shortageQty) / 100).toFixed(2) : Number(lifting.shortageQty).toFixed(2)) : '0.00'}
                         </td>
                         <td className="px-3 py-3 text-slate-900">
                           {lifting.liftingDate ? formatDate(lifting.liftingDate) : '—'}
@@ -414,13 +414,19 @@ export default function SalesInvoiceDetailPage() {
                       </td>
                       <td className="px-3 py-3 text-right text-slate-900">
                         {(data.cementLiftings || (data.cementLifting ? [data.cementLifting] : []))
-                          .reduce((sum: number, l: any) => sum + (Number(l.buyerWeighbridgeQty) || 0), 0)
+                          .reduce((sum: number, l: any) => {
+                            const rawBw = Number(l.buyerWeighbridgeQty) || 0;
+                            return sum + (rawBw > 1000 ? rawBw / 100 : rawBw);
+                          }, 0)
                           .toFixed(2)}{' '}
                         Tons
                       </td>
                       <td className="px-3 py-3 text-right text-orange-600">
                         {(data.cementLiftings || (data.cementLifting ? [data.cementLifting] : []))
-                          .reduce((sum: number, l: any) => sum + (Number(l.shortageQty) || 0), 0)
+                          .reduce((sum: number, l: any) => {
+                            const rawSq = Number(l.shortageQty) || 0;
+                            return sum + (rawSq > 1000 ? rawSq / 100 : rawSq);
+                          }, 0)
                           .toFixed(2)}{' '}
                         Tons
                       </td>

@@ -174,28 +174,46 @@ export default function SalesReportsPage() {
     if (!lookupId.trim()) return null;
     const q = lookupId.trim().toLowerCase();
 
-    // Check in invoiced records (match invoice number, direct ref, list of refs, delivery IDs, or item breakdowns)
+    // First check in invoiced records (match invoice number, direct ref, list of refs, delivery IDs, or item breakdowns)
     const foundInvoice = data.find((inv) => {
+      // Direct invoice match
       if (inv.id.toLowerCase() === q || inv.invoiceNo.toLowerCase() === q) return true;
+      
+      // Match against delivery references (comma-separated string or array)
+      if (inv.deliveryRef && inv.deliveryRef.toLowerCase().includes(q)) return true;
       if (inv.deliveryRefs?.some((r) => r.toLowerCase() === q)) return true;
       if (inv.deliveryIds?.some((id) => id.toLowerCase() === q)) return true;
-      if (inv.itemsBreakdown?.some((item) => item.ref?.toLowerCase() === q || item.id?.toLowerCase() === q)) return true;
-      if (inv.deliveryRef?.toLowerCase().includes(q)) return true;
+      
+      // Match against detailed item breakdowns
+      if (inv.itemsBreakdown?.some((item) => {
+        return item.ref?.toLowerCase() === q || 
+               item.id?.toLowerCase() === q ||
+               item.name?.toLowerCase().includes(q) ||
+               item.description?.toLowerCase().includes(q);
+      })) return true;
+
       return false;
     });
 
     if (foundInvoice) {
       const isMulti = (foundInvoice.deliveriesCount || 0) > 1;
       const matchedItem = foundInvoice.itemsBreakdown?.find(
-        (item) => item.ref?.toLowerCase() === q || item.id?.toLowerCase() === q
+        (item) => item.ref?.toLowerCase() === q || 
+                  item.id?.toLowerCase() === q ||
+                  item.name?.toLowerCase().includes(q)
       );
+
+      // Build comprehensive display info
+      const dispatchInfo = foundInvoice.dispatchesCount > 0 ? `${foundInvoice.dispatchesCount} dispatches` : '';
+      const liftingInfo = foundInvoice.liftingsCount > 0 ? `${foundInvoice.liftingsCount} liftings` : '';
+      const shipmentInfo = [dispatchInfo, liftingInfo].filter(Boolean).join(' & ') || 'items';
 
       return {
         type: 'INVOICED',
-        title: `Invoiced on ${foundInvoice.invoiceNo}${isMulti ? ` (${foundInvoice.deliveriesCount} shipments in batch)` : ''}`,
+        title: `Invoiced on ${foundInvoice.invoiceNo}${isMulti ? ` (${foundInvoice.deliveriesCount} ${shipmentInfo} in batch)` : ''}`,
         detail: `Customer: ${foundInvoice.customer} | Division: ${foundInvoice.division} | Total Amount: ${formatCurrency(foundInvoice.amount)} | Status: ${foundInvoice.status}`,
         matchedItemDetail: matchedItem
-          ? `Matched Item: ${matchedItem.name || matchedItem.ref} | Qty: ${matchedItem.quantity || 'N/A'} ${matchedItem.unit || ''} | Rate: ${matchedItem.unitPrice ? formatCurrency(matchedItem.unitPrice) : 'N/A'}`
+          ? `Matched Item: ${matchedItem.name || matchedItem.ref} | Type: ${matchedItem.type} | Qty: ${matchedItem.quantity || 'N/A'} ${matchedItem.unit || ''} | Rate: ${matchedItem.unitPrice ? formatCurrency(matchedItem.unitPrice) : 'N/A'}`
           : undefined,
         allRefs: foundInvoice.deliveryRefs || [],
         date: foundInvoice.date ? new Date(foundInvoice.date).toLocaleDateString() : '',
@@ -207,7 +225,7 @@ export default function SalesReportsPage() {
       };
     }
 
-    // Check in uninvoiced items
+    // Check in uninvoiced items (both cement and aggregate)
     const foundUninvoiced = deliveredNotInvoiced?.items.find(
       (u) =>
         u.id.toLowerCase() === q ||
@@ -219,7 +237,7 @@ export default function SalesReportsPage() {
       return {
         type: 'UNINVOICED',
         title: `Delivered (Not Invoiced) — ${foundUninvoiced.referenceNo}`,
-        detail: `Customer: ${foundUninvoiced.customer} | ${foundUninvoiced.quantity} ${foundUninvoiced.unit} from ${foundUninvoiced.source} | Est. Value: ${formatCurrency(foundUninvoiced.estValue)} | Status: ${foundUninvoiced.status}`,
+        detail: `Customer: ${foundUninvoiced.customer} | Type: ${foundUninvoiced.type === 'CEMENT' ? 'Cement Lifting' : 'Aggregate Dispatch'} | ${foundUninvoiced.quantity} ${foundUninvoiced.unit} from ${foundUninvoiced.source} | Est. Value: ${formatCurrency(foundUninvoiced.estValue)} | Status: ${foundUninvoiced.status}`,
         date: foundUninvoiced.deliveryDate ? new Date(foundUninvoiced.deliveryDate).toLocaleDateString() : '',
         deliveryRef: foundUninvoiced.referenceNo,
         deliveryType: foundUninvoiced.type,
@@ -230,7 +248,7 @@ export default function SalesReportsPage() {
     return {
       type: 'NOT_FOUND',
       title: 'No matching record found',
-      detail: `No active invoice, cement lifting, or aggregate delivery found matching "${lookupId}" in current report period.`,
+      detail: `No active invoice, cement lifting, or aggregate delivery found matching "${lookupId}" in current report period. Try checking the full reference number or invoice ID.`,
     };
   }, [lookupId, data, deliveredNotInvoiced]);
 
@@ -278,14 +296,21 @@ export default function SalesReportsPage() {
         const items = row.itemsBreakdown || [];
         const count = row.deliveriesCount || items.length;
         const refs = row.deliveryRefs || (val ? val.split(', ') : []);
+        const dispatchCount = row.dispatchesCount || 0;
+        const liftingCount = row.liftingsCount || 0;
 
         if (count === 0 && refs.length === 0) {
-          return <span className="text-gray-400 text-xs">—</span>;
+          return (
+            <div className="flex items-center gap-1.5 text-orange-600">
+              <HelpCircle className="w-3 h-3" />
+              <span className="text-xs font-medium">No linked shipments</span>
+            </div>
+          );
         }
 
         if (count === 1 || refs.length === 1) {
           const singleRef = refs[0] || val;
-          const isLifting = singleRef?.startsWith('LFT') || row.division === 'CEMENT';
+          const isLifting = singleRef?.startsWith('LFT') || row.division === 'CEMENT' || liftingCount > 0;
           return (
             <div className="flex items-center gap-1.5">
               <span
@@ -315,18 +340,37 @@ export default function SalesReportsPage() {
         return (
           <div className="flex flex-col gap-1 items-start">
             <div className="flex flex-wrap items-center gap-1 max-w-xs">
-              {refs.slice(0, 2).map((ref, idx) => (
-                <span
-                  key={idx}
-                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-mono font-medium bg-slate-100 text-slate-800 border border-slate-200"
-                >
-                  <Truck className="w-2.5 h-2.5 opacity-60" />
-                  {ref}
-                </span>
-              ))}
+              {refs.slice(0, 2).map((ref, idx) => {
+                const isLifting = ref?.startsWith('LFT') || ref?.includes('Lifting');
+                return (
+                  <span
+                    key={idx}
+                    className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-mono font-medium border ${
+                      isLifting 
+                        ? 'bg-blue-100 text-blue-800 border-blue-200'
+                        : 'bg-slate-100 text-slate-800 border-slate-200'
+                    }`}
+                  >
+                    <Truck className="w-2.5 h-2.5 opacity-60" />
+                    {ref}
+                  </span>
+                );
+              })}
               {refs.length > 2 && (
                 <span className="text-[11px] font-semibold text-slate-600 px-1 py-0.5 bg-slate-200/70 rounded">
                   +{refs.length - 2} more
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-2 pt-0.5">
+              {liftingCount > 0 && (
+                <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700">
+                  {liftingCount} Lifting{liftingCount > 1 ? 's' : ''}
+                </span>
+              )}
+              {dispatchCount > 0 && (
+                <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-700">
+                  {dispatchCount} Dispatch{dispatchCount > 1 ? 'es' : ''}
                 </span>
               )}
             </div>
@@ -335,7 +379,7 @@ export default function SalesReportsPage() {
               className="inline-flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-800 hover:underline cursor-pointer pt-0.5"
             >
               <Boxes className="w-3 h-3" />
-              <span>View All {count} Dispatches / Liftings</span>
+              <span>View All {count} Items</span>
             </button>
           </div>
         );
@@ -405,9 +449,14 @@ export default function SalesReportsPage() {
       accessor: 'referenceNo',
       sortable: true,
       render: (val, row) => (
-        <div className="font-mono font-semibold text-gray-900 flex items-center gap-1">
-          <Truck className="w-3.5 h-3.5 text-gray-500" />
-          <span>{val}</span>
+        <div className="flex items-center gap-2">
+          <div className="font-mono font-semibold text-gray-900 flex items-center gap-1">
+            <Truck className="w-3.5 h-3.5 text-gray-500" />
+            <span>{val}</span>
+          </div>
+          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-100 text-red-700">
+            NOT INVOICED
+          </span>
         </div>
       ),
     },

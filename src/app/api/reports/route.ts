@@ -64,33 +64,54 @@ export async function GET(request: NextRequest) {
         });
 
         const invoicedLiftingIds = new Set<string>();
+        const invoicedLiftingNos = new Set<string>();
         const invoicedDeliveryIds = new Set<string>();
+        const invoicedDispatchNos = new Set<string>();
 
         allActiveInvoices.forEach((inv) => {
-          if (inv.liftingId) invoicedLiftingIds.add(String(inv.liftingId));
-          if (inv.cementLifting?.liftingNo) invoicedLiftingIds.add(String(inv.cementLifting.liftingNo));
+          // Direct lifting relationship
+          if (inv.liftingId) {
+            invoicedLiftingIds.add(String(inv.liftingId));
+          }
+          if (inv.cementLifting?.liftingNo) {
+            invoicedLiftingNos.add(String(inv.cementLifting.liftingNo));
+            if (inv.cementLifting.id) {
+              invoicedLiftingIds.add(String(inv.cementLifting.id));
+            }
+          }
+
+          // Items JSON parsing
           if (inv.items) {
             try {
               const parsed = typeof inv.items === 'string' ? JSON.parse(inv.items) : inv.items;
               if (Array.isArray(parsed)) {
                 parsed.forEach((item: any) => {
+                  // Cement lifting references
                   if (item.liftingId) invoicedLiftingIds.add(String(item.liftingId));
-                  if (item.liftingNo) invoicedLiftingIds.add(String(item.liftingNo));
+                  if (item.liftingNo) invoicedLiftingNos.add(String(item.liftingNo));
+                  
+                  // Aggregate delivery references
                   if (item.deliveryId) invoicedDeliveryIds.add(String(item.deliveryId));
-                  if (item.dispatchNo) invoicedDeliveryIds.add(String(item.dispatchNo));
+                  if (item.dispatchNo) invoicedDispatchNos.add(String(item.dispatchNo));
                   if (item.dispatchId) invoicedDeliveryIds.add(String(item.dispatchId));
-                  if (item.padNumber) invoicedDeliveryIds.add(String(item.padNumber));
-                  if (item.podNumber) invoicedDeliveryIds.add(String(item.podNumber));
+                  if (item.padNumber) invoicedDispatchNos.add(String(item.padNumber));
+                  if (item.podNumber) invoicedDispatchNos.add(String(item.podNumber));
 
                   // Pattern matching in item name/description for any embedded references
                   const text = `${item.name || ''} ${item.description || ''}`;
                   const lftMatches = text.match(/LFT-[\w-]+/gi);
-                  if (lftMatches) lftMatches.forEach((m) => invoicedLiftingIds.add(m));
+                  if (lftMatches) lftMatches.forEach((m) => invoicedLiftingNos.add(m));
                   const dispMatches = text.match(/(?:DISP|DSP)-[\w-]+/gi);
-                  if (dispMatches) dispMatches.forEach((m) => invoicedDeliveryIds.add(m));
+                  if (dispMatches) dispMatches.forEach((m) => invoicedDispatchNos.add(m));
+                  
+                  // Additional dispatch patterns
+                  const aggregateMatches = text.match(/AGG-[\w-]+/gi);
+                  if (aggregateMatches) aggregateMatches.forEach((m) => invoicedDispatchNos.add(m));
                 });
               }
-            } catch {}
+            } catch (error) {
+              console.warn(`Failed to parse items JSON for invoice ${inv.invoiceNo}:`, error);
+            }
           }
         });
 
@@ -99,7 +120,7 @@ export async function GET(request: NextRequest) {
         if (startDate) liftingDateFilter.gte = new Date(startDate);
         if (endDate) liftingDateFilter.lte = new Date(endDate);
 
-        // 1. Fetch Cement Liftings and check strictly by ID against active invoices
+        // 1. Fetch Cement Liftings and check strictly by ID and liftingNo against active invoices
         const cementLiftings = await prisma.cementLifting.findMany({
           where: {
             status: { in: ['Delivered', 'Verified', 'Lifted'] },
@@ -120,9 +141,9 @@ export async function GET(request: NextRequest) {
         const uninvoicedCementItems = cementLiftings
           .filter(
             (l) =>
-              l.invoices.length === 0 &&
-              !invoicedLiftingIds.has(String(l.id)) &&
-              !invoicedLiftingIds.has(String(l.liftingNo))
+              l.invoices.length === 0 && // No direct invoice relationship
+              !invoicedLiftingIds.has(String(l.id)) && // Not referenced by ID in any invoice items
+              !invoicedLiftingNos.has(String(l.liftingNo)) // Not referenced by liftingNo in any invoice items
           )
           .map((l) => {
             const weight = l.buyerWeighbridgeQty || l.factoryWeight || 0;
@@ -130,7 +151,7 @@ export async function GET(request: NextRequest) {
             const estValue = Math.round(weight * unitPrice * 100) / 100;
             return {
               id: l.id,
-              type: 'CEMENT',
+              type: 'CEMENT' as const,
               division: 'CEMENT',
               referenceNo: l.liftingNo,
               customerId: l.customer?.id,
@@ -146,7 +167,7 @@ export async function GET(request: NextRequest) {
             };
           });
 
-        // 2. Fetch Aggregate Deliveries and check strictly by ID against active invoices
+        // 2. Fetch Aggregate Deliveries and check strictly by ID and dispatchNo against active invoices
         const aggregateDeliveries = await prisma.aggregateDelivery.findMany({
           where: {
             status: { in: ['Delivered', 'Verified', 'Settled'] },
@@ -165,8 +186,8 @@ export async function GET(request: NextRequest) {
         const uninvoicedAggItems = aggregateDeliveries
           .filter(
             (d) =>
-              !invoicedDeliveryIds.has(String(d.id)) &&
-              !invoicedDeliveryIds.has(String(d.dispatchNo))
+              !invoicedDeliveryIds.has(String(d.id)) && // Not referenced by ID in any invoice items
+              !invoicedDispatchNos.has(String(d.dispatchNo)) // Not referenced by dispatchNo in any invoice items
           )
           .map((d) => {
             const volume = d.deliveredVolume || d.loadedVolume || 0;
@@ -174,7 +195,7 @@ export async function GET(request: NextRequest) {
             const estValue = Math.round(volume * unitPrice * 100) / 100;
             return {
               id: d.id,
-              type: 'AGGREGATE',
+              type: 'AGGREGATE' as const,
               division: 'AGGREGATE',
               referenceNo: d.dispatchNo,
               customerId: d.customerId,
@@ -213,6 +234,7 @@ export async function GET(request: NextRequest) {
               total?: number;
             }> = [];
 
+            // Handle direct cement lifting relationship
             if (inv.cementLifting?.liftingNo) {
               deliveryRefsSet.add(inv.cementLifting.liftingNo);
               if (inv.cementLifting.id) deliveryIdsSet.add(inv.cementLifting.id);
@@ -225,23 +247,38 @@ export async function GET(request: NextRequest) {
               });
             } else if (inv.liftingId) {
               deliveryIdsSet.add(inv.liftingId);
+              // Try to find the lifting details
+              const lifting = cementLiftings.find(l => l.id === inv.liftingId);
+              if (lifting) {
+                deliveryRefsSet.add(lifting.liftingNo);
+                itemsBreakdown.push({
+                  id: lifting.id,
+                  ref: lifting.liftingNo,
+                  type: 'CEMENT',
+                  name: `Cement Lifting ${lifting.liftingNo}`,
+                  description: `Direct Lifting Reference (${lifting.status})`,
+                });
+              }
             }
 
+            // Parse items JSON for additional dispatches/liftings
             if (inv.items) {
               try {
                 const parsed = typeof inv.items === 'string' ? JSON.parse(inv.items) : inv.items;
                 if (Array.isArray(parsed)) {
                   parsed.forEach((item: any, idx: number) => {
                     const ref = item.dispatchNo || item.liftingNo || item.podNumber || item.padNumber;
-                    const id = item.deliveryId || item.liftingId || item.id;
+                    const id = item.deliveryId || item.liftingId || item.dispatchId || item.id;
                     if (ref) deliveryRefsSet.add(String(ref));
                     if (id) deliveryIdsSet.add(String(id));
 
-                    const itemType = item.liftingNo || item.liftingId || inv.division === 'CEMENT'
-                      ? 'CEMENT'
-                      : item.dispatchNo || item.deliveryId || inv.division === 'AGGREGATE'
-                      ? 'AGGREGATE'
-                      : 'OTHER';
+                    // Determine item type based on properties and division
+                    let itemType: 'CEMENT' | 'AGGREGATE' | 'OTHER' = 'OTHER';
+                    if (item.liftingNo || item.liftingId || inv.division === 'CEMENT') {
+                      itemType = 'CEMENT';
+                    } else if (item.dispatchNo || item.deliveryId || item.dispatchId || inv.division === 'AGGREGATE') {
+                      itemType = 'AGGREGATE';
+                    }
 
                     itemsBreakdown.push({
                       id: id ? String(id) : `item-${idx}`,
@@ -256,7 +293,22 @@ export async function GET(request: NextRequest) {
                     });
                   });
                 }
-              } catch {}
+              } catch (error) {
+                console.warn(`Failed to parse items JSON for invoice ${inv.invoiceNo}:`, error);
+              }
+            }
+
+            // If no items found but we have a lifting relationship, ensure it's included
+            if (itemsBreakdown.length === 0 && (inv.liftingId || inv.cementLifting)) {
+              const liftingRef = inv.cementLifting?.liftingNo || `Lifting-${inv.liftingId}`;
+              deliveryRefsSet.add(liftingRef);
+              itemsBreakdown.push({
+                id: inv.liftingId || inv.cementLifting?.id,
+                ref: liftingRef,
+                type: 'CEMENT',
+                name: `Cement Lifting ${liftingRef}`,
+                description: 'Linked via direct lifting relationship',
+              });
             }
 
             const deliveryRefs = Array.from(deliveryRefsSet);

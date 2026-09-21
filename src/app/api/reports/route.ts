@@ -23,6 +23,8 @@ export async function GET(request: NextRequest) {
       case 'sales': {
         const whereClause: any = {};
         if (startDate || endDate) whereClause.invoiceDate = dateFilter;
+        // Exclude inactive invoices from sales reports by default
+        whereClause.status = { notIn: ['Cancelled', 'Inactive'] };
 
         // Fetch invoiced sales data
         const [invoices, total, summary] = await Promise.all([
@@ -50,9 +52,9 @@ export async function GET(request: NextRequest) {
           return sum + paid;
         }, 0);
 
-        // Fetch all active invoices (excluding Cancelled) to extract invoiced lifting and delivery IDs
+        // Fetch all active invoices (excluding Cancelled and Inactive) to extract invoiced lifting and delivery IDs
         const allActiveInvoices = await prisma.salesInvoice.findMany({
-          where: { status: { not: 'Cancelled' } },
+          where: { status: { notIn: ['Cancelled', 'Inactive'] } },
           select: {
             id: true,
             invoiceNo: true,
@@ -131,7 +133,7 @@ export async function GET(request: NextRequest) {
             factory: { select: { name: true } },
             purchase: { select: { unitPrice: true, cementType: true } },
             invoices: {
-              where: { status: { not: 'Cancelled' } },
+              where: { status: { notIn: ['Cancelled', 'Inactive'] } },
               select: { id: true, invoiceNo: true, status: true },
             },
           },

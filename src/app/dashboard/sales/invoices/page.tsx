@@ -37,18 +37,29 @@ export default function InvoicesPage() {
   });
 
   const handleDeleteInvoice = async (invoice: SalesInvoice) => {
-    if (!window.confirm(`Are you sure you want to delete invoice ${invoice.invoiceNo}? This action cannot be undone.`)) {
+    const isInactive = invoice.status === 'Inactive';
+    const action = isInactive ? 'permanently delete' : 'deactivate';
+    const confirmMessage = isInactive 
+      ? `Are you sure you want to PERMANENTLY DELETE invoice ${invoice.invoiceNo}? This action cannot be undone and will remove all data from the database.`
+      : `Are you sure you want to deactivate invoice ${invoice.invoiceNo}? This will set the status to inactive but preserve the record.`;
+    
+    if (!window.confirm(confirmMessage)) {
       return;
     }
+
     try {
-      const res = await fetch(`/api/sales/invoices/${invoice.id}`, { method: 'DELETE' });
+      const url = isInactive 
+        ? `/api/sales/invoices/${invoice.id}?permanent=true`
+        : `/api/sales/invoices/${invoice.id}`;
+        
+      const res = await fetch(url, { method: 'DELETE' });
       const result = await res.json();
       if (!res.ok || !result.success) {
-        throw new Error(result.error || 'Failed to delete invoice');
+        throw new Error(result.error || `Failed to ${action} invoice`);
       }
       refetch();
     } catch (err: any) {
-      alert(err.message || 'Failed to delete invoice');
+      alert(err.message || `Failed to ${action} invoice`);
     }
   };
 
@@ -121,21 +132,27 @@ export default function InvoicesPage() {
     {
       header: 'Actions',
       accessor: 'id',
-      render: (id, row) => (
-        <div className="flex gap-2">
-          <Link href={`/dashboard/sales/invoices/${id}`}>
-            <Button size="sm" variant="outline">View</Button>
-          </Link>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => handleDeleteInvoice(row)}
-            className="border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300"
-          >
-            Delete
-          </Button>
-        </div>
-      ),
+      render: (id, row) => {
+        const isInactive = row.status === 'Inactive';
+        return (
+          <div className="flex gap-2">
+            <Link href={`/dashboard/sales/invoices/${id}`}>
+              <Button size="sm" variant="outline">View</Button>
+            </Link>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => handleDeleteInvoice(row)}
+              className={isInactive 
+                ? "border-red-300 text-red-700 hover:bg-red-50 hover:border-red-400" 
+                : "border-orange-200 text-orange-600 hover:bg-orange-50 hover:border-orange-300"
+              }
+            >
+              {isInactive ? 'Delete Permanently' : 'Deactivate'}
+            </Button>
+          </div>
+        );
+      },
     },
   ];
 
@@ -172,6 +189,7 @@ export default function InvoicesPage() {
                 { value: 'Paid', label: 'Paid' },
                 { value: 'Overdue', label: 'Overdue' },
                 { value: 'Cancelled', label: 'Cancelled' },
+                { value: 'Inactive', label: 'Inactive' },
               ]}
               value={statusFilter}
               onChange={(e) => { setStatusFilter(e.target.value); setCurrentPage(1); }}

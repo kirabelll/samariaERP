@@ -38,6 +38,7 @@ export default function SalesInvoiceDetailPage() {
   }, [recordId]);
 
   const [deleting, setDeleting] = useState(false);
+  const [permanentlyDeleting, setPermanentlyDeleting] = useState(false);
 
   const handleEdit = () => {
     router.push(`/dashboard/sales/invoices/${recordId}/edit`);
@@ -50,7 +51,7 @@ export default function SalesInvoiceDetailPage() {
   };
 
   const handleDelete = async () => {
-    if (!window.confirm(`Are you sure you want to delete invoice ${data?.invoiceNo}? This action cannot be undone.`)) {
+    if (!window.confirm(`Are you sure you want to deactivate invoice ${data?.invoiceNo}? This will set the status to inactive but preserve the record.`)) {
       return;
     }
     setDeleting(true);
@@ -62,11 +63,49 @@ export default function SalesInvoiceDetailPage() {
       if (!response.ok || !result.success) {
         throw new Error(result.error || 'Failed to delete invoice');
       }
-      router.push('/dashboard/sales/invoices');
+      // Refresh data to show updated status
+      window.location.reload();
     } catch (err: any) {
       alert(err.message || 'Failed to delete invoice');
     } finally {
       setDeleting(false);
+    }
+  };
+
+  const handlePermanentDelete = async () => {
+    const confirmText = `DELETE ${data?.invoiceNo}`;
+    const userInput = window.prompt(
+      `⚠️ PERMANENT DELETION WARNING ⚠️\n\n` +
+      `This will PERMANENTLY DELETE invoice ${data?.invoiceNo} and all associated data from the database. ` +
+      `This action CANNOT be undone and will affect:\n\n` +
+      `• Invoice record and all line items\n` +
+      `• Payment records linked to this invoice\n` +
+      `• Any references in reports and audit trails\n\n` +
+      `Type exactly "${confirmText}" to confirm permanent deletion:`
+    );
+
+    if (userInput !== confirmText) {
+      if (userInput !== null) {
+        alert('Deletion cancelled. The confirmation text did not match.');
+      }
+      return;
+    }
+
+    setPermanentlyDeleting(true);
+    try {
+      const response = await fetch(`/api/sales/invoices/${recordId}?permanent=true`, {
+        method: 'DELETE',
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Failed to permanently delete invoice');
+      }
+      alert(`Invoice ${data?.invoiceNo} has been permanently deleted from the database.`);
+      router.push('/dashboard/sales/invoices');
+    } catch (err: any) {
+      alert(err.message || 'Failed to permanently delete invoice');
+    } finally {
+      setPermanentlyDeleting(false);
     }
   };
 
@@ -142,25 +181,45 @@ export default function SalesInvoiceDetailPage() {
           <div className="flex items-center gap-3">
             <h2 className="text-2xl font-bold text-slate-900">{data.invoiceNo}</h2>
             <Badge status={data.status}>{data.status}</Badge>
+            {data.status === 'Inactive' && (
+              <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-red-100 border border-red-300">
+                <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse"></div>
+                <span className="text-red-700 text-sm font-semibold">Inactive - Can be permanently deleted</span>
+              </div>
+            )}
           </div>
           <div className="flex gap-3">
-            {data.status !== 'Paid' && data.status !== 'Cancelled' && (
+            {data.status !== 'Paid' && data.status !== 'Cancelled' && data.status !== 'Inactive' && (
               <Button variant="primary" size="lg" onClick={handleRecordPayment}>
                 Record Payment
               </Button>
             )}
-            <Button variant="outline" size="lg" onClick={handleEdit}>
-              Edit
-            </Button>
-            <Button
-              variant="outline"
-              size="lg"
-              onClick={handleDelete}
-              isLoading={deleting}
-              className="border-red-300 text-red-600 hover:bg-red-50 hover:border-red-400 font-semibold"
-            >
-              Delete
-            </Button>
+            {data.status !== 'Inactive' && (
+              <Button variant="outline" size="lg" onClick={handleEdit}>
+                Edit
+              </Button>
+            )}
+            {data.status === 'Inactive' ? (
+              <Button
+                variant="outline"
+                size="lg"
+                onClick={handlePermanentDelete}
+                isLoading={permanentlyDeleting}
+                className="border-red-500 text-red-700 hover:bg-red-50 hover:border-red-600 font-semibold"
+              >
+                {permanentlyDeleting ? 'Deleting Permanently...' : 'Delete Permanently'}
+              </Button>
+            ) : (
+              <Button
+                variant="outline"
+                size="lg"
+                onClick={handleDelete}
+                isLoading={deleting}
+                className="border-orange-300 text-orange-600 hover:bg-orange-50 hover:border-orange-400 font-semibold"
+              >
+                {deleting ? 'Deactivating...' : 'Deactivate'}
+              </Button>
+            )}
             <Button variant="outline" size="lg" onClick={handleBack}>
               Back
             </Button>
@@ -168,6 +227,30 @@ export default function SalesInvoiceDetailPage() {
         </CardHeader>
 
         <CardBody className="space-y-8">
+          {/* Inactive Invoice Warning */}
+          {data.status === 'Inactive' && (
+            <div className="border border-red-300 rounded-lg bg-red-50 p-4">
+              <div className="flex items-start gap-3">
+                <div className="flex-shrink-0">
+                  <svg className="w-5 h-5 text-red-600 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                  </svg>
+                </div>
+                <div className="flex-1">
+                  <h4 className="text-red-800 font-semibold text-sm">Inactive Invoice</h4>
+                  <p className="text-red-700 text-sm mt-1">
+                    This invoice has been deactivated and is excluded from active reports and calculations. 
+                    You can permanently delete this invoice to remove it completely from the database, 
+                    but this action cannot be undone.
+                  </p>
+                  <div className="mt-3 text-xs text-red-600">
+                    <p><strong>Note:</strong> Permanent deletion will remove all associated payment records and references.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Invoice Information */}
           <div>
             <h3 className="text-lg font-semibold text-slate-900 mb-4">Invoice Information</h3>
@@ -330,110 +413,262 @@ export default function SalesInvoiceDetailPage() {
           {/* Related Cement Liftings */}
           {((data.cementLiftings && data.cementLiftings.length > 0) || data.cementLifting) && (
             <div className="border-t border-slate-200 pt-8">
-              <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center justify-between mb-6">
                 <div>
-                  <h3 className="text-lg font-semibold text-slate-900">Associated Cement Liftings</h3>
-                  <p className="text-sm text-slate-600 mt-0.5">
+                  <h3 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
+                    <span>Associated Cement Liftings</span>
+                    <div className="w-2 h-2 rounded-full bg-blue-500"></div>
+                  </h3>
+                  <p className="text-sm text-slate-600 mt-1">
                     Weighbridge tickets, quantities, factory sources, and driver details for this invoice
                   </p>
                 </div>
-                <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-100 text-blue-800">
-                  {(data.cementLiftings || (data.cementLifting ? [data.cementLifting] : [])).length} Ticket(s)
-                </span>
+                <div className="flex items-center gap-3">
+                  <span className="px-3 py-1.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-800 border border-blue-200">
+                    {(data.cementLiftings || (data.cementLifting ? [data.cementLifting] : [])).length} Lifting Ticket{(data.cementLiftings || (data.cementLifting ? [data.cementLifting] : [])).length === 1 ? '' : 's'}
+                  </span>
+                </div>
               </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="bg-slate-100 border-b border-slate-300">
-                      <th className="px-3 py-2 text-left font-semibold text-slate-900">Lifting No</th>
-                      <th className="px-3 py-2 text-left font-semibold text-slate-900">Factory / Supplier</th>
-                      <th className="px-3 py-2 text-left font-semibold text-slate-900">Coupon</th>
-                      <th className="px-3 py-2 text-left font-semibold text-slate-900">Driver & Truck</th>
-                      <th className="px-3 py-2 text-right font-semibold text-slate-900">Factory Wt (Tons)</th>
-                      <th className="px-3 py-2 text-right font-semibold text-slate-900">Site Wt (Tons)</th>
-                      <th className="px-3 py-2 text-right font-semibold text-slate-900">Shortage (Tons)</th>
-                      <th className="px-3 py-2 text-left font-semibold text-slate-900">Date</th>
-                      <th className="px-3 py-2 text-left font-semibold text-slate-900">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(data.cementLiftings || (data.cementLifting ? [data.cementLifting] : [])).map((lifting: any) => (
-                      <tr key={lifting.id} className="border-b border-slate-200 hover:bg-slate-50">
-                        <td className="px-3 py-3 font-medium">
-                          <button
-                            onClick={() => router.push(`/dashboard/cement/liftings/${lifting.id}`)}
-                            className="text-blue-600 hover:underline font-mono"
-                          >
-                            {lifting.liftingNo}
-                          </button>
-                        </td>
-                        <td className="px-3 py-3 text-slate-900">
-                          {lifting.factory?.name || lifting.purchase?.factory?.name || '—'}
-                        </td>
-                        <td className="px-3 py-3 text-slate-700 font-mono text-xs">
-                          {lifting.coupon?.couponNo || (lifting as any).couponNo || '—'}
-                        </td>
-                        <td className="px-3 py-3 text-slate-900">
-                          <div>
-                            <span className="font-medium">{lifting.driverName || lifting.truck?.driverName || '—'}</span>
-                            {(lifting.truckPlateNo || lifting.truck?.plateNo) && (
-                              <span className="block text-xs text-slate-500 font-mono">
-                                {lifting.truckPlateNo || lifting.truck?.plateNo}
-                              </span>
-                            )}
+              
+              <div className="bg-white rounded-lg border border-slate-200 overflow-hidden shadow-sm">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-gradient-to-r from-slate-50 to-slate-100 border-b border-slate-200">
+                        <th className="px-4 py-3.5 text-left font-semibold text-slate-700">Lifting No</th>
+                        <th className="px-4 py-3.5 text-left font-semibold text-slate-700">Factory / Supplier</th>
+                        <th className="px-4 py-3.5 text-left font-semibold text-slate-700">Coupon</th>
+                        <th className="px-4 py-3.5 text-left font-semibold text-slate-700">Driver & Truck</th>
+                        <th className="px-4 py-3.5 text-right font-semibold text-slate-700">Factory Wt (Tons)</th>
+                        <th className="px-4 py-3.5 text-right font-semibold text-slate-700">Site Wt (Tons)</th>
+                        <th className="px-4 py-3.5 text-right font-semibold text-slate-700">Shortage (Tons)</th>
+                        <th className="px-4 py-3.5 text-left font-semibold text-slate-700">Date</th>
+                        <th className="px-4 py-3.5 text-left font-semibold text-slate-700">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(data.cementLiftings || (data.cementLifting ? [data.cementLifting] : [])).map((lifting: any, index: number) => {
+                        const factoryWeight = Number(lifting.factoryWeight || 0);
+                        const siteWeight = lifting.buyerWeighbridgeQty != null ? 
+                          (Number(lifting.buyerWeighbridgeQty) > 1000 ? 
+                            Number(lifting.buyerWeighbridgeQty) / 100 : 
+                            Number(lifting.buyerWeighbridgeQty)) : 0;
+                        const shortage = lifting.shortageQty != null ? 
+                          (Number(lifting.shortageQty) > 1000 ? 
+                            Number(lifting.shortageQty) / 100 : 
+                            Number(lifting.shortageQty)) : 0;
+                        const hasShortage = shortage > 0;
+
+                        return (
+                          <tr key={lifting.id} className={`border-b border-slate-100 hover:bg-slate-50/50 transition-colors ${index % 2 === 0 ? 'bg-white' : 'bg-slate-25'}`}>
+                            <td className="px-4 py-4">
+                              <button
+                                onClick={() => router.push(`/dashboard/cement/liftings/${lifting.id}`)}
+                                className="text-blue-600 hover:text-blue-800 hover:underline font-mono font-semibold transition-colors"
+                              >
+                                {lifting.liftingNo}
+                              </button>
+                            </td>
+                            <td className="px-4 py-4">
+                              <div className="flex flex-col">
+                                <span className="font-medium text-slate-900">
+                                  {lifting.factory?.name || lifting.purchase?.factory?.name || 'Unknown Factory'}
+                                </span>
+                                {lifting.purchase?.cementType && (
+                                  <span className="text-xs text-slate-500 mt-0.5">
+                                    Type: {lifting.purchase.cementType}
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-4 py-4">
+                              {lifting.coupon?.couponNo || (lifting as any).couponNo ? (
+                                <div className="flex flex-col">
+                                  <span className="font-mono text-xs font-semibold text-slate-700 bg-slate-100 px-2 py-1 rounded w-fit">
+                                    {lifting.coupon?.couponNo || (lifting as any).couponNo}
+                                  </span>
+                                  {lifting.coupon?.tonnage && (
+                                    <span className="text-xs text-slate-500 mt-1">
+                                      {lifting.coupon.tonnage} tons
+                                    </span>
+                                  )}
+                                </div>
+                              ) : (
+                                <span className="text-slate-400 text-sm">No Coupon</span>
+                              )}
+                            </td>
+                            <td className="px-4 py-4">
+                              <div className="flex flex-col">
+                                <span className="font-medium text-slate-900">
+                                  {lifting.driverName || lifting.truck?.driverName || 'Self Transport'}
+                                </span>
+                                {(lifting.truckPlateNo || lifting.truck?.plateNo) && (
+                                  <span className="text-xs text-slate-500 font-mono mt-0.5 bg-slate-100 px-1.5 py-0.5 rounded w-fit">
+                                    {lifting.truckPlateNo || lifting.truck?.plateNo}
+                                  </span>
+                                )}
+                                {!lifting.driverName && !lifting.truck?.driverName && (
+                                  <span className="text-xs text-blue-600 font-medium">SELF-TRANSPORT</span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-4 py-4 text-right">
+                              <div className="flex flex-col items-end">
+                                <span className="text-slate-900 font-bold text-base">
+                                  {factoryWeight.toFixed(2)}
+                                </span>
+                                <span className="text-xs text-slate-500">tons</span>
+                              </div>
+                            </td>
+                            <td className="px-4 py-4 text-right">
+                              <div className="flex flex-col items-end">
+                                {siteWeight > 0 ? (
+                                  <>
+                                    <span className="text-slate-900 font-semibold text-base">
+                                      {siteWeight.toFixed(2)}
+                                    </span>
+                                    <span className="text-xs text-slate-500">tons</span>
+                                  </>
+                                ) : (
+                                  <span className="text-slate-400 text-sm">Not weighed</span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-4 py-4 text-right">
+                              <div className="flex flex-col items-end">
+                                {hasShortage ? (
+                                  <>
+                                    <span className="text-orange-600 font-bold text-base">
+                                      {shortage.toFixed(2)}
+                                    </span>
+                                    <span className="text-xs text-orange-500">shortage</span>
+                                  </>
+                                ) : (
+                                  <div className="flex items-center gap-1">
+                                    <span className="text-green-600 font-semibold">0.00</span>
+                                    <div className="w-2 h-2 rounded-full bg-green-400"></div>
+                                  </div>
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-4 py-4">
+                              <div className="flex flex-col">
+                                <span className="text-slate-900 font-medium">
+                                  {lifting.liftingDate ? formatDate(lifting.liftingDate) : 'No Date'}
+                                </span>
+                                <span className="text-xs text-slate-500">
+                                  {lifting.liftingDate ? new Date(lifting.liftingDate).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : ''}
+                                </span>
+                              </div>
+                            </td>
+                            <td className="px-4 py-4">
+                              <Badge status={lifting.status}>{lifting.status}</Badge>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                    <tfoot>
+                      <tr className="bg-gradient-to-r from-slate-100 to-slate-50 border-t-2 border-slate-300 font-semibold">
+                        <td className="px-4 py-4 text-slate-900 font-bold" colSpan={4}>
+                          <div className="flex items-center gap-2">
+                            <span>Total Cement Quantity</span>
+                            <div className="flex-1 h-px bg-slate-300"></div>
                           </div>
                         </td>
-                        <td className="px-3 py-3 text-right text-slate-900 font-bold">
-                          {Number(lifting.factoryWeight || 0).toFixed(2)}
+                        <td className="px-4 py-4 text-right">
+                          <div className="flex flex-col items-end">
+                            <span className="text-slate-900 font-bold text-lg">
+                              {(data.cementLiftings || (data.cementLifting ? [data.cementLifting] : []))
+                                .reduce((sum: number, l: any) => sum + (Number(l.factoryWeight) || 0), 0)
+                                .toFixed(2)}
+                            </span>
+                            <span className="text-xs text-slate-600 font-medium">Factory Weight</span>
+                          </div>
                         </td>
-                        <td className="px-3 py-3 text-right text-slate-900">
-                          {lifting.buyerWeighbridgeQty != null ? (Number(lifting.buyerWeighbridgeQty) > 1000 ? (Number(lifting.buyerWeighbridgeQty) / 100).toFixed(2) : Number(lifting.buyerWeighbridgeQty).toFixed(2)) : '—'}
+                        <td className="px-4 py-4 text-right">
+                          <div className="flex flex-col items-end">
+                            <span className="text-slate-900 font-bold text-lg">
+                              {(data.cementLiftings || (data.cementLifting ? [data.cementLifting] : []))
+                                .reduce((sum: number, l: any) => {
+                                  const rawBw = Number(l.buyerWeighbridgeQty) || 0;
+                                  return sum + (rawBw > 1000 ? rawBw / 100 : rawBw);
+                                }, 0)
+                                .toFixed(2)}
+                            </span>
+                            <span className="text-xs text-slate-600 font-medium">Site Weight</span>
+                          </div>
                         </td>
-                        <td className="px-3 py-3 text-right text-orange-600 font-semibold">
-                          {lifting.shortageQty != null ? (Number(lifting.shortageQty) > 1000 ? (Number(lifting.shortageQty) / 100).toFixed(2) : Number(lifting.shortageQty).toFixed(2)) : '0.00'}
+                        <td className="px-4 py-4 text-right">
+                          <div className="flex flex-col items-end">
+                            <span className="text-orange-600 font-bold text-lg">
+                              {(data.cementLiftings || (data.cementLifting ? [data.cementLifting] : []))
+                                .reduce((sum: number, l: any) => {
+                                  const rawSq = Number(l.shortageQty) || 0;
+                                  return sum + (rawSq > 1000 ? rawSq / 100 : rawSq);
+                                }, 0)
+                                .toFixed(2)}
+                            </span>
+                            <span className="text-xs text-orange-600 font-medium">Total Shortage</span>
+                          </div>
                         </td>
-                        <td className="px-3 py-3 text-slate-900">
-                          {lifting.liftingDate ? formatDate(lifting.liftingDate) : '—'}
-                        </td>
-                        <td className="px-3 py-3">
-                          <Badge status={lifting.status}>{lifting.status}</Badge>
+                        <td className="px-4 py-4" colSpan={2}>
+                          <div className="text-right text-xs text-slate-500">
+                            All weights in tons
+                          </div>
                         </td>
                       </tr>
-                    ))}
-                  </tbody>
-                  <tfoot>
-                    <tr className="bg-slate-50 font-bold border-t border-slate-300">
-                      <td className="px-3 py-3 text-slate-900" colSpan={4}>
-                        Total Cement Quantity
-                      </td>
-                      <td className="px-3 py-3 text-right text-slate-900">
-                        {(data.cementLiftings || (data.cementLifting ? [data.cementLifting] : []))
-                          .reduce((sum: number, l: any) => sum + (Number(l.factoryWeight) || 0), 0)
-                          .toFixed(2)}{' '}
-                        Tons
-                      </td>
-                      <td className="px-3 py-3 text-right text-slate-900">
-                        {(data.cementLiftings || (data.cementLifting ? [data.cementLifting] : []))
-                          .reduce((sum: number, l: any) => {
-                            const rawBw = Number(l.buyerWeighbridgeQty) || 0;
-                            return sum + (rawBw > 1000 ? rawBw / 100 : rawBw);
-                          }, 0)
-                          .toFixed(2)}{' '}
-                        Tons
-                      </td>
-                      <td className="px-3 py-3 text-right text-orange-600">
-                        {(data.cementLiftings || (data.cementLifting ? [data.cementLifting] : []))
-                          .reduce((sum: number, l: any) => {
-                            const rawSq = Number(l.shortageQty) || 0;
-                            return sum + (rawSq > 1000 ? rawSq / 100 : rawSq);
-                          }, 0)
-                          .toFixed(2)}{' '}
-                        Tons
-                      </td>
-                      <td className="px-3 py-3" colSpan={2}></td>
-                    </tr>
-                  </tfoot>
-                </table>
+                    </tfoot>
+                  </table>
+                </div>
+              </div>
+              
+              {/* Summary Cards */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className="w-3 h-3 rounded-full bg-blue-500"></div>
+                    <span className="text-sm font-semibold text-blue-800">Factory Weighbridge</span>
+                  </div>
+                  <div className="text-2xl font-bold text-blue-900">
+                    {(data.cementLiftings || (data.cementLifting ? [data.cementLifting] : []))
+                      .reduce((sum: number, l: any) => sum + (Number(l.factoryWeight) || 0), 0)
+                      .toFixed(2)} tons
+                  </div>
+                  <div className="text-xs text-blue-700 mt-1">Total loaded at factory</div>
+                </div>
+                
+                <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className="w-3 h-3 rounded-full bg-green-500"></div>
+                    <span className="text-sm font-semibold text-green-800">Site Weighbridge</span>
+                  </div>
+                  <div className="text-2xl font-bold text-green-900">
+                    {(data.cementLiftings || (data.cementLifting ? [data.cementLifting] : []))
+                      .reduce((sum: number, l: any) => {
+                        const rawBw = Number(l.buyerWeighbridgeQty) || 0;
+                        return sum + (rawBw > 1000 ? rawBw / 100 : rawBw);
+                      }, 0)
+                      .toFixed(2)} tons
+                  </div>
+                  <div className="text-xs text-green-700 mt-1">Total delivered to site</div>
+                </div>
+                
+                <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className="w-3 h-3 rounded-full bg-orange-500"></div>
+                    <span className="text-sm font-semibold text-orange-800">Total Shortage</span>
+                  </div>
+                  <div className="text-2xl font-bold text-orange-900">
+                    {(data.cementLiftings || (data.cementLifting ? [data.cementLifting] : []))
+                      .reduce((sum: number, l: any) => {
+                        const rawSq = Number(l.shortageQty) || 0;
+                        return sum + (rawSq > 1000 ? rawSq / 100 : rawSq);
+                      }, 0)
+                      .toFixed(2)} tons
+                  </div>
+                  <div className="text-xs text-orange-700 mt-1">Weight difference</div>
+                </div>
               </div>
             </div>
           )}

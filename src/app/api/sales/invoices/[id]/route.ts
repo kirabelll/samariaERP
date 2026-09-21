@@ -213,8 +213,14 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
+    const { searchParams } = new URL(request.url);
+    const isPermanent = searchParams.get('permanent') === 'true';
+
     const record = await prisma.salesInvoice.findUnique({
       where: { id: params.id },
+      include: {
+        payments: true,
+      },
     });
 
     if (!record) {
@@ -224,13 +230,63 @@ export async function DELETE(
       );
     }
 
-    // Soft delete - set status to Inactive/Cancelled
-    const deletedRecord = await prisma.salesInvoice.update({
-      where: { id: params.id },
-      data: { status: 'Inactive' },
-    });
+    if (isPermanent) {
+      // Permanent deletion - only allow for inactive invoices
+      if (record.status !== 'Inactive') {
+        return NextResponse.json(
+          { success: false, error: 'Only inactive invoices can be permanently deleted. Deactivate the invoice first.' },
+          { status: 400 }
+        );
+      }
 
-    return NextResponse.json({ success: true, message: 'Record deleted successfully', data: deletedRecord });
+      // Check for any active payments
+      if (record.payments && record.payments.length > 0) {
+        const activePayments = record.payments.filter(p => p.status !== 'Cancelled');
+        if (activePayments.length > 0) {
+          return NextResponse.json(
+            { success: false, error: `Cannot permanently delete invoice with ${activePayments.length} active payment(s). Cancel or delete payments first.` },
+            { status: 400 }
+          );
+        }
+      }
+
+      // Use transaction to ensure data consistency
+      await prisma.$transaction(async (tx) => {
+        // Delete all cancelled payments first
+        if (record.payments && record.payments.length > 0) {
+          await tx.customerPayment.deleteMany({
+            where: { 
+              invoiceId: params.id,
+              status: 'Cancelled'
+            }
+          });
+        }
+
+        // Delete the invoice permanently
+        await tx.salesInvoice.delete({
+          where: { id: params.id }
+        });
+      });
+
+      return NextResponse.json({ 
+        success: true, 
+        message: `Invoice ${record.invoiceNo} has been permanently deleted from the database`,
+        permanent: true
+      });
+    } else {
+      // Soft delete - set status to Inactive
+      const deletedRecord = await prisma.salesInvoice.update({
+        where: { id: params.id },
+        data: { status: 'Inactive' },
+      });
+
+      return NextResponse.json({ 
+        success: true, 
+        message: `Invoice ${record.invoiceNo} has been deactivated. Use "Delete Permanently" to remove from database.`,
+        data: deletedRecord,
+        permanent: false
+      });
+    }
   } catch (error: any) {
     console.error('Error deleting record:', error);
     return NextResponse.json(

@@ -260,6 +260,18 @@ export default function SalesInvoiceDetailPage() {
                 <p className="text-lg font-medium text-slate-900 mt-1">{data.invoiceNo}</p>
               </div>
               <div>
+                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">FS Number (Fiscal Receipt)</label>
+                <p className="text-lg font-medium text-slate-900 mt-1">
+                  {data.fsNo ? (
+                    <span className="font-mono font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                      {data.fsNo}
+                    </span>
+                  ) : (
+                    <span className="text-slate-400 font-normal text-base">N/A</span>
+                  )}
+                </p>
+              </div>
+              <div>
                 <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Customer</label>
                 <p className="text-lg font-medium text-slate-900 mt-1">{data.customer?.companyName || 'N/A'}</p>
               </div>

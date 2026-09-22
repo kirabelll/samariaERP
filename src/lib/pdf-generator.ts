@@ -53,6 +53,9 @@ export function generateInvoicePDF(invoice: any): Promise<Buffer> {
       // Invoice details
       doc.fontSize(10).font('Helvetica');
       doc.text(`Invoice No: ${invoice.invoiceNo}`, 50);
+      if (invoice.fsNo) {
+        doc.text(`FS Number: ${invoice.fsNo}`, 50);
+      }
       doc.text(`Date: ${new Date(invoice.invoiceDate).toLocaleDateString()}`, 50);
       doc.text(`Due Date: ${invoice.dueDate ? new Date(invoice.dueDate).toLocaleDateString() : 'N/A'}`, 50);
       doc.moveDown(0.5);

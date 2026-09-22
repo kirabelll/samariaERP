@@ -151,6 +151,7 @@ export async function GET(request: NextRequest) {
     if (search) {
       whereClause.OR = [
         { invoiceNo: { contains: search, mode: 'insensitive' } },
+        { fsNo: { contains: search, mode: 'insensitive' } },
         { customer: { companyName: { contains: search, mode: 'insensitive' } } },
       ];
     }
@@ -270,6 +271,8 @@ export async function POST(request: NextRequest) {
       totalAmount,
       dueDate,
       createdBy,
+      fsNo,
+      fsNumber,
     } = body;
 
     if (!customerId || !division || !items || !totalAmount) {
@@ -315,9 +318,12 @@ export async function POST(request: NextRequest) {
     }
     const invoiceNo = `INV-${String(nextInvoiceSeq).padStart(7, '0')}`;
 
+    const finalFsNo = fsNo ? String(fsNo).trim() : (fsNumber ? String(fsNumber).trim() : null);
+
     const invoice = await prisma.salesInvoice.create({
       data: {
         invoiceNo,
+        fsNo: finalFsNo || null,
         customerId,
         salesOrderId: salesOrderId || null,
         liftingId: liftingId || null,

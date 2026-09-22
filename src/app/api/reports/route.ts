@@ -321,6 +321,7 @@ export async function GET(request: NextRequest) {
             return {
               id: inv.id,
               invoiceNo: inv.invoiceNo,
+              fsNo: inv.fsNo || null,
               date: inv.invoiceDate,
               customer: inv.customer?.companyName || 'Unknown',
               customerCode: inv.customer?.code || '',

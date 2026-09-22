@@ -568,6 +568,7 @@ model SalesOrder {
 model SalesInvoice {
   id           String   @id @default(cuid())
   invoiceNo    String   @unique
+  fsNo         String?  // FS Number / Fiscal Sales Receipt No
   customerId   String
   salesOrderId String?
   liftingId    String?  // Link to CementLifting for cement invoices

@@ -13,6 +13,7 @@ const VAT_RATE = 15;
 interface VATInvoice {
   id: string;
   invoiceNo: string;
+  fsNo?: string;
   invoiceDate: string;
   customer?: { name: string };
   subtotal: number;
@@ -660,7 +661,16 @@ export default function VATManagementPage() {
                     ) : (
                       salesInvoices.map((invoice) => (
                         <tr key={invoice.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
-                          <td className="px-4 py-2.5 font-medium text-gray-900">{invoice.invoiceNo}</td>
+                          <td className="px-4 py-2.5 font-medium text-gray-900">
+                            <div>
+                              <span>{invoice.invoiceNo}</span>
+                              {invoice.fsNo && (
+                                <span className="block text-[10px] font-mono text-blue-700 bg-blue-50 px-1 py-0.2 rounded border border-blue-200 mt-0.5 w-fit">
+                                  FS: {invoice.fsNo}
+                                </span>
+                              )}
+                            </div>
+                          </td>
                           <td className="px-4 py-2.5 text-gray-500">{formatDate(invoice.invoiceDate)}</td>
                           <td className="px-4 py-2.5 text-gray-700 max-w-[120px] truncate">{invoice.customer?.name || '-'}</td>
                           <td className="px-4 py-2.5 text-right text-gray-900">

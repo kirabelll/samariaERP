@@ -39,6 +39,7 @@ interface InvoiceItemBreakdown {
 interface SalesRecord {
   id: string;
   invoiceNo: string;
+  fsNo?: string | null;
   date: string;
   customer: string;
   customerCode?: string;
@@ -131,6 +132,7 @@ export default function SalesReportsPage() {
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
         const matchInvoice = rec.invoiceNo?.toLowerCase().includes(q);
+        const matchFsNo = rec.fsNo?.toLowerCase().includes(q);
         const matchCust = rec.customer?.toLowerCase().includes(q);
         const matchRef = rec.deliveryRef?.toLowerCase().includes(q);
         const matchId = rec.id?.toLowerCase().includes(q);
@@ -143,7 +145,7 @@ export default function SalesReportsPage() {
             item.description?.toLowerCase().includes(q)
         );
 
-        if (!matchInvoice && !matchCust && !matchRef && !matchId && !matchAnyRef && !matchAnyId && !matchItemBreakdown) {
+        if (!matchInvoice && !matchFsNo && !matchCust && !matchRef && !matchId && !matchAnyRef && !matchAnyId && !matchItemBreakdown) {
           return false;
         }
       }
@@ -266,6 +268,11 @@ export default function SalesReportsPage() {
             {val}
             <ExternalLink className="w-3 h-3 text-gray-400" />
           </Link>
+          {row.fsNo && (
+            <span className="text-[10px] font-mono font-semibold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded mt-0.5 w-fit border border-blue-200">
+              FS: {row.fsNo}
+            </span>
+          )}
           {row.deliveriesCount && row.deliveriesCount > 1 ? (
             <span className="text-[10px] text-purple-700 font-medium bg-purple-50 px-1.5 py-0.2 rounded mt-0.5 w-fit border border-purple-200">
               Batch ({row.deliveriesCount} items)

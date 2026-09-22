@@ -10,6 +10,7 @@ import { useApiList } from '@/hooks/useApi';
 interface SalesInvoice {
   id: string;
   invoiceNo: string;
+  fsNo?: string;
   customer: { id: string; companyName: string };
   salesOrder: { orderNo: string } | null;
   division: string;
@@ -64,7 +65,30 @@ export default function InvoicesPage() {
   };
 
   const columns: ColumnDef<SalesInvoice>[] = [
-    { header: 'Invoice No', accessor: 'invoiceNo', sortable: true },
+    { 
+      header: 'Invoice No', 
+      accessor: 'invoiceNo', 
+      sortable: true,
+      render: (val, row) => (
+        <div>
+          <span className="font-semibold text-slate-900 block">{String(val)}</span>
+          {row.fsNo && (
+            <span className="inline-block text-[11px] font-medium text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200 mt-0.5">
+              FS: {row.fsNo}
+            </span>
+          )}
+        </div>
+      ),
+    },
+    {
+      header: 'FS No',
+      accessor: 'fsNo' as any,
+      render: (val) => val ? (
+        <span className="font-mono text-xs font-semibold text-slate-800 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+          {String(val)}
+        </span>
+      ) : <span className="text-slate-400 text-xs">—</span>,
+    },
     {
       header: 'Division',
       accessor: 'division',

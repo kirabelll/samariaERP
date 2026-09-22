@@ -137,7 +137,7 @@ export default function SalesInvoiceEditEditPage() {
             <div>
               <h3 className="text-lg font-semibold text-slate-900 mb-4">Information</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {["invoiceNo","customerId","salesOrderId","division","subtotal","vatRate","vatAmount","withholding","totalAmount","status","dueDate"].map((field) => (
+                {["invoiceNo","fsNo","customerId","salesOrderId","division","subtotal","vatRate","vatAmount","withholding","totalAmount","status","dueDate"].map((field) => (
                   <div key={field}>
                     <label className="block text-sm font-medium text-slate-700 mb-2">
                       {field.replace(/([A-Z])/g, ' $1').trim()}

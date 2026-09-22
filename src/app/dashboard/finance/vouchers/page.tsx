@@ -3,16 +3,25 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { ExternalLink } from 'lucide-react';
 import { Card, CardBody, CardHeader, Button, Badge, Input, Select } from '@/components/ui';
 import { Table } from '@/components/ui';
 import type { ColumnDef } from '@/components/ui';
+import {
+  SourceReferenceBadgeList,
+  SourceModuleBadge,
+} from '@/components/finance/SourceReferenceLink';
+import { getPayeeLink } from '@/lib/source-reference-helper';
 
 interface PaymentVoucher {
   id: string;
   voucherNo: string;
   voucherType: 'PAYMENT' | 'RECEIPT' | 'REFUND';
   sourceModule: string;
+  sourceId?: string;
   sourceRef?: string;
+  payeeType?: string;
+  payeeId?: string;
   payeeName: string;
   amount: number;
   paymentMethod: 'cash' | 'bank_transfer' | 'check';
@@ -326,8 +335,37 @@ export default function VouchersPage() {
                           );
                         })()}
                       </td>
-                      <td className="px-4 py-3 text-sm text-[#1D1D1F]">{voucher.sourceModule}</td>
-                      <td className="px-4 py-3 text-sm text-[#1D1D1F]">{voucher.payeeName}</td>
+                      <td className="px-4 py-3 text-sm" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex flex-col gap-1 items-start">
+                          <SourceModuleBadge sourceModule={voucher.sourceModule} />
+                          {voucher.sourceRef && (
+                            <SourceReferenceBadgeList
+                              sourceModule={voucher.sourceModule}
+                              sourceId={voucher.sourceId}
+                              sourceRef={voucher.sourceRef}
+                              size="sm"
+                            />
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-sm text-[#1D1D1F]" onClick={(e) => e.stopPropagation()}>
+                        {(() => {
+                          const payeeUrl = getPayeeLink(voucher.payeeType, voucher.payeeId);
+                          if (payeeUrl) {
+                            return (
+                              <Link
+                                href={payeeUrl}
+                                className="font-medium text-blue-600 hover:text-blue-800 hover:underline inline-flex items-center gap-1 group"
+                                title={`View ${voucher.payeeName}`}
+                              >
+                                <span>{voucher.payeeName}</span>
+                                <ExternalLink className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+                              </Link>
+                            );
+                          }
+                          return <span>{voucher.payeeName}</span>;
+                        })()}
+                      </td>
                       <td className="px-4 py-3 text-sm font-semibold text-[#1D1D1F]">
                         {formatCurrency(voucher.amount)}
                       </td>

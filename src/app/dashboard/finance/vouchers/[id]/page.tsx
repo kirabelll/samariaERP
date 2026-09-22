@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { useRouter, useParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import {
@@ -17,8 +18,14 @@ import {
   CreditCard,
   FileText,
   Layers,
+  ExternalLink,
 } from 'lucide-react';
 import { Card, CardBody, CardHeader, Button, Badge } from '@/components/ui';
+import {
+  SourceReferenceBadgeList,
+  SourceModuleBadge,
+} from '@/components/finance/SourceReferenceLink';
+import { getPayeeLink } from '@/lib/source-reference-helper';
 
 interface VoucherData {
   id: string;
@@ -574,11 +581,20 @@ export default function VoucherDetailPage() {
             </div>
             <div>
               <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Source Module</p>
-              <p className="text-base font-medium text-slate-900 mt-1">{voucher.sourceModule}</p>
+              <div className="mt-1">
+                <SourceModuleBadge sourceModule={voucher.sourceModule} />
+              </div>
             </div>
             <div>
               <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Source Reference</p>
-              <p className="text-base font-medium text-slate-900 mt-1">{voucher.sourceRef || '—'}</p>
+              <div className="mt-1">
+                <SourceReferenceBadgeList
+                  sourceModule={voucher.sourceModule}
+                  sourceId={voucher.sourceId}
+                  sourceRef={voucher.sourceRef}
+                  size="md"
+                />
+              </div>
             </div>
             <div>
               <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Created</p>
@@ -601,7 +617,24 @@ export default function VoucherDetailPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
               <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Payee Name</p>
-              <p className="text-base font-medium text-slate-900 mt-1">{voucher.payeeName}</p>
+              <div className="mt-1">
+                {(() => {
+                  const payeeUrl = getPayeeLink(voucher.payeeType, voucher.payeeId);
+                  if (payeeUrl) {
+                    return (
+                      <Link
+                        href={payeeUrl}
+                        className="inline-flex items-center gap-1.5 text-base font-medium text-blue-600 hover:text-blue-800 hover:underline group"
+                        title={`View ${voucher.payeeName} profile`}
+                      >
+                        <span>{voucher.payeeName}</span>
+                        <ExternalLink className="w-3.5 h-3.5 opacity-60 group-hover:opacity-100" />
+                      </Link>
+                    );
+                  }
+                  return <p className="text-base font-medium text-slate-900">{voucher.payeeName}</p>;
+                })()}
+              </div>
             </div>
             <div>
               <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Payee Type</p>

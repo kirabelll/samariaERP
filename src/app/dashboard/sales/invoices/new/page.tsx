@@ -12,6 +12,19 @@ interface InvoiceItem {
   unitPrice: number;
   vat: number;
   total: number;
+  deliveryId?: string;
+  deliveryIds?: string[];
+  dispatchId?: string;
+  dispatchNo?: string;
+  dispatchNos?: string[];
+  liftingId?: string;
+  liftingIds?: string[];
+  liftingNo?: string;
+  liftingNos?: string[];
+  padNumber?: string;
+  podNumber?: string;
+  podNumbers?: string[];
+  [key: string]: any;
 }
 
 interface Customer {
@@ -526,6 +539,59 @@ export default function NewInvoicePage() {
     return fallbackPrice;
   };
 
+  // Helper to resolve Customer Sale Price from selected dispatch or customer agreement
+  const getDispatchCustomerUnitPrice = (
+    dispatch: any,
+    activeAgreements?: SalesAgreement[]
+  ): number => {
+    if (!dispatch) return 0;
+
+    // 1. Prioritize Customer Sale Price calculated or stored on dispatch
+    if (dispatch.customerPrice != null && Number(dispatch.customerPrice) > 0) {
+      return Number(dispatch.customerPrice);
+    }
+    if (dispatch.customerSalePrice != null && Number(dispatch.customerSalePrice) > 0) {
+      return Number(dispatch.customerSalePrice);
+    }
+    if (dispatch.customerUnitPrice != null && Number(dispatch.customerUnitPrice) > 0) {
+      return Number(dispatch.customerUnitPrice);
+    }
+    if (dispatch.salePrice != null && Number(dispatch.salePrice) > 0) {
+      return Number(dispatch.salePrice);
+    }
+
+    // 2. Check metadata in registeredBy if present
+    if (dispatch.registeredBy && typeof dispatch.registeredBy === 'string' && dispatch.registeredBy.startsWith('{')) {
+      try {
+        const meta = JSON.parse(dispatch.registeredBy);
+        if (meta.customerPrice && Number(meta.customerPrice) > 0) return Number(meta.customerPrice);
+        if (meta.customerSalePrice && Number(meta.customerSalePrice) > 0) return Number(meta.customerSalePrice);
+        if (meta.customerUnitPrice && Number(meta.customerUnitPrice) > 0) return Number(meta.customerUnitPrice);
+        if (meta.salePrice && Number(meta.salePrice) > 0) return Number(meta.salePrice);
+      } catch {}
+    }
+
+    // 3. Check customer agreements
+    if (activeAgreements && activeAgreements.length > 0) {
+      const agPrice = getCustomerAgreementUnitPrice(
+        activeAgreements,
+        dispatch.itemId || dispatch.itemName || dispatch.item?.name,
+        0
+      );
+      if (agPrice > 0) return agPrice;
+    }
+
+    // 4. Fallback to general unitPrice or aggregateValue
+    if (dispatch.unitPrice != null && Number(dispatch.unitPrice) > 0) {
+      return Number(dispatch.unitPrice);
+    }
+    if (dispatch.aggregateValue != null && Number(dispatch.aggregateValue) > 0) {
+      return Number(dispatch.aggregateValue);
+    }
+
+    return 0;
+  };
+
   const updateItemsFromDispatches = (dispatchIds: string[], agList?: SalesAgreement[], isGrouped?: boolean) => {
     const activeAgreements = agList || agreements;
     const shouldGroup = isGrouped !== undefined ? isGrouped : groupByCategory;
@@ -553,14 +619,8 @@ export default function NewInvoicePage() {
         const categoryName = resolveItemName(first.itemName || first.itemCategory || first.itemId || first.item?.name, 'Aggregate Delivery');
         const totalQty = group.reduce((sum, d) => sum + Number(d.deliveredVolume || d.loadedVolume || 1), 0);
 
-        let unitPrice = getCustomerAgreementUnitPrice(
-          activeAgreements,
-          first.itemId || first.itemName,
-          0
-        );
-        if (!unitPrice) {
-          unitPrice = Number(first.aggregateValue || first.transportRate || 0);
-        }
+        // Fetch Customer Sale Price from selected dispatch / customer pricing
+        const unitPrice = getDispatchCustomerUnitPrice(first, activeAgreements);
 
         const vat = 15;
         const subtotal = totalQty * unitPrice;
@@ -588,15 +648,9 @@ export default function NewInvoicePage() {
       // Individual dispatches with POD number FIRST: POD #1002 — Item Name
       const invoiceItems: any[] = selected.map((dispatch, index) => {
         const qty = Number(dispatch.deliveredVolume || dispatch.loadedVolume || 1);
-        let unitPrice = getCustomerAgreementUnitPrice(
-          activeAgreements,
-          dispatch.itemId || dispatch.itemName,
-          0
-        );
 
-        if (!unitPrice) {
-          unitPrice = Number(dispatch.aggregateValue || dispatch.transportRate || 0);
-        }
+        // Fetch Customer Sale Price from selected dispatch / customer pricing
+        const unitPrice = getDispatchCustomerUnitPrice(dispatch, activeAgreements);
 
         const vat = 15;
         const subtotal = qty * unitPrice;
@@ -827,15 +881,7 @@ export default function NewInvoicePage() {
     if (!dispatch) return;
 
     const qty = Number(dispatch.deliveredVolume || dispatch.loadedVolume || 1);
-    let unitPrice = getCustomerAgreementUnitPrice(
-      agreements,
-      dispatch.itemId || dispatch.itemName,
-      0
-    );
-
-    if (!unitPrice) {
-      unitPrice = Number(dispatch.aggregateValue || dispatch.transportRate || 0);
-    }
+    const unitPrice = getDispatchCustomerUnitPrice(dispatch, agreements);
 
     const vat = 15;
     const subtotal = qty * unitPrice;
@@ -852,6 +898,11 @@ export default function NewInvoicePage() {
         unitPrice,
         vat,
         total: Math.round(total * 100) / 100,
+        deliveryId: dispatch.id,
+        dispatchId: dispatch.id,
+        dispatchNo: dispatch.dispatchNo,
+        padNumber: dispatch.padNumber,
+        podNumber: dispatch.podNumber,
       },
     ]);
   };
@@ -1346,7 +1397,8 @@ export default function NewInvoicePage() {
                         <th className="py-2.5 px-3">Dispatch No</th>
                         <th className="py-2.5 px-3">Pad #</th>
                         <th className="py-2.5 px-3">Item</th>
-                        <th className="py-2.5 px-3">Volume (m³)</th>
+                        <th className="py-2.5 px-3 text-right">Volume (m³)</th>
+                        <th className="py-2.5 px-3 text-right">Sale Price (ETB)</th>
                         <th className="py-2.5 px-3">Status</th>
                         <th className="py-2.5 px-3">Invoice Status</th>
                         <th className="py-2.5 px-3">Date</th>
@@ -1355,6 +1407,7 @@ export default function NewInvoicePage() {
                     <tbody className="divide-y divide-slate-100 bg-white">
                       {filteredDispatches.map((d) => {
                         const isChecked = selectedDispatchIds.includes(d.id);
+                        const salePrice = getDispatchCustomerUnitPrice(d, agreements);
                         return (
                           <tr
                             key={d.id}
@@ -1376,8 +1429,11 @@ export default function NewInvoicePage() {
                             <td className="py-2.5 px-3 text-slate-700 font-medium">
                               {d.item?.name || d.itemName || 'Aggregate'}
                             </td>
-                            <td className="py-2.5 px-3 text-slate-900 font-semibold">
+                            <td className="py-2.5 px-3 text-slate-900 font-semibold text-right">
                               {Number(d.deliveredVolume || d.loadedVolume || 0).toLocaleString('en-US')} m³
+                            </td>
+                            <td className="py-2.5 px-3 text-emerald-700 font-semibold text-right">
+                              {salePrice > 0 ? `${salePrice.toLocaleString('en-US', { minimumFractionDigits: 2 })} ETB` : '—'}
                             </td>
                             <td className="py-2.5 px-3">
                               <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">

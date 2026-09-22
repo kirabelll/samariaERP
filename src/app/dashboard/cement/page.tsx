@@ -183,7 +183,22 @@ function CementOperationsContent() {
     },
     { header: 'Date', accessor: 'liftingDate', sortable: true, render: (val) => val ? new Date(val).toLocaleDateString() : '-' },
     { header: 'Quantity (QT)', accessor: 'factoryWeight', sortable: true, render: (val) => `${Number(val).toLocaleString('en-US')} QT` },
-    { header: 'Status', accessor: 'status', sortable: true, render: (status) => <Badge status={status as any}>{status}</Badge> },
+    {
+      header: 'Status',
+      accessor: 'status',
+      sortable: true,
+      render: (status, row: any) => (
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {row.isInvoiced ? (
+            <span className="inline-block px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-300">
+              Invoiced
+            </span>
+          ) : (
+            <Badge status={status as any}>{status}</Badge>
+          )}
+        </div>
+      ),
+    },
     {
       header: 'Actions', accessor: 'id',
       render: (id, row) => (

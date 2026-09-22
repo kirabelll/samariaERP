@@ -139,7 +139,17 @@ export default function AggregateOperationsPage() {
     {
       header: 'Status',
       accessor: 'status',
-      render: (status) => <Badge status={status as any}>{status}</Badge>,
+      render: (status, row: any) => (
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {row.isInvoiced ? (
+            <span className="inline-block px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-300">
+              Invoiced
+            </span>
+          ) : (
+            <Badge status={status as any}>{status}</Badge>
+          )}
+        </div>
+      ),
     },
     {
       header: 'Actions',

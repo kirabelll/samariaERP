@@ -328,7 +328,7 @@ export async function POST(request: NextRequest) {
         salesOrderId: salesOrderId || null,
         liftingId: liftingId || null,
         division,
-        items: JSON.stringify(items),
+        items: typeof items === 'string' ? items : JSON.stringify(items || []),
         subtotal: subtotal || 0,
         vatRate: vatRate || 15,
         vatAmount: vatAmount || 0,

@@ -65,6 +65,23 @@ export async function GET(request: NextRequest) {
           },
         });
 
+        // Helper to safely parse JSON items even if double-stringified
+        const safelyParseItems = (itemsRaw: any): any[] => {
+          if (!itemsRaw) return [];
+          let parsed = itemsRaw;
+          if (typeof parsed === 'string') {
+            try {
+              parsed = JSON.parse(parsed);
+              if (typeof parsed === 'string') {
+                parsed = JSON.parse(parsed);
+              }
+            } catch {
+              return [];
+            }
+          }
+          return Array.isArray(parsed) ? parsed : [];
+        };
+
         const invoicedLiftingIds = new Set<string>();
         const invoicedLiftingNos = new Set<string>();
         const invoicedDeliveryIds = new Set<string>();
@@ -82,39 +99,61 @@ export async function GET(request: NextRequest) {
             }
           }
 
-          // Items JSON parsing
-          if (inv.items) {
-            try {
-              const parsed = typeof inv.items === 'string' ? JSON.parse(inv.items) : inv.items;
-              if (Array.isArray(parsed)) {
-                parsed.forEach((item: any) => {
-                  // Cement lifting references
-                  if (item.liftingId) invoicedLiftingIds.add(String(item.liftingId));
-                  if (item.liftingNo) invoicedLiftingNos.add(String(item.liftingNo));
-                  
-                  // Aggregate delivery references
-                  if (item.deliveryId) invoicedDeliveryIds.add(String(item.deliveryId));
-                  if (item.dispatchNo) invoicedDispatchNos.add(String(item.dispatchNo));
-                  if (item.dispatchId) invoicedDeliveryIds.add(String(item.dispatchId));
-                  if (item.padNumber) invoicedDispatchNos.add(String(item.padNumber));
-                  if (item.podNumber) invoicedDispatchNos.add(String(item.podNumber));
-
-                  // Pattern matching in item name/description for any embedded references
-                  const text = `${item.name || ''} ${item.description || ''}`;
-                  const lftMatches = text.match(/LFT-[\w-]+/gi);
-                  if (lftMatches) lftMatches.forEach((m) => invoicedLiftingNos.add(m));
-                  const dispMatches = text.match(/(?:DISP|DSP)-[\w-]+/gi);
-                  if (dispMatches) dispMatches.forEach((m) => invoicedDispatchNos.add(m));
-                  
-                  // Additional dispatch patterns
-                  const aggregateMatches = text.match(/AGG-[\w-]+/gi);
-                  if (aggregateMatches) aggregateMatches.forEach((m) => invoicedDispatchNos.add(m));
-                });
-              }
-            } catch (error) {
-              console.warn(`Failed to parse items JSON for invoice ${inv.invoiceNo}:`, error);
+          // Items parsing with comprehensive reference extraction
+          const parsedItems = safelyParseItems(inv.items);
+          parsedItems.forEach((item: any) => {
+            // Explicit IDs
+            if (item.liftingId) invoicedLiftingIds.add(String(item.liftingId));
+            if (item.liftingIds && Array.isArray(item.liftingIds)) {
+              item.liftingIds.forEach((id: any) => invoicedLiftingIds.add(String(id)));
             }
-          }
+            if (item.deliveryId) invoicedDeliveryIds.add(String(item.deliveryId));
+            if (item.dispatchId) invoicedDeliveryIds.add(String(item.dispatchId));
+
+            // Explicit numbers / codes
+            if (item.liftingNo) invoicedLiftingNos.add(String(item.liftingNo));
+            if (item.liftingNos && Array.isArray(item.liftingNos)) {
+              item.liftingNos.forEach((no: any) => invoicedLiftingNos.add(String(no)));
+            }
+            if (item.dispatchNo) invoicedDispatchNos.add(String(item.dispatchNo));
+            if (item.padNumber) {
+              invoicedLiftingNos.add(String(item.padNumber));
+              invoicedDispatchNos.add(String(item.padNumber));
+            }
+            if (item.podNumber) {
+              invoicedLiftingNos.add(String(item.podNumber));
+              invoicedDispatchNos.add(String(item.podNumber));
+            }
+            if (item.podNumbers && Array.isArray(item.podNumbers)) {
+              item.podNumbers.forEach((p: any) => {
+                invoicedLiftingNos.add(String(p));
+                invoicedDispatchNos.add(String(p));
+              });
+            }
+
+            // Pattern matching in item text (item, name, description, itemName)
+            const text = `${item.item || ''} ${item.name || ''} ${item.description || ''} ${item.itemName || ''}`;
+            
+            // Cement lifting patterns (LIFT-xxxx, LFT-xxxx)
+            const lftMatches = text.match(/(?:LIFT|LFT)-[\w-]+/gi);
+            if (lftMatches) lftMatches.forEach((m) => invoicedLiftingNos.add(m));
+
+            // Aggregate dispatch patterns (DISP-xxxx, DSP-xxxx, AGG-xxxx)
+            const dispMatches = text.match(/(?:DISP|DSP|AGG)-[\w-]+/gi);
+            if (dispMatches) dispMatches.forEach((m) => invoicedDispatchNos.add(m));
+
+            // POD / PAD numbers embedded in text
+            const podMatches = text.match(/(?:POD|PAD)s?\s*#?\s*([\w/-]+)/gi);
+            if (podMatches) {
+              podMatches.forEach((matchStr) => {
+                const cleaned = matchStr.replace(/^(?:POD|PAD)s?\s*#?/i, '').trim();
+                if (cleaned) {
+                  invoicedLiftingNos.add(cleaned);
+                  invoicedDispatchNos.add(cleaned);
+                }
+              });
+            }
+          });
         });
 
         // Date filter for liftings and deliveries
@@ -249,8 +288,7 @@ export async function GET(request: NextRequest) {
               });
             } else if (inv.liftingId) {
               deliveryIdsSet.add(inv.liftingId);
-              // Try to find the lifting details
-              const lifting = cementLiftings.find(l => l.id === inv.liftingId);
+              const lifting = cementLiftings.find((l) => l.id === inv.liftingId);
               if (lifting) {
                 deliveryRefsSet.add(lifting.liftingNo);
                 itemsBreakdown.push({
@@ -263,44 +301,77 @@ export async function GET(request: NextRequest) {
               }
             }
 
-            // Parse items JSON for additional dispatches/liftings
-            if (inv.items) {
-              try {
-                const parsed = typeof inv.items === 'string' ? JSON.parse(inv.items) : inv.items;
-                if (Array.isArray(parsed)) {
-                  parsed.forEach((item: any, idx: number) => {
-                    const ref = item.dispatchNo || item.liftingNo || item.podNumber || item.padNumber;
-                    const id = item.deliveryId || item.liftingId || item.dispatchId || item.id;
-                    if (ref) deliveryRefsSet.add(String(ref));
-                    if (id) deliveryIdsSet.add(String(id));
+            // Parse items JSON for dispatches / liftings
+            const parsed = safelyParseItems(inv.items);
+            if (parsed.length > 0) {
+              parsed.forEach((item: any, idx: number) => {
+                const itemRefs: string[] = [];
 
-                    // Determine item type based on properties and division
-                    let itemType: 'CEMENT' | 'AGGREGATE' | 'OTHER' = 'OTHER';
-                    if (item.liftingNo || item.liftingId || inv.division === 'CEMENT') {
-                      itemType = 'CEMENT';
-                    } else if (item.dispatchNo || item.deliveryId || item.dispatchId || inv.division === 'AGGREGATE') {
-                      itemType = 'AGGREGATE';
-                    }
+                if (item.liftingNo) itemRefs.push(String(item.liftingNo));
+                if (item.liftingNos && Array.isArray(item.liftingNos)) {
+                  item.liftingNos.forEach((no: any) => itemRefs.push(String(no)));
+                }
+                if (item.dispatchNo) itemRefs.push(String(item.dispatchNo));
+                if (item.dispatchNos && Array.isArray(item.dispatchNos)) {
+                  item.dispatchNos.forEach((no: any) => itemRefs.push(String(no)));
+                }
+                if (item.padNumber) itemRefs.push(String(item.padNumber));
+                if (item.podNumber) itemRefs.push(String(item.podNumber));
+                if (item.podNumbers && Array.isArray(item.podNumbers)) {
+                  item.podNumbers.forEach((p: any) => itemRefs.push(String(p)));
+                }
 
-                    itemsBreakdown.push({
-                      id: id ? String(id) : `item-${idx}`,
-                      ref: ref ? String(ref) : `Item #${idx + 1}`,
-                      type: itemType,
-                      name: item.name || (ref ? `${itemType === 'CEMENT' ? 'Lifting' : 'Dispatch'} ${ref}` : `Item #${idx + 1}`),
-                      description: item.description || '',
-                      quantity: typeof item.quantity === 'number' ? item.quantity : undefined,
-                      unit: item.unit || (itemType === 'CEMENT' ? 'Tons' : itemType === 'AGGREGATE' ? 'm³' : ''),
-                      unitPrice: typeof item.unitPrice === 'number' ? item.unitPrice : undefined,
-                      total: typeof item.total === 'number' ? item.total : undefined,
-                    });
+                // Match text patterns
+                const text = `${item.item || ''} ${item.name || ''} ${item.description || ''} ${item.itemName || ''}`;
+                
+                const lftMatches = text.match(/(?:LIFT|LFT)-[\w-]+/gi);
+                if (lftMatches) lftMatches.forEach((m) => itemRefs.push(m));
+
+                const dispMatches = text.match(/(?:DISP|DSP|AGG)-[\w-]+/gi);
+                if (dispMatches) dispMatches.forEach((m) => itemRefs.push(m));
+
+                const podMatches = text.match(/(?:POD|PAD)s?\s*#?\s*([\w/-]+)/gi);
+                if (podMatches) {
+                  podMatches.forEach((matchStr) => {
+                    const cleaned = matchStr.replace(/^(?:POD|PAD)s?\s*#?/i, '').trim();
+                    if (cleaned) itemRefs.push(cleaned);
                   });
                 }
-              } catch (error) {
-                console.warn(`Failed to parse items JSON for invoice ${inv.invoiceNo}:`, error);
-              }
+
+                // Add to overall sets
+                itemRefs.forEach((r) => deliveryRefsSet.add(r));
+
+                const id = item.deliveryId || item.liftingId || item.dispatchId || item.id;
+                if (id) deliveryIdsSet.add(String(id));
+                if (item.liftingIds && Array.isArray(item.liftingIds)) {
+                  item.liftingIds.forEach((i: any) => deliveryIdsSet.add(String(i)));
+                }
+
+                // Determine item type based on properties and division
+                let itemType: 'CEMENT' | 'AGGREGATE' | 'OTHER' = 'OTHER';
+                if (item.liftingNo || item.liftingId || item.liftingNos || inv.division === 'CEMENT' || lftMatches) {
+                  itemType = 'CEMENT';
+                } else if (item.dispatchNo || item.deliveryId || item.dispatchId || item.dispatchNos || inv.division === 'AGGREGATE' || dispMatches) {
+                  itemType = 'AGGREGATE';
+                }
+
+                const primaryRef = itemRefs[0] || (id ? String(id) : `Item #${idx + 1}`);
+
+                itemsBreakdown.push({
+                  id: id ? String(id) : `item-${idx}`,
+                  ref: primaryRef,
+                  type: itemType,
+                  name: item.item || item.name || `${itemType === 'CEMENT' ? 'Lifting' : itemType === 'AGGREGATE' ? 'Dispatch' : 'Item'} ${primaryRef}`,
+                  description: item.description || '',
+                  quantity: typeof item.qty === 'number' ? item.qty : (typeof item.quantity === 'number' ? item.quantity : undefined),
+                  unit: item.unit || (itemType === 'CEMENT' ? 'Tons' : itemType === 'AGGREGATE' ? 'm³' : ''),
+                  unitPrice: typeof item.unitPrice === 'number' ? item.unitPrice : undefined,
+                  total: typeof item.total === 'number' ? item.total : undefined,
+                });
+              });
             }
 
-            // If no items found but we have a lifting relationship, ensure it's included
+            // Fallback for direct lifting if breakdown still empty
             if (itemsBreakdown.length === 0 && (inv.liftingId || inv.cementLifting)) {
               const liftingRef = inv.cementLifting?.liftingNo || `Lifting-${inv.liftingId}`;
               deliveryRefsSet.add(liftingRef);
@@ -315,8 +386,9 @@ export async function GET(request: NextRequest) {
 
             const deliveryRefs = Array.from(deliveryRefsSet);
             const deliveryIds = Array.from(deliveryIdsSet);
-            const dispatchesCount = itemsBreakdown.filter((i) => i.type === 'AGGREGATE').length;
-            const liftingsCount = itemsBreakdown.filter((i) => i.type === 'CEMENT').length;
+            const dispatchesCount = itemsBreakdown.filter((i) => i.type === 'AGGREGATE').length || (inv.division === 'AGGREGATE' ? deliveryRefs.length : 0);
+            const liftingsCount = itemsBreakdown.filter((i) => i.type === 'CEMENT').length || (inv.division === 'CEMENT' ? deliveryRefs.length : 0);
+            const deliveriesCount = Math.max(deliveryRefs.length, itemsBreakdown.length);
 
             return {
               id: inv.id,
@@ -333,7 +405,7 @@ export async function GET(request: NextRequest) {
               deliveryRef: deliveryRefs.length > 0 ? deliveryRefs.join(', ') : null,
               deliveryRefs,
               deliveryIds,
-              deliveriesCount: itemsBreakdown.length,
+              deliveriesCount,
               dispatchesCount,
               liftingsCount,
               itemsBreakdown,

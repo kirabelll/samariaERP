@@ -578,12 +578,15 @@ export default function NewInvoicePage() {
           unitPrice,
           vat,
           total: Math.round(total * 100) / 100,
+          deliveryIds: group.map((d) => d.id),
+          dispatchNos: group.map((d) => d.dispatchNo),
+          podNumbers: podList,
         };
       });
       setItems(invoiceItems);
     } else {
       // Individual dispatches with POD number FIRST: POD #1002 — Item Name
-      const invoiceItems: InvoiceItem[] = selected.map((dispatch, index) => {
+      const invoiceItems: any[] = selected.map((dispatch, index) => {
         const qty = Number(dispatch.deliveredVolume || dispatch.loadedVolume || 1);
         let unitPrice = getCustomerAgreementUnitPrice(
           activeAgreements,
@@ -610,6 +613,11 @@ export default function NewInvoicePage() {
           unitPrice,
           vat,
           total: Math.round(total * 100) / 100,
+          deliveryId: dispatch.id,
+          dispatchId: dispatch.id,
+          dispatchNo: dispatch.dispatchNo,
+          padNumber: dispatch.padNumber,
+          podNumber: dispatch.podNumber,
         };
       });
       setItems(invoiceItems);
@@ -670,12 +678,15 @@ export default function NewInvoicePage() {
           unitPrice,
           vat,
           total: Math.round(total * 100) / 100,
+          liftingIds: group.map((l) => l.id),
+          liftingNos: group.map((l) => l.liftingNo),
+          podNumbers: podList,
         };
       });
       setItems(invoiceItems);
     } else {
       // Individual liftings with POD number FIRST: POD #1002 — Cement Type — Factory
-      const invoiceItems: InvoiceItem[] = selected.map((lifting, index) => {
+      const invoiceItems: any[] = selected.map((lifting, index) => {
         const qty = Number(lifting.buyerWeighbridgeQty || lifting.factoryWeight || lifting.quantityTons || 1);
 
         let unitPrice = getCustomerAgreementUnitPrice(
@@ -704,6 +715,10 @@ export default function NewInvoicePage() {
           unitPrice,
           vat,
           total: Math.round(total * 100) / 100,
+          liftingId: lifting.id,
+          liftingNo: lifting.liftingNo,
+          padNumber: lifting.padNumber,
+          podNumber: lifting.podNumber,
         };
       });
       setItems(invoiceItems);
@@ -906,7 +921,7 @@ export default function NewInvoicePage() {
           salesOrderId: agreementId || undefined,
           liftingId: liftingId || undefined,
           division: division,
-          items: JSON.stringify(items),
+          items: items,
           subtotal,
           vatRate: 15,
           vatAmount: totalVAT,

@@ -123,16 +123,44 @@ export async function GET(request: NextRequest) {
     activeInvoices.forEach((inv) => {
       if (inv.liftingId) invoicedLiftingIds.add(String(inv.liftingId));
       if (inv.items) {
-        try {
-          const parsed = typeof inv.items === 'string' ? JSON.parse(inv.items) : inv.items;
-          if (Array.isArray(parsed)) {
-            parsed.forEach((item: any) => {
-              if (item.liftingId) invoicedLiftingIds.add(String(item.liftingId));
-              if (item.liftingNo) invoicedLiftingNos.add(String(item.liftingNo));
-              if (item.id) invoicedLiftingIds.add(String(item.id));
-            });
+        let parsed = inv.items;
+        if (typeof parsed === 'string') {
+          try {
+            parsed = JSON.parse(parsed);
+            if (typeof parsed === 'string') parsed = JSON.parse(parsed);
+          } catch {
+            parsed = [];
           }
-        } catch {}
+        }
+        if (Array.isArray(parsed)) {
+          parsed.forEach((item: any) => {
+            if (item.liftingId) invoicedLiftingIds.add(String(item.liftingId));
+            if (item.liftingIds && Array.isArray(item.liftingIds)) {
+              item.liftingIds.forEach((id: any) => invoicedLiftingIds.add(String(id)));
+            }
+            if (item.liftingNo) invoicedLiftingNos.add(String(item.liftingNo));
+            if (item.liftingNos && Array.isArray(item.liftingNos)) {
+              item.liftingNos.forEach((no: any) => invoicedLiftingNos.add(String(no)));
+            }
+            if (item.padNumber) invoicedLiftingNos.add(String(item.padNumber));
+            if (item.podNumber) invoicedLiftingNos.add(String(item.podNumber));
+            if (item.podNumbers && Array.isArray(item.podNumbers)) {
+              item.podNumbers.forEach((p: any) => invoicedLiftingNos.add(String(p)));
+            }
+
+            const text = `${item.item || ''} ${item.name || ''} ${item.description || ''} ${item.itemName || ''}`;
+            const lftMatches = text.match(/(?:LIFT|LFT)-[\w-]+/gi);
+            if (lftMatches) lftMatches.forEach((m) => invoicedLiftingNos.add(m));
+
+            const podMatches = text.match(/(?:POD|PAD)s?\s*#?\s*([\w/-]+)/gi);
+            if (podMatches) {
+              podMatches.forEach((matchStr) => {
+                const cleaned = matchStr.replace(/^(?:POD|PAD)s?\s*#?/i, '').trim();
+                if (cleaned) invoicedLiftingNos.add(cleaned);
+              });
+            }
+          });
+        }
       }
     });
 

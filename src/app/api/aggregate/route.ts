@@ -152,17 +152,39 @@ export async function GET(request: NextRequest) {
     const invoicedDispatchNos = new Set<string>();
     activeInvoices.forEach((inv) => {
       if (inv.items) {
-        try {
-          const parsed = typeof inv.items === 'string' ? JSON.parse(inv.items) : inv.items;
-          if (Array.isArray(parsed)) {
-            parsed.forEach((item: any) => {
-              if (item.deliveryId) invoicedDispatchIds.add(String(item.deliveryId));
-              if (item.dispatchId) invoicedDispatchIds.add(String(item.dispatchId));
-              if (item.dispatchNo) invoicedDispatchNos.add(String(item.dispatchNo));
-              if (item.id) invoicedDispatchIds.add(String(item.id));
-            });
+        let parsed = inv.items;
+        if (typeof parsed === 'string') {
+          try {
+            parsed = JSON.parse(parsed);
+            if (typeof parsed === 'string') parsed = JSON.parse(parsed);
+          } catch {
+            parsed = [];
           }
-        } catch {}
+        }
+        if (Array.isArray(parsed)) {
+          parsed.forEach((item: any) => {
+            if (item.deliveryId) invoicedDispatchIds.add(String(item.deliveryId));
+            if (item.dispatchId) invoicedDispatchIds.add(String(item.dispatchId));
+            if (item.dispatchNo) invoicedDispatchNos.add(String(item.dispatchNo));
+            if (item.dispatchNos && Array.isArray(item.dispatchNos)) {
+              item.dispatchNos.forEach((no: any) => invoicedDispatchNos.add(String(no)));
+            }
+            if (item.padNumber) invoicedDispatchNos.add(String(item.padNumber));
+            if (item.podNumber) invoicedDispatchNos.add(String(item.podNumber));
+
+            const text = `${item.item || ''} ${item.name || ''} ${item.description || ''} ${item.itemName || ''}`;
+            const dispMatches = text.match(/(?:DISP|DSP|AGG)-[\w-]+/gi);
+            if (dispMatches) dispMatches.forEach((m) => invoicedDispatchNos.add(m));
+
+            const podMatches = text.match(/(?:POD|PAD)s?\s*#?\s*([\w/-]+)/gi);
+            if (podMatches) {
+              podMatches.forEach((matchStr) => {
+                const cleaned = matchStr.replace(/^(?:POD|PAD)s?\s*#?/i, '').trim();
+                if (cleaned) invoicedDispatchNos.add(cleaned);
+              });
+            }
+          });
+        }
       }
     });
 

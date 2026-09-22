@@ -574,7 +574,14 @@ export default function SalesInvoiceDetailPage() {
                               </div>
                             </td>
                             <td className="px-4 py-4">
-                              <Badge status={lifting.status}>{lifting.status}</Badge>
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                                  Invoiced
+                                </span>
+                                {lifting.status && lifting.status !== 'Invoiced' && (
+                                  <span className="text-[11px] text-slate-500">({lifting.status})</span>
+                                )}
+                              </div>
                             </td>
                           </tr>
                         );
@@ -756,7 +763,16 @@ export default function SalesInvoiceDetailPage() {
                           {dispatch.netTruckPayment ? formatCurrency(dispatch.netTruckPayment) : '-'}
                         </td>
                         <td className="px-3 py-3 text-slate-900">{dispatch.dispatchDate ? formatDate(dispatch.dispatchDate) : '-'}</td>
-                        <td className="px-3 py-3"><Badge status={dispatch.status}>{dispatch.status}</Badge></td>
+                        <td className="px-3 py-3">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                              Invoiced
+                            </span>
+                            {dispatch.status && dispatch.status !== 'Invoiced' && (
+                              <span className="text-[11px] text-slate-500">({dispatch.status})</span>
+                            )}
+                          </div>
+                        </td>
                       </tr>
                     ))}
                   </tbody>

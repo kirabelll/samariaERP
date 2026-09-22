@@ -970,8 +970,8 @@ export default function SalesReportsPage() {
                               {item.type}
                             </span>
                           </td>
-                          <td className="py-2.5 px-3 text-gray-600 max-w-xs truncate" title={item.description || item.name}>
-                            {item.description || item.name || '—'}
+                          <td className="py-2.5 px-3 text-gray-700 max-w-xs truncate" title={item.name || item.description}>
+                            {item.name || item.description || '—'}
                           </td>
                           <td className="py-2.5 px-3 text-right font-mono font-medium text-gray-900">
                             {typeof item.quantity === 'number'

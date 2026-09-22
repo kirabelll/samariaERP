@@ -100,6 +100,27 @@ export async function GET(request: NextRequest) {
       orderBy: { createdAt: 'desc' },
     }) : [];
 
+    const allAgreementItemIds = new Set<string>();
+    customerAgreements.forEach((agr) => {
+      try {
+        const parsed = typeof agr.items === 'string' ? JSON.parse(agr.items) : (agr.items as any[] || []);
+        if (Array.isArray(parsed)) {
+          parsed.forEach((item: any) => {
+            const targetId = item.itemId || item.id;
+            if (targetId) allAgreementItemIds.add(targetId);
+          });
+        }
+      } catch {}
+    });
+
+    const dbItemsList = allAgreementItemIds.size > 0
+      ? await prisma.item.findMany({
+          where: { id: { in: Array.from(allAgreementItemIds) } },
+          select: { id: true, name: true, code: true, category: true },
+        })
+      : [];
+    const dbItemMap = new Map(dbItemsList.map((i) => [i.id, i]));
+
     const resolveCustomerAgreementPrice = (customerId: string, cementType?: string) => {
       const agreements = customerAgreements.filter((a) => a.customerId === customerId);
       // Prioritize agreements with division CEMENT or BOTH
@@ -112,13 +133,25 @@ export async function GET(request: NextRequest) {
           if (Array.isArray(parsed) && parsed.length > 0) {
             const targetType = (cementType || '').toUpperCase().trim();
             const matched = targetType ? parsed.find((item: any) => {
-              const name = (item.itemName || item.name || item.description || '').toUpperCase();
-              const type = (item.cementType || '').toUpperCase();
-              return (type && type === targetType) || (name && name.includes(targetType));
+              const targetId = item.itemId || item.id;
+              const dbItem = dbItemMap.get(targetId);
+              const dbName = (dbItem?.name || '').toUpperCase();
+              const dbCode = (dbItem?.code || '').toUpperCase();
+              const dbCat = (dbItem?.category || '').toUpperCase();
+              const rawName = (item.itemName || item.name || item.description || '').toUpperCase();
+              const rawType = (item.cementType || '').toUpperCase();
+
+              return (
+                (rawType && (rawType === targetType || targetType.includes(rawType) || rawType.includes(targetType))) ||
+                (rawName && (rawName.includes(targetType) || targetType.includes(rawName))) ||
+                (dbName && (dbName.includes(targetType) || targetType.includes(dbName))) ||
+                (dbCode && (dbCode === targetType || targetType.includes(dbCode))) ||
+                (dbCat && dbCat.includes(targetType))
+              );
             }) || parsed[0] : parsed[0];
 
             if (matched) {
-              const price = Number(matched.unitPrice || matched.pricePerUnit || matched.price || matched.amount || 0);
+              const price = Number(matched.unitPrice ?? matched.pricePerUnit ?? matched.price ?? matched.amount ?? 0);
               if (price > 0) return price;
             }
           }

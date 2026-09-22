@@ -72,18 +72,36 @@ export async function GET(
               : (activeAgreement.items as any[] || []);
 
             if (Array.isArray(parsed) && parsed.length > 0) {
-              const cementType = (lifting.purchase?.cementType || '').toUpperCase();
-              const matched = parsed.find((item: any) => {
-                const name = (item.itemName || item.name || item.description || '').toUpperCase();
-                const type = (item.cementType || '').toUpperCase();
+              const itemIds = parsed.map((i: any) => i.itemId || i.id).filter(Boolean);
+              const dbItems = itemIds.length > 0
+                ? await prisma.item.findMany({
+                    where: { id: { in: itemIds } },
+                    select: { id: true, name: true, code: true, category: true },
+                  })
+                : [];
+              const dbItemMap = new Map(dbItems.map((di) => [di.id, di]));
+
+              const cementType = (lifting.purchase?.cementType || '').toUpperCase().trim();
+              const matched = cementType ? parsed.find((item: any) => {
+                const targetId = item.itemId || item.id;
+                const dbItem = dbItemMap.get(targetId);
+                const dbName = (dbItem?.name || '').toUpperCase();
+                const dbCode = (dbItem?.code || '').toUpperCase();
+                const dbCat = (dbItem?.category || '').toUpperCase();
+                const rawName = (item.itemName || item.name || item.description || '').toUpperCase();
+                const rawType = (item.cementType || '').toUpperCase();
+
                 return (
-                  (cementType && type === cementType) ||
-                  (cementType && name.includes(cementType))
+                  (rawType && (rawType === cementType || cementType.includes(rawType) || rawType.includes(cementType))) ||
+                  (rawName && (rawName.includes(cementType) || cementType.includes(rawName))) ||
+                  (dbName && (dbName.includes(cementType) || cementType.includes(dbName))) ||
+                  (dbCode && (dbCode === cementType || cementType.includes(dbCode))) ||
+                  (dbCat && dbCat.includes(cementType))
                 );
-              }) || parsed[0];
+              }) || parsed[0] : parsed[0];
 
               if (matched) {
-                customerUnitPrice = Number(matched.unitPrice || matched.pricePerUnit || matched.price || matched.amount || 0);
+                customerUnitPrice = Number(matched.unitPrice ?? matched.pricePerUnit ?? matched.price ?? matched.amount ?? 0);
               }
             }
           } catch {}

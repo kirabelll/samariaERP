@@ -287,35 +287,63 @@ export default function EditCementLiftingPage() {
 
     const cementType = (selectedPurchase?.cementType || '').toUpperCase().trim();
 
-    fetch(`/api/sales/agreements?customerId=${formData.customerId}&division=CEMENT&status=Active&limit=10`)
+    fetch(`/api/sales/agreements/customers?division=CEMENT&search=${encodeURIComponent(formData.customerId)}`)
       .then((r) => r.json())
-      .then((json) => {
-        if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+      .then(async (json) => {
+        let custAgreements = (json.success && Array.isArray(json.data)) 
+          ? json.data.filter((a: any) => a.customerId === formData.customerId)
+          : [];
+
+        // If not found by search filter, fallback to fetching all cement customer agreements
+        if (custAgreements.length === 0) {
+          try {
+            const allRes = await fetch('/api/sales/agreements/customers?division=CEMENT');
+            const allJson = await allRes.json();
+            if (allJson.success && Array.isArray(allJson.data)) {
+              custAgreements = allJson.data.filter((a: any) => a.customerId === formData.customerId);
+            }
+          } catch {}
+        }
+
+        // If still not found, check all divisions as fallback
+        if (custAgreements.length === 0) {
+          try {
+            const fallbackRes = await fetch(`/api/sales/agreements/customers?search=${encodeURIComponent(formData.customerId)}`);
+            const fallbackJson = await fallbackRes.json();
+            if (fallbackJson.success && Array.isArray(fallbackJson.data)) {
+              custAgreements = fallbackJson.data.filter((a: any) => a.customerId === formData.customerId);
+            }
+          } catch {}
+        }
+
+        if (custAgreements.length > 0) {
           setCustomerHasActiveAgreement(true);
-          const agreements = json.data;
           let foundPrice = 0;
           let foundAgNo = '';
 
-          for (const agr of agreements) {
-            try {
-              const parsed = typeof agr.items === 'string' ? JSON.parse(agr.items) : (agr.items || []);
-              if (Array.isArray(parsed) && parsed.length > 0) {
-                const matched = cementType ? parsed.find((item: any) => {
-                  const name = (item.itemName || item.name || item.description || '').toUpperCase();
-                  const type = (item.cementType || '').toUpperCase();
-                  return (type && type === cementType) || (name && name.includes(cementType));
-                }) || parsed[0] : parsed[0];
+          for (const agr of custAgreements) {
+            const items = Array.isArray(agr.items) ? agr.items : [];
+            if (items.length > 0) {
+              const matched = cementType ? items.find((item: any) => {
+                const name = (item.itemName || item.name || item.description || '').toUpperCase();
+                const code = (item.itemCode || '').toUpperCase();
+                const type = (item.cementType || '').toUpperCase();
+                return (
+                  (type && (type === cementType || cementType.includes(type) || type.includes(cementType))) ||
+                  (code && (code === cementType || cementType.includes(code))) ||
+                  (name && (name.includes(cementType) || cementType.includes(name)))
+                );
+              }) || items[0] : items[0];
 
-                if (matched) {
-                  const price = Number(matched.unitPrice || matched.pricePerUnit || matched.price || matched.amount || 0);
-                  if (price > 0) {
-                    foundPrice = price;
-                    foundAgNo = agr.agreementNo || '';
-                    break;
-                  }
+              if (matched) {
+                const price = Number(matched.unitPrice ?? matched.pricePerUnit ?? matched.price ?? matched.amount ?? 0);
+                if (price > 0) {
+                  foundPrice = price;
+                  foundAgNo = agr.agreementNo || '';
+                  break;
                 }
               }
-            } catch {}
+            }
           }
 
           if (foundPrice > 0) {
@@ -323,7 +351,7 @@ export default function EditCementLiftingPage() {
             setCustomerAgreementNo(foundAgNo);
           } else if (selectedPurchase?.unitPrice) {
             setCustomerUnitPrice(Number(selectedPurchase.unitPrice));
-            setCustomerAgreementNo(agreements[0]?.agreementNo || '');
+            setCustomerAgreementNo(custAgreements[0]?.agreementNo || '');
           }
         } else {
           setCustomerHasActiveAgreement(false);

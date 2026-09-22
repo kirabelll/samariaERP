@@ -96,23 +96,33 @@ export async function GET(request: NextRequest) {
     const customerIds = Array.from(new Set(data.map((l: any) => l.customerId).filter(Boolean))) as string[];
     const customerAgreements = customerIds.length > 0 ? await prisma.salesAgreement.findMany({
       where: { customerId: { in: customerIds }, status: { notIn: ['Void', 'Cancelled'] } },
-      select: { customerId: true, items: true },
+      select: { customerId: true, agreementNo: true, items: true },
       orderBy: { createdAt: 'desc' },
     }) : [];
 
-    const custPriceMap = new Map<string, number>();
-    for (const agr of customerAgreements) {
-      try {
-        const parsed = typeof agr.items === 'string' ? JSON.parse(agr.items) : (agr.items as any[] || []);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          const matched = parsed[0];
-          const price = Number(matched.unitPrice || matched.pricePerUnit || matched.price || matched.amount || 0);
-          if (price > 0 && !custPriceMap.has(agr.customerId)) {
-            custPriceMap.set(agr.customerId, price);
+    const resolveCustomerAgreementPrice = (customerId: string, cementType?: string) => {
+      const agreements = customerAgreements.filter((a) => a.customerId === customerId);
+      for (const agr of agreements) {
+        try {
+          const parsed = typeof agr.items === 'string' ? JSON.parse(agr.items) : (agr.items as any[] || []);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            const targetType = (cementType || '').toUpperCase().trim();
+            const matched = targetType ? parsed.find((item: any) => {
+              const name = (item.itemName || item.name || item.description || '').toUpperCase();
+              const type = (item.cementType || '').toUpperCase();
+              return (type && type === targetType) || (name && name.includes(targetType));
+            }) || parsed[0] : parsed[0];
+
+            if (matched) {
+              const price = Number(matched.unitPrice || matched.pricePerUnit || matched.price || matched.amount || 0);
+              if (price > 0) return price;
+            }
           }
-        }
-      } catch {}
-    }
+        } catch {}
+      }
+      return 0;
+    };
+
     // Fetch active invoices to detect invoiced liftings (from direct link and items JSON)
     const activeInvoices = await prisma.salesInvoice.findMany({
       where: { status: { notIn: ['Cancelled', 'Inactive'] } },
@@ -166,7 +176,9 @@ export async function GET(request: NextRequest) {
 
     // Ensure numeric fields are properly converted
     let formattedData = data.map((lifting: any) => {
-      const custPrice = custPriceMap.get(lifting.customerId) || Number(lifting.purchase?.unitPrice || 0);
+      const resolvedAgreementPrice = resolveCustomerAgreementPrice(lifting.customerId, lifting.purchase?.cementType);
+      const factoryPurchaseCost = Number(lifting.purchase?.unitPrice || 0);
+      const custPrice = resolvedAgreementPrice > 0 ? resolvedAgreementPrice : factoryPurchaseCost;
       const normalizedBuyerQty = lifting.buyerWeighbridgeQty != null
         ? (Number(lifting.buyerWeighbridgeQty) > 1000 ? Number(lifting.buyerWeighbridgeQty) / 100 : Number(lifting.buyerWeighbridgeQty))
         : null;
@@ -183,7 +195,8 @@ export async function GET(request: NextRequest) {
         buyerWeighbridgeQty: normalizedBuyerQty,
         shortageQty: normalizedShortageQty,
         customerUnitPrice: custPrice,
-        customerAgreementPrice: custPrice,
+        customerAgreementPrice: resolvedAgreementPrice > 0 ? resolvedAgreementPrice : (custPrice > 0 ? custPrice : null),
+        factoryPurchaseCost: factoryPurchaseCost > 0 ? factoryPurchaseCost : null,
         coupon: lifting.couponId ? couponMap[lifting.couponId] || null : null,
         isInvoiced,
         invoiceStatus: isInvoiced ? 'Invoiced' : 'Not Invoiced',

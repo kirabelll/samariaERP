@@ -155,20 +155,26 @@ export default function CementInvoicesPage() {
   ];
 
   const exportToExcel = () => {
-    const headers = ['Lifting No', 'Customer', 'Factory', 'Cement Type', 'Coupon', 'Weight (QT)', 'Date', 'Status', 'Invoice No', 'Invoice Amount', 'Invoice Status'];
-    const rows = filtered.map((l) => [
-      l.liftingNo,
-      l.customer?.companyName || '',
-      l.purchase?.factory?.name || '',
-      l.purchase?.cementType || '',
-      l.coupon?.couponNo || '',
-      l.factoryWeight,
-      l.liftingDate ? new Date(l.liftingDate).toLocaleDateString() : '',
-      l.status,
-      l._invoice?.invoiceNo || '',
-      l._invoice?.totalAmount ?? '',
-      l._invoice?.status || '',
-    ]);
+    const headers = ['Lifting No', 'Customer', 'Factory', 'Cement Type', 'Coupon', 'Weight (QT)', 'Customer Agreement Unit Price (ETB)', 'Factory Purchase Cost (ETB)', 'Date', 'Status', 'Invoice No', 'Invoice Amount', 'Invoice Status'];
+    const rows = filtered.map((l: any) => {
+      const custAgreementPrice = l.customerAgreementPrice ?? l.customerUnitPrice ?? (l.purchase?.unitPrice != null ? l.purchase.unitPrice : '');
+      const factoryPurchaseCost = l.factoryPurchaseCost ?? (l.purchase?.unitPrice != null ? l.purchase.unitPrice : '');
+      return [
+        l.liftingNo,
+        l.customer?.companyName || '',
+        l.purchase?.factory?.name || '',
+        l.purchase?.cementType || '',
+        l.coupon?.couponNo || '',
+        l.factoryWeight,
+        custAgreementPrice != null && custAgreementPrice !== '' ? Number(custAgreementPrice).toFixed(2) : '',
+        factoryPurchaseCost != null && factoryPurchaseCost !== '' ? Number(factoryPurchaseCost).toFixed(2) : '',
+        l.liftingDate ? new Date(l.liftingDate).toLocaleDateString() : '',
+        l.status,
+        l._invoice?.invoiceNo || '',
+        l._invoice?.totalAmount ?? '',
+        l._invoice?.status || '',
+      ];
+    });
     const csvContent = [headers, ...rows].map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);

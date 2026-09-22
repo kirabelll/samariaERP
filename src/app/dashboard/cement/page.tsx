@@ -310,6 +310,7 @@ function CementOperationsContent() {
           'Customer TIN',
           'Customer Phone',
           'Factory / Supplier',
+          'Cement Type',
           'Purchase Reference',
           'Coupon No',
           'POD Number',
@@ -319,6 +320,8 @@ function CementOperationsContent() {
           'Buyer / Site Weight (QT)',
           'Shortage Quantity (QT)',
           'Shortage Penalty (ETB)',
+          'Customer Agreement Unit Price (ETB)',
+          'Factory Purchase Cost (ETB)',
           'Driver Name',
           'Truck Plate No',
           'Transporter / Association',
@@ -333,12 +336,16 @@ function CementOperationsContent() {
           const driver = r.driverName || r.truck?.driverName || '';
           const plate = r.truckPlateNo || r.truck?.plateNo || '';
           const association = r.truck?.association?.name || r.truck?.association || '';
+          const cementType = r.purchase?.cementType || r.cementType || '';
+          const custAgreementPrice = r.customerAgreementPrice ?? r.customerUnitPrice ?? (r.purchase?.unitPrice != null ? r.purchase.unitPrice : '');
+          const factoryPurchaseCost = r.factoryPurchaseCost ?? (r.purchase?.unitPrice != null ? r.purchase.unitPrice : '');
           return [
             `"${(r.liftingNo || '').replace(/"/g, '""')}"`,
             `"${(r.customer?.companyName || '').replace(/"/g, '""')}"`,
             `"${(r.customer?.tin || '').replace(/"/g, '""')}"`,
             `"${(r.customer?.phone || '').replace(/"/g, '""')}"`,
             `"${(r.factory?.name || r.purchase?.factory?.name || '').replace(/"/g, '""')}"`,
+            `"${(cementType || '').replace(/"/g, '""')}"`,
             `"${(r.purchase?.purchaseNo || '').replace(/"/g, '""')}"`,
             `"${(couponNo || '').replace(/"/g, '""')}"`,
             `"${(r.podNumber || r.padNumber || '').replace(/"/g, '""')}"`,
@@ -348,6 +355,8 @@ function CementOperationsContent() {
             r.buyerWeighbridgeQty != null ? (Number(r.buyerWeighbridgeQty) > 1000 ? Number(r.buyerWeighbridgeQty) / 100 : r.buyerWeighbridgeQty) : (r.siteWeight != null ? (Number(r.siteWeight) > 1000 ? Number(r.siteWeight) / 100 : r.siteWeight) : ''),
             r.shortageQty != null ? (Number(r.shortageQty) > 1000 ? Number(r.shortageQty) / 100 : r.shortageQty) : (r.shortage != null ? (Number(r.shortage) > 1000 ? Number(r.shortage) / 100 : r.shortage) : ''),
             r.shortagePenalty != null ? r.shortagePenalty : '',
+            custAgreementPrice != null && custAgreementPrice !== '' ? Number(custAgreementPrice).toFixed(2) : '',
+            factoryPurchaseCost != null && factoryPurchaseCost !== '' ? Number(factoryPurchaseCost).toFixed(2) : '',
             `"${(driver || '').replace(/"/g, '""')}"`,
             `"${(plate || '').replace(/"/g, '""')}"`,
             `"${(association || '').replace(/"/g, '""')}"`,

@@ -13,10 +13,12 @@ export async function GET(request: NextRequest) {
     const voucherType = searchParams.get('voucherType') || '';
     const status = searchParams.get('status') || '';
     const sourceModule = searchParams.get('sourceModule') || '';
+    const search = searchParams.get('search') || '';
+    const payeeName = searchParams.get('payeeName') || '';
+    const startDate = searchParams.get('startDate') || '';
+    const endDate = searchParams.get('endDate') || '';
 
     const skip = (page - 1) * limit;
-
-    const payeeName = searchParams.get('payeeName') || '';
 
     const whereClause: any = {};
     if (voucherType) {
@@ -30,6 +32,21 @@ export async function GET(request: NextRequest) {
     }
     if (payeeName) {
       whereClause.payeeName = { contains: payeeName, mode: 'insensitive' };
+    }
+    if (search) {
+      whereClause.OR = [
+        { voucherNo: { contains: search, mode: 'insensitive' } },
+        { payeeName: { contains: search, mode: 'insensitive' } },
+        { sourceRef: { contains: search, mode: 'insensitive' } },
+        { refNo: { contains: search, mode: 'insensitive' } },
+        { checkNo: { contains: search, mode: 'insensitive' } },
+        { description: { contains: search, mode: 'insensitive' } },
+      ];
+    }
+    if (startDate || endDate) {
+      whereClause.voucherDate = {};
+      if (startDate) whereClause.voucherDate.gte = new Date(startDate);
+      if (endDate) whereClause.voucherDate.lte = new Date(endDate);
     }
 
     const [data, total] = await Promise.all([
@@ -50,9 +67,23 @@ export async function GET(request: NextRequest) {
           payeeName: true,
           amount: true,
           paymentMethod: true,
+          bankAccountId: true,
+          bankName: true,
+          checkNo: true,
+          refNo: true,
+          description: true,
           status: true,
+          preparedBy: true,
+          checkedBy: true,
+          checkedAt: true,
+          approvedBy: true,
+          approvedAt: true,
+          postedBy: true,
+          postedAt: true,
+          rejectionReason: true,
           createdAt: true,
           voucherDate: true,
+          updatedAt: true,
         },
       }),
       prisma.paymentVoucher.count({ where: whereClause }),

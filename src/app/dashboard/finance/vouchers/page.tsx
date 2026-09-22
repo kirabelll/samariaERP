@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ExternalLink, Pencil } from 'lucide-react';
+import { ExternalLink, Pencil, Download, FileSpreadsheet } from 'lucide-react';
 import { Card, CardBody, CardHeader, Button, Badge, Input, Select } from '@/components/ui';
 import { Table } from '@/components/ui';
 import type { ColumnDef } from '@/components/ui';
@@ -40,6 +40,7 @@ export default function VouchersPage() {
   const [voucherTypeFilter, setVoucherTypeFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
+  const [isExporting, setIsExporting] = useState(false);
   const pageSize = 10;
 
   useEffect(() => {
@@ -69,6 +70,91 @@ export default function VouchersPage() {
       setError(err.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const exportToExcel = async () => {
+    try {
+      setIsExporting(true);
+      const params = new URLSearchParams({
+        page: '1',
+        limit: '10000',
+      });
+
+      if (voucherTypeFilter) params.append('voucherType', voucherTypeFilter);
+      if (statusFilter) params.append('status', statusFilter);
+      if (searchTerm) params.append('search', searchTerm);
+
+      const res = await fetch(`/api/finance/vouchers?${params.toString()}`);
+      const json = await res.json();
+      const records: any[] = json.data || [];
+
+      if (records.length === 0) {
+        alert('No payment vouchers found to export.');
+        return;
+      }
+
+      const headers = [
+        'Voucher No',
+        'Voucher Type',
+        'Voucher Date',
+        'Source Module',
+        'Source Reference',
+        'Payee Type',
+        'Payee Name',
+        'Amount (ETB)',
+        'Payment Method',
+        'Bank Name',
+        'Check / Reference No',
+        'Description / Purpose',
+        'Status',
+        'Prepared By',
+        'Checked By',
+        'Approved By',
+        'Posted By',
+        'Created Date',
+      ];
+
+      const rows = records.map((r: any) => {
+        const vDate = r.voucherDate ? new Date(r.voucherDate).toLocaleDateString() : '';
+        const cDate = r.createdAt ? new Date(r.createdAt).toLocaleDateString() : '';
+        const checkOrRef = r.checkNo || r.refNo || '';
+        return [
+          `"${(r.voucherNo || '').replace(/"/g, '""')}"`,
+          `"${(r.voucherType || '').replace(/"/g, '""')}"`,
+          `"${vDate}"`,
+          `"${(r.sourceModule || '').replace(/"/g, '""')}"`,
+          `"${(r.sourceRef || '').replace(/"/g, '""')}"`,
+          `"${(r.payeeType || '').replace(/"/g, '""')}"`,
+          `"${(r.payeeName || '').replace(/"/g, '""')}"`,
+          r.amount != null ? Number(r.amount).toFixed(2) : '0.00',
+          `"${(r.paymentMethod || '').replace(/"/g, '""')}"`,
+          `"${(r.bankName || '').replace(/"/g, '""')}"`,
+          `"${checkOrRef.replace(/"/g, '""')}"`,
+          `"${(r.description || '').replace(/"/g, '""')}"`,
+          `"${(r.status || '').replace(/"/g, '""')}"`,
+          `"${(r.preparedBy || '').replace(/"/g, '""')}"`,
+          `"${(r.checkedBy || '').replace(/"/g, '""')}"`,
+          `"${(r.approvedBy || '').replace(/"/g, '""')}"`,
+          `"${(r.postedBy || '').replace(/"/g, '""')}"`,
+          `"${cDate}"`,
+        ];
+      });
+
+      const csvContent = '\uFEFF' + [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.setAttribute('href', url);
+      const today = new Date().toISOString().split('T')[0];
+      link.setAttribute('download', `Payment_Vouchers_${today}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (err: any) {
+      alert('Failed to export payment vouchers: ' + (err.message || 'Unknown error'));
+    } finally {
+      setIsExporting(false);
     }
   };
 
@@ -204,12 +290,26 @@ export default function VouchersPage() {
   return (
     <div className="space-y-4 sm:space-y-6">
       <div className="flex flex-wrap gap-3 items-center justify-between">
-        <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-[#1D1D1F]">Payment Vouchers</h1>
-        <Link href="/dashboard/finance/vouchers/new">
-          <Button variant="primary" size="lg">
-            + New Voucher
+        <div>
+          <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-[#1D1D1F]">Payment Vouchers</h1>
+          <p className="text-xs sm:text-sm text-[#86868B] mt-0.5">Manage, track, and export all company payment vouchers, receipts, and refunds</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="lg"
+            onClick={exportToExcel}
+            disabled={isExporting}
+            icon={<Download className="w-4 h-4 text-emerald-600" />}
+          >
+            {isExporting ? 'Exporting...' : 'Export to Excel'}
           </Button>
-        </Link>
+          <Link href="/dashboard/finance/vouchers/new">
+            <Button variant="primary" size="lg">
+              + New Voucher
+            </Button>
+          </Link>
+        </div>
       </div>
 
       {/* Filter Tabs */}

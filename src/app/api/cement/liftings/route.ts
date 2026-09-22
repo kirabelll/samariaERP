@@ -92,17 +92,21 @@ export async function GET(request: NextRequest) {
       couponMap = Object.fromEntries(coupons.map((c: any) => [c.id, c]));
     }
 
-    // Fetch active customer agreements for liftings
+    // Fetch active customer agreements for liftings (prioritizing Division = CEMENT)
     const customerIds = Array.from(new Set(data.map((l: any) => l.customerId).filter(Boolean))) as string[];
     const customerAgreements = customerIds.length > 0 ? await prisma.salesAgreement.findMany({
       where: { customerId: { in: customerIds }, status: { notIn: ['Void', 'Cancelled'] } },
-      select: { customerId: true, agreementNo: true, items: true },
+      select: { customerId: true, agreementNo: true, items: true, division: true },
       orderBy: { createdAt: 'desc' },
     }) : [];
 
     const resolveCustomerAgreementPrice = (customerId: string, cementType?: string) => {
       const agreements = customerAgreements.filter((a) => a.customerId === customerId);
-      for (const agr of agreements) {
+      // Prioritize agreements with division CEMENT or BOTH
+      const cementAgreements = agreements.filter((a) => a.division === 'CEMENT' || a.division === 'BOTH');
+      const targetAgreements = cementAgreements.length > 0 ? cementAgreements : agreements;
+
+      for (const agr of targetAgreements) {
         try {
           const parsed = typeof agr.items === 'string' ? JSON.parse(agr.items) : (agr.items as any[] || []);
           if (Array.isArray(parsed) && parsed.length > 0) {

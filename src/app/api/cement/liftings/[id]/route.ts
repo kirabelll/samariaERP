@@ -36,18 +36,32 @@ export async function GET(
       });
     }
 
-    // Resolve Customer Sales Agreement Unit Price for this customer & cement type
+    // Resolve Customer Sales Agreement Unit Price for this customer & cement type (Division = CEMENT)
     let customerUnitPrice = 0;
     let customerAgreementNo = '';
     if (lifting.customerId) {
-      const activeAgreement = await prisma.salesAgreement.findFirst({
+      // First look for agreement with division CEMENT or BOTH
+      let activeAgreement = await prisma.salesAgreement.findFirst({
         where: {
           customerId: lifting.customerId,
+          division: { in: ['CEMENT', 'BOTH'] },
           status: { notIn: ['Void', 'Cancelled'] },
         },
-        select: { agreementNo: true, items: true },
+        select: { agreementNo: true, items: true, division: true },
         orderBy: { createdAt: 'desc' },
       });
+
+      // Fallback to any active agreement for customer if no specific CEMENT agreement found
+      if (!activeAgreement) {
+        activeAgreement = await prisma.salesAgreement.findFirst({
+          where: {
+            customerId: lifting.customerId,
+            status: { notIn: ['Void', 'Cancelled'] },
+          },
+          select: { agreementNo: true, items: true, division: true },
+          orderBy: { createdAt: 'desc' },
+        });
+      }
 
       if (activeAgreement) {
         customerAgreementNo = activeAgreement.agreementNo || '';

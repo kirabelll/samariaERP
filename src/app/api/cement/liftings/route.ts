@@ -113,9 +113,31 @@ export async function GET(request: NextRequest) {
         }
       } catch {}
     }
+    // Fetch active invoices to detect invoiced liftings (from direct link and items JSON)
+    const activeInvoices = await prisma.salesInvoice.findMany({
+      where: { status: { notIn: ['Cancelled', 'Inactive'] } },
+      select: { id: true, invoiceNo: true, items: true, liftingId: true },
+    });
+    const invoicedLiftingIds = new Set<string>();
+    const invoicedLiftingNos = new Set<string>();
+    activeInvoices.forEach((inv) => {
+      if (inv.liftingId) invoicedLiftingIds.add(String(inv.liftingId));
+      if (inv.items) {
+        try {
+          const parsed = typeof inv.items === 'string' ? JSON.parse(inv.items) : inv.items;
+          if (Array.isArray(parsed)) {
+            parsed.forEach((item: any) => {
+              if (item.liftingId) invoicedLiftingIds.add(String(item.liftingId));
+              if (item.liftingNo) invoicedLiftingNos.add(String(item.liftingNo));
+              if (item.id) invoicedLiftingIds.add(String(item.id));
+            });
+          }
+        } catch {}
+      }
+    });
 
     // Ensure numeric fields are properly converted
-    const formattedData = data.map((lifting: any) => {
+    let formattedData = data.map((lifting: any) => {
       const custPrice = custPriceMap.get(lifting.customerId) || Number(lifting.purchase?.unitPrice || 0);
       const normalizedBuyerQty = lifting.buyerWeighbridgeQty != null
         ? (Number(lifting.buyerWeighbridgeQty) > 1000 ? Number(lifting.buyerWeighbridgeQty) / 100 : Number(lifting.buyerWeighbridgeQty))
@@ -123,6 +145,9 @@ export async function GET(request: NextRequest) {
       const normalizedShortageQty = normalizedBuyerQty != null
         ? Math.max(0, Number(lifting.factoryWeight || 0) - normalizedBuyerQty)
         : (lifting.shortageQty != null && Number(lifting.shortageQty) > 1000 ? Number(lifting.shortageQty) / 100 : (lifting.shortageQty != null ? Number(lifting.shortageQty) : null));
+
+      const hasDirectInvoice = Array.isArray(lifting.invoices) && lifting.invoices.some((inv: any) => inv.status !== 'Cancelled');
+      const isInvoiced = hasDirectInvoice || invoicedLiftingIds.has(String(lifting.id)) || invoicedLiftingNos.has(String(lifting.liftingNo));
 
       return {
         ...lifting,
@@ -132,8 +157,17 @@ export async function GET(request: NextRequest) {
         customerUnitPrice: custPrice,
         customerAgreementPrice: custPrice,
         coupon: lifting.couponId ? couponMap[lifting.couponId] || null : null,
+        isInvoiced,
+        invoiceStatus: isInvoiced ? 'Invoiced' : 'Not Invoiced',
       };
     });
+
+    const invoiceStatusFilter = searchParams.get('invoiceStatus')?.toLowerCase();
+    if (invoiceStatusFilter === 'uninvoiced' || invoiceStatusFilter === 'not_invoiced' || invoiceStatusFilter === 'not invoiced') {
+      formattedData = formattedData.filter((l: any) => !l.isInvoiced);
+    } else if (invoiceStatusFilter === 'invoiced') {
+      formattedData = formattedData.filter((l: any) => l.isInvoiced);
+    }
 
     return NextResponse.json({
       success: true,

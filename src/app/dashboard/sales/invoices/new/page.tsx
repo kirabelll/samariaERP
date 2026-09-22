@@ -74,6 +74,7 @@ export default function NewInvoicePage() {
   const [selectedLiftingIds, setSelectedLiftingIds] = useState<string[]>([]);
   const [groupByCategory, setGroupByCategory] = useState(false);
   const [dispatchSearch, setDispatchSearch] = useState('');
+  const [liftingSearch, setLiftingSearch] = useState('');
   const [items, setItems] = useState<InvoiceItem[]>([]);
   const [saving, setSaving] = useState(false);
   const [applyWithholding, setApplyWithholding] = useState(false);
@@ -212,13 +213,15 @@ export default function NewInvoicePage() {
           }
           if (startDate) params.append('startDate', startDate);
           if (endDate) params.append('endDate', endDate);
-          params.append('status', 'Delivered');
+          params.append('invoiceStatus', 'uninvoiced');
           params.append('limit', '500');
 
           const res = await fetch(`/api/cement/liftings?${params.toString()}`);
           const data = await res.json();
           if (data.success) {
-            let list = (data.data || []).filter((l: any) => l.status === 'Delivered' || l.status === 'Verified');
+            let list = (data.data || []).filter(
+              (l: any) => !l.isInvoiced && (l.status === 'Delivered' || l.status === 'Verified' || l.status === 'Lifted')
+            );
             
             // Client-side fallback filtering by Customer or Supplier
             if (partyType === 'Customer' && partyId) {
@@ -267,12 +270,15 @@ export default function NewInvoicePage() {
           }
           if (startDate) params.append('startDate', startDate);
           if (endDate) params.append('endDate', endDate);
+          params.append('invoiceStatus', 'uninvoiced');
           params.append('limit', '500');
 
           const res = await fetch(`/api/aggregate?${params.toString()}`);
           const data = await res.json();
           if (data.success) {
-            let list = data.records || data.data || [];
+            let list = (data.data || data.records || []).filter(
+              (d: any) => !d.isInvoiced && d.status !== 'Cancelled'
+            );
 
             // Client-side filtering by Customer or Supplier
             if (partyType === 'Customer' && partyId) {
@@ -331,8 +337,9 @@ export default function NewInvoicePage() {
         ? new Date(d.dispatchDate || d.createdAt).toLocaleDateString().toLowerCase()
         : '';
       const driver = String(d.driverName || '').toLowerCase();
-      const plate = String(d.plateNumber || d.truck?.plateNumber || '').toLowerCase();
+      const plate = String(d.plateNumber || d.truck?.plateNo || d.truck?.plateNumber || '').toLowerCase();
       const volume = String(d.deliveredVolume || d.loadedVolume || '').toLowerCase();
+      const item = String(d.item?.name || d.itemName || '').toLowerCase();
 
       return (
         pod.includes(rawQ) ||
@@ -341,7 +348,8 @@ export default function NewInvoicePage() {
         date.includes(rawQ) ||
         driver.includes(rawQ) ||
         plate.includes(rawQ) ||
-        volume.includes(rawQ)
+        volume.includes(rawQ) ||
+        item.includes(rawQ)
       );
     });
   }, [aggregateDispatches, dispatchSearch]);
@@ -361,6 +369,62 @@ export default function NewInvoicePage() {
     }
     setSelectedDispatchIds(updated);
     updateItemsFromDispatches(updated, undefined, groupByCategory);
+  };
+
+  // Filter liftings by search query (matching POD number, lifting no, date, factory, cement type, etc.)
+  const filteredLiftings = useMemo(() => {
+    if (!liftingSearch.trim()) return cementLiftings;
+    const q = liftingSearch.toLowerCase().trim().replace(/^#+/, '').replace(/^pad\s*#*/i, '').replace(/^pod\s*#*/i, '').trim();
+    const rawQ = liftingSearch.toLowerCase().trim();
+    return cementLiftings.filter((l: any) => {
+      const pod = String(l.padNumber || l.podNumber || '').toLowerCase();
+      const liftingNo = String(l.liftingNo || '').toLowerCase();
+      const date = l.liftingDate || l.createdAt
+        ? new Date(l.liftingDate || l.createdAt).toLocaleDateString().toLowerCase()
+        : '';
+      const plate = String(l.truck?.plateNo || l.plateNumber || '').toLowerCase();
+      const factory = String(l.factory?.name || l.purchase?.factory?.name || '').toLowerCase();
+      const cementType = String(l.cementType || l.purchase?.cementType || '').toLowerCase();
+      const weight = String(l.buyerWeighbridgeQty || l.factoryWeight || l.quantityTons || '').toLowerCase();
+
+      return (
+        pod.includes(rawQ) ||
+        (q && pod.includes(q)) ||
+        liftingNo.includes(rawQ) ||
+        date.includes(rawQ) ||
+        plate.includes(rawQ) ||
+        factory.includes(rawQ) ||
+        cementType.includes(rawQ) ||
+        weight.includes(rawQ)
+      );
+    });
+  }, [cementLiftings, liftingSearch]);
+
+  // Checkbox Selection Logic for Cement Liftings
+  const toggleLiftingSelect = (id: string) => {
+    let updated: string[];
+    if (selectedLiftingIds.includes(id)) {
+      updated = selectedLiftingIds.filter((lId) => lId !== id);
+    } else {
+      updated = [...selectedLiftingIds, id];
+    }
+    setSelectedLiftingIds(updated);
+    updateItemsFromLiftings(updated, undefined, groupByCategory);
+  };
+
+  const toggleAllLiftings = () => {
+    const targetList = liftingSearch.trim() ? filteredLiftings : cementLiftings;
+    const targetIds = targetList.map((l) => l.id);
+    const allTargetSelected = targetIds.length > 0 && targetIds.every((id) => selectedLiftingIds.includes(id));
+
+    let updated: string[];
+    if (allTargetSelected) {
+      updated = selectedLiftingIds.filter((id) => !targetIds.includes(id));
+    } else {
+      updated = Array.from(new Set([...selectedLiftingIds, ...targetIds]));
+    }
+    setSelectedLiftingIds(updated);
+    updateItemsFromLiftings(updated, undefined, groupByCategory);
   };
 
   const handleToggleLiftingSort = () => {
@@ -551,29 +615,6 @@ export default function NewInvoicePage() {
     }
   };
 
-  // Checkbox Selection Logic for Cement Liftings
-  const toggleLiftingSelect = (id: string) => {
-    let updated: string[];
-    if (selectedLiftingIds.includes(id)) {
-      updated = selectedLiftingIds.filter((lId) => lId !== id);
-    } else {
-      updated = [...selectedLiftingIds, id];
-    }
-    setSelectedLiftingIds(updated);
-    updateItemsFromLiftings(updated, undefined, groupByCategory);
-  };
-
-  const toggleAllLiftings = () => {
-    if (selectedLiftingIds.length === cementLiftings.length) {
-      setSelectedLiftingIds([]);
-      updateItemsFromLiftings([], undefined, groupByCategory);
-    } else {
-      const allIds = cementLiftings.map((l) => l.id);
-      setSelectedLiftingIds(allIds);
-      updateItemsFromLiftings(allIds, undefined, groupByCategory);
-    }
-  };
-
   const updateItemsFromLiftings = (liftingIds: string[], agList?: SalesAgreement[], isGrouped?: boolean) => {
     const activeAgreements = agList || agreements;
     const shouldGroup = isGrouped !== undefined ? isGrouped : groupByCategory;
@@ -634,7 +675,7 @@ export default function NewInvoicePage() {
     } else {
       // Individual liftings with POD number FIRST: POD #1002 — Cement Type — Factory
       const invoiceItems: InvoiceItem[] = selected.map((lifting, index) => {
-        const qty = Number(lifting.factoryWeight || lifting.quantityTons || 1);
+        const qty = Number(lifting.buyerWeighbridgeQty || lifting.factoryWeight || lifting.quantityTons || 1);
 
         let unitPrice = getCustomerAgreementUnitPrice(
           activeAgreements,
@@ -1010,36 +1051,83 @@ export default function NewInvoicePage() {
           {/* Cement Lifting Checkbox Table */}
           {partyId && division === 'CEMENT' && (
             <div className="space-y-3">
-              <div className="flex justify-between items-center">
-                <label className="block text-sm font-semibold text-slate-900">
-                  Select Cement Liftings ({selectedLiftingIds.length} selected)
-                </label>
+              <div className="flex flex-wrap justify-between items-center gap-2">
+                <div>
+                  <label className="block text-sm font-semibold text-slate-900">
+                    Select Cement Liftings ({selectedLiftingIds.length} of {cementLiftings.length} selected)
+                  </label>
+                  <p className="text-xs text-slate-500">
+                    Listing all liftings with status <span className="font-semibold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">Not Invoiced</span>
+                  </p>
+                </div>
                 {cementLiftings.length > 0 && (
                   <button
                     type="button"
                     onClick={toggleAllLiftings}
                     className="text-xs font-semibold text-blue-600 hover:text-blue-800"
                   >
-                    {selectedLiftingIds.length === cementLiftings.length
-                      ? 'Deselect All'
-                      : 'Select All Liftings'}
+                    {filteredLiftings.length > 0 && filteredLiftings.every((l) => selectedLiftingIds.includes(l.id))
+                      ? (liftingSearch ? 'Deselect Filtered' : 'Deselect All')
+                      : (liftingSearch ? `Select All Filtered (${filteredLiftings.length})` : 'Select All Liftings')}
                   </button>
                 )}
               </div>
+
+              {/* Search Box by POD / Lifting No */}
+              {cementLiftings.length > 0 && (
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                  </div>
+                  <input
+                    type="text"
+                    value={liftingSearch}
+                    onChange={(e) => setLiftingSearch(e.target.value)}
+                    placeholder="Search by POD number (e.g. 23423), Lifting No, Plate, or Date..."
+                    className="block w-full pl-9 pr-8 py-2 text-sm bg-white border border-slate-300 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 text-slate-900 placeholder:text-slate-400"
+                  />
+                  {liftingSearch && (
+                    <button
+                      type="button"
+                      onClick={() => setLiftingSearch('')}
+                      className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  )}
+                </div>
+              )}
 
               {loadingLiftings ? (
                 <p className="text-blue-600 text-sm">Loading cement liftings...</p>
               ) : cementLiftings.length === 0 ? (
                 <div className="bg-amber-50 border border-amber-300 rounded-xl p-4">
                   <p className="text-amber-800 font-semibold text-sm">
-                    No cement liftings found for this {partyType.toLowerCase()}.
+                    No uninvoiced cement liftings found for this {partyType.toLowerCase()}.
                   </p>
                   <p className="text-amber-700 text-xs mt-1">
-                    You can manually add invoice items below.
+                    All deliveries are already invoiced or you can manually add invoice items below.
                   </p>
                 </div>
+              ) : filteredLiftings.length === 0 ? (
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-center">
+                  <p className="text-slate-600 text-sm">
+                    No liftings matching &quot;{liftingSearch}&quot;
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setLiftingSearch('')}
+                    className="text-xs text-blue-600 font-semibold mt-1 hover:underline"
+                  >
+                    Clear search filter
+                  </button>
+                </div>
               ) : (
-                <div className="border border-slate-200 rounded-xl overflow-hidden max-h-72 overflow-y-auto">
+                <div className="border border-slate-200 rounded-xl overflow-hidden max-h-80 overflow-y-auto">
                   <table className="w-full text-left text-sm">
                     <thead className="bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-600 uppercase sticky top-0">
                       <tr>
@@ -1047,8 +1135,8 @@ export default function NewInvoicePage() {
                           <input
                             type="checkbox"
                             checked={
-                              cementLiftings.length > 0 &&
-                              selectedLiftingIds.length === cementLiftings.length
+                              filteredLiftings.length > 0 &&
+                              filteredLiftings.every((l) => selectedLiftingIds.includes(l.id))
                             }
                             onChange={toggleAllLiftings}
                             className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
@@ -1068,13 +1156,15 @@ export default function NewInvoicePage() {
                           </button>
                         </th>
                         <th className="py-2.5 px-3">Type</th>
-                        <th className="py-2.5 px-3">Factory Weight (QT)</th>
+                        <th className="py-2.5 px-3">Weight (QT)</th>
                         <th className="py-2.5 px-3">Factory</th>
+                        <th className="py-2.5 px-3">Status</th>
+                        <th className="py-2.5 px-3">Invoice Status</th>
                         <th className="py-2.5 px-3">Date</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 bg-white">
-                      {cementLiftings.map((l) => {
+                      {filteredLiftings.map((l) => {
                         const isChecked = selectedLiftingIds.includes(l.id);
                         return (
                           <tr
@@ -1102,10 +1192,20 @@ export default function NewInvoicePage() {
                             </td>
                             <td className="py-2.5 px-3 text-slate-600">{l.cementType}</td>
                             <td className="py-2.5 px-3 text-slate-900 font-semibold">
-                              {Number(l.factoryWeight || l.quantityTons || 0).toLocaleString('en-US')} QT
+                              {Number(l.buyerWeighbridgeQty || l.factoryWeight || l.quantityTons || 0).toLocaleString('en-US')} QT
                             </td>
                             <td className="py-2.5 px-3 text-slate-600">
                               {l.purchase?.factory?.name || l.factory?.name || 'Factory'}
+                            </td>
+                            <td className="py-2.5 px-3">
+                              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                                {l.status}
+                              </span>
+                            </td>
+                            <td className="py-2.5 px-3">
+                              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                Not Invoiced
+                              </span>
                             </td>
                             <td className="py-2.5 px-3 text-slate-500">
                               {new Date(l.liftingDate || l.createdAt).toLocaleDateString()}
@@ -1124,9 +1224,14 @@ export default function NewInvoicePage() {
           {partyId && division === 'AGGREGATE' && (
             <div className="space-y-3">
               <div className="flex flex-wrap justify-between items-center gap-2">
-                <label className="block text-sm font-semibold text-slate-900">
-                  Select Aggregate Dispatches ({selectedDispatchIds.length} selected)
-                </label>
+                <div>
+                  <label className="block text-sm font-semibold text-slate-900">
+                    Select Aggregate Dispatches ({selectedDispatchIds.length} of {aggregateDispatches.length} selected)
+                  </label>
+                  <p className="text-xs text-slate-500">
+                    Listing all dispatches with status <span className="font-semibold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">Not Invoiced</span>
+                  </p>
+                </div>
                 {aggregateDispatches.length > 0 && (
                   <button
                     type="button"
@@ -1174,10 +1279,10 @@ export default function NewInvoicePage() {
               ) : aggregateDispatches.length === 0 ? (
                 <div className="bg-amber-50 border border-amber-300 rounded-xl p-4">
                   <p className="text-amber-800 font-semibold text-sm">
-                    No aggregate dispatches found.
+                    No uninvoiced aggregate dispatches found for this {partyType.toLowerCase()}.
                   </p>
                   <p className="text-amber-700 text-xs mt-1">
-                    You can manually add invoice items below.
+                    All dispatches are already invoiced or you can manually add invoice items below.
                   </p>
                 </div>
               ) : filteredDispatches.length === 0 ? (
@@ -1194,7 +1299,7 @@ export default function NewInvoicePage() {
                   </button>
                 </div>
               ) : (
-                <div className="border border-slate-200 rounded-xl overflow-hidden max-h-72 overflow-y-auto">
+                <div className="border border-slate-200 rounded-xl overflow-hidden max-h-80 overflow-y-auto">
                   <table className="w-full text-left text-sm">
                     <thead className="bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-600 uppercase sticky top-0">
                       <tr>
@@ -1211,7 +1316,10 @@ export default function NewInvoicePage() {
                         </th>
                         <th className="py-2.5 px-3">Dispatch No</th>
                         <th className="py-2.5 px-3">Pad #</th>
+                        <th className="py-2.5 px-3">Item</th>
                         <th className="py-2.5 px-3">Volume (m³)</th>
+                        <th className="py-2.5 px-3">Status</th>
+                        <th className="py-2.5 px-3">Invoice Status</th>
                         <th className="py-2.5 px-3">Date</th>
                       </tr>
                     </thead>
@@ -1235,9 +1343,22 @@ export default function NewInvoicePage() {
                               />
                             </td>
                             <td className="py-2.5 px-3 font-semibold text-slate-900">{d.dispatchNo}</td>
-                            <td className="py-2.5 px-3 text-slate-600 font-medium">Pad #{d.padNumber || 'N/A'}</td>
+                            <td className="py-2.5 px-3 text-slate-600 font-medium">{d.padNumber ? `Pad #${d.padNumber}` : 'N/A'}</td>
+                            <td className="py-2.5 px-3 text-slate-700 font-medium">
+                              {d.item?.name || d.itemName || 'Aggregate'}
+                            </td>
                             <td className="py-2.5 px-3 text-slate-900 font-semibold">
                               {Number(d.deliveredVolume || d.loadedVolume || 0).toLocaleString('en-US')} m³
+                            </td>
+                            <td className="py-2.5 px-3">
+                              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                                {d.status}
+                              </span>
+                            </td>
+                            <td className="py-2.5 px-3">
+                              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                Not Invoiced
+                              </span>
                             </td>
                             <td className="py-2.5 px-3 text-slate-500">
                               {new Date(d.dispatchDate || d.createdAt).toLocaleDateString()}

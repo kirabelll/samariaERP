@@ -143,7 +143,30 @@ export async function GET(request: NextRequest) {
       return 0;
     };
 
-    const data = records.map((r: any) => {
+    // Fetch active invoices to detect invoiced aggregate dispatches (from items JSON)
+    const activeInvoices = await prisma.salesInvoice.findMany({
+      where: { status: { notIn: ['Cancelled', 'Inactive'] } },
+      select: { id: true, invoiceNo: true, items: true },
+    });
+    const invoicedDispatchIds = new Set<string>();
+    const invoicedDispatchNos = new Set<string>();
+    activeInvoices.forEach((inv) => {
+      if (inv.items) {
+        try {
+          const parsed = typeof inv.items === 'string' ? JSON.parse(inv.items) : inv.items;
+          if (Array.isArray(parsed)) {
+            parsed.forEach((item: any) => {
+              if (item.deliveryId) invoicedDispatchIds.add(String(item.deliveryId));
+              if (item.dispatchId) invoicedDispatchIds.add(String(item.dispatchId));
+              if (item.dispatchNo) invoicedDispatchNos.add(String(item.dispatchNo));
+              if (item.id) invoicedDispatchIds.add(String(item.id));
+            });
+          }
+        } catch {}
+      }
+    });
+
+    let data = records.map((r: any) => {
       const loadedVol = Number(r.loadedVolume || 0);
       const deliveredVol = Number(r.deliveredVolume ?? r.loadedVolume ?? 0);
       const dispatchDate = new Date(r.dispatchDate);
@@ -174,6 +197,8 @@ export async function GET(request: NextRequest) {
       const transporterPayable = Number(r.netTruckPayment || r.grossTruckFee || 0);
       const netMaterialAmount = customerReceivable - supplierPayable - grossTruckFee;
 
+      const isInvoiced = invoicedDispatchIds.has(String(r.id)) || invoicedDispatchNos.has(String(r.dispatchNo));
+
       return {
         ...r,
         customer: customerMap[r.customerId] || null,
@@ -185,8 +210,17 @@ export async function GET(request: NextRequest) {
         supplierPayable: Math.round(supplierPayable * 100) / 100,
         netMaterialAmount: Math.round(netMaterialAmount * 100) / 100,
         transporterPayable: Math.round(transporterPayable * 100) / 100,
+        isInvoiced,
+        invoiceStatus: isInvoiced ? 'Invoiced' : 'Not Invoiced',
       };
     });
+
+    const invoiceStatusFilter = searchParams.get('invoiceStatus')?.toLowerCase();
+    if (invoiceStatusFilter === 'uninvoiced' || invoiceStatusFilter === 'not_invoiced' || invoiceStatusFilter === 'not invoiced') {
+      data = data.filter((d: any) => !d.isInvoiced);
+    } else if (invoiceStatusFilter === 'invoiced') {
+      data = data.filter((d: any) => d.isInvoiced);
+    }
 
     return NextResponse.json({
       success: true,

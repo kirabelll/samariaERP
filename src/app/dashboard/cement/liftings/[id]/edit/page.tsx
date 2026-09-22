@@ -133,6 +133,11 @@ export default function EditCementLiftingPage() {
   const [checkingAgreement, setCheckingAgreement] = useState(false);
   const [customerUnitPrice, setCustomerUnitPrice] = useState<number>(0);
   const [customerAgreementNo, setCustomerAgreementNo] = useState<string>('');
+  const [agreementValidity, setAgreementValidity] = useState<{
+    validFrom?: string;
+    validTo?: string;
+    isDateValid: boolean;
+  } | null>(null);
   const [loadingAgreementPrice, setLoadingAgreementPrice] = useState<boolean>(false);
 
   // Credit info
@@ -274,18 +279,20 @@ export default function EditCementLiftingPage() {
     loadAll();
   }, [id]);
 
-  // Fetch and dynamically resolve customer agreement unit price for selected cement type
+  // Fetch and dynamically resolve customer agreement unit price for selected cement type & lifting date
   useEffect(() => {
     if (!formData.customerId) {
       setCustomerHasActiveAgreement(true);
       setCustomerUnitPrice(0);
       setCustomerAgreementNo('');
+      setAgreementValidity(null);
       return;
     }
     setCheckingAgreement(true);
     setLoadingAgreementPrice(true);
 
     const cementType = (selectedPurchase?.cementType || '').toUpperCase().trim();
+    const lDate = formData.liftingDate ? new Date(formData.liftingDate) : null;
 
     fetch(`/api/sales/agreements/customers?division=CEMENT&search=${encodeURIComponent(formData.customerId)}`)
       .then((r) => r.json())
@@ -318,10 +325,23 @@ export default function EditCementLiftingPage() {
 
         if (custAgreements.length > 0) {
           setCustomerHasActiveAgreement(true);
+
+          // Check if agreements are valid on liftingDate (validFrom <= lDate <= validTo)
+          const validDateAgreements = lDate
+            ? custAgreements.filter((agr: any) => {
+                const from = agr.validFrom ? new Date(agr.validFrom) : null;
+                const to = agr.validTo ? new Date(agr.validTo) : null;
+                return (!from || from <= lDate) && (!to || to >= lDate);
+              })
+            : [];
+
+          const targetAgreements = validDateAgreements.length > 0 ? validDateAgreements : custAgreements;
+
           let foundPrice = 0;
           let foundAgNo = '';
+          let matchedAgr: any = null;
 
-          for (const agr of custAgreements) {
+          for (const agr of targetAgreements) {
             const items = Array.isArray(agr.items) ? agr.items : [];
             if (items.length > 0) {
               const matched = cementType ? items.find((item: any) => {
@@ -340,21 +360,32 @@ export default function EditCementLiftingPage() {
                 if (price > 0) {
                   foundPrice = price;
                   foundAgNo = agr.agreementNo || '';
+                  matchedAgr = agr;
                   break;
                 }
               }
             }
           }
 
-          if (foundPrice > 0) {
+          if (foundPrice > 0 && matchedAgr) {
             setCustomerUnitPrice(foundPrice);
             setCustomerAgreementNo(foundAgNo);
+            const fromDate = matchedAgr.validFrom ? new Date(matchedAgr.validFrom) : null;
+            const toDate = matchedAgr.validTo ? new Date(matchedAgr.validTo) : null;
+            const isDateValid = lDate ? ((!fromDate || fromDate <= lDate) && (!toDate || toDate >= lDate)) : true;
+            setAgreementValidity({
+              validFrom: matchedAgr.validFrom ? new Date(matchedAgr.validFrom).toLocaleDateString() : undefined,
+              validTo: matchedAgr.validTo ? new Date(matchedAgr.validTo).toLocaleDateString() : undefined,
+              isDateValid,
+            });
           } else if (selectedPurchase?.unitPrice) {
             setCustomerUnitPrice(Number(selectedPurchase.unitPrice));
             setCustomerAgreementNo(custAgreements[0]?.agreementNo || '');
+            setAgreementValidity(null);
           }
         } else {
           setCustomerHasActiveAgreement(false);
+          setAgreementValidity(null);
           if (selectedPurchase?.unitPrice) {
             setCustomerUnitPrice(Number(selectedPurchase.unitPrice));
           }
@@ -362,6 +393,7 @@ export default function EditCementLiftingPage() {
       })
       .catch(() => {
         setCustomerHasActiveAgreement(true);
+        setAgreementValidity(null);
         if (selectedPurchase?.unitPrice) {
           setCustomerUnitPrice(Number(selectedPurchase.unitPrice));
         }
@@ -370,7 +402,7 @@ export default function EditCementLiftingPage() {
         setCheckingAgreement(false);
         setLoadingAgreementPrice(false);
       });
-  }, [formData.customerId, formData.purchaseId, selectedPurchase?.cementType]);
+  }, [formData.customerId, formData.purchaseId, formData.liftingDate, selectedPurchase?.cementType]);
 
   // Check customer credit limit
   useEffect(() => {
@@ -714,15 +746,34 @@ export default function EditCementLiftingPage() {
                   </p>
                 )}
                 {customerUnitPrice > 0 && !checkingAgreement && (
-                  <div className="mt-2 p-2.5 bg-blue-50/80 border border-blue-200 rounded-xl text-xs flex items-center justify-between">
-                    <div>
-                      <span className="font-semibold text-blue-900">Agreement Unit Price:</span>{' '}
-                      <strong className="text-blue-700 text-sm font-bold">ETB {customerUnitPrice.toLocaleString('en-US')} / QT</strong>
-                      {customerAgreementNo && (
-                        <span className="text-slate-500 ml-1.5">({customerAgreementNo})</span>
-                      )}
+                  <div className="mt-2 p-2.5 bg-blue-50/80 border border-blue-200 rounded-xl text-xs space-y-1">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <span className="font-semibold text-blue-900">Agreement Unit Price:</span>{' '}
+                        <strong className="text-blue-700 text-sm font-bold">ETB {customerUnitPrice.toLocaleString('en-US')} / QT</strong>
+                        {customerAgreementNo && (
+                          <span className="text-slate-500 ml-1.5">({customerAgreementNo})</span>
+                        )}
+                      </div>
+                      <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 text-[10px] font-semibold uppercase">Division: Cement</span>
                     </div>
-                    <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 text-[10px] font-semibold uppercase">Division: Cement</span>
+                    {agreementValidity && (
+                      <div className="text-[11px] flex flex-wrap items-center gap-2 pt-0.5 border-t border-blue-200/60 mt-1">
+                        <span className="text-slate-500">Validity:</span>
+                        <span className="font-medium text-slate-700">
+                          {agreementValidity.validFrom || '—'} → {agreementValidity.validTo || '—'}
+                        </span>
+                        {agreementValidity.isDateValid ? (
+                          <span className="text-emerald-700 font-semibold flex items-center gap-1">
+                            <CheckCircle className="w-3 h-3 text-emerald-600 inline" /> Valid for Lifting Date ({formData.liftingDate || 'N/A'})
+                          </span>
+                        ) : (
+                          <span className="text-amber-700 font-semibold flex items-center gap-1">
+                            <AlertTriangle className="w-3 h-3 text-amber-600 inline" /> Lifting Date ({formData.liftingDate}) outside agreement period
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
                 {formData.customerId && !checkingAgreement && !customerHasActiveAgreement && (

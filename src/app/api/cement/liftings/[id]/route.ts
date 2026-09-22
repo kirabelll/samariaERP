@@ -36,29 +36,61 @@ export async function GET(
       });
     }
 
-    // Resolve Customer Sales Agreement Unit Price for this customer & cement type (Division = CEMENT)
+    // Resolve Customer Sales Agreement Unit Price for this customer & cement type (Division = CEMENT & validFrom <= liftingDate <= validTo)
     let customerUnitPrice = 0;
     let customerAgreementNo = '';
+    let activeAgreement: any = null;
+    const liftingDate = lifting.liftingDate ? new Date(lifting.liftingDate) : new Date();
+
     if (lifting.customerId) {
-      // First look for agreement with division CEMENT or BOTH
-      let activeAgreement = await prisma.salesAgreement.findFirst({
+      // 1. Look for agreement with division CEMENT/BOTH where liftingDate is within validFrom and validTo
+      activeAgreement = await prisma.salesAgreement.findFirst({
         where: {
           customerId: lifting.customerId,
           division: { in: ['CEMENT', 'BOTH'] },
           status: { notIn: ['Void', 'Cancelled'] },
+          validFrom: { lte: liftingDate },
+          validTo: { gte: liftingDate },
         },
-        select: { agreementNo: true, items: true, division: true },
+        select: { agreementNo: true, items: true, division: true, validFrom: true, validTo: true },
         orderBy: { createdAt: 'desc' },
       });
 
-      // Fallback to any active agreement for customer if no specific CEMENT agreement found
+      // 2. If no exact date match, look for most recent CEMENT agreement
+      if (!activeAgreement) {
+        activeAgreement = await prisma.salesAgreement.findFirst({
+          where: {
+            customerId: lifting.customerId,
+            division: { in: ['CEMENT', 'BOTH'] },
+            status: { notIn: ['Void', 'Cancelled'] },
+          },
+          select: { agreementNo: true, items: true, division: true, validFrom: true, validTo: true },
+          orderBy: { createdAt: 'desc' },
+        });
+      }
+
+      // 3. Fallback to any active agreement for customer covering liftingDate
+      if (!activeAgreement) {
+        activeAgreement = await prisma.salesAgreement.findFirst({
+          where: {
+            customerId: lifting.customerId,
+            status: { notIn: ['Void', 'Cancelled'] },
+            validFrom: { lte: liftingDate },
+            validTo: { gte: liftingDate },
+          },
+          select: { agreementNo: true, items: true, division: true, validFrom: true, validTo: true },
+          orderBy: { createdAt: 'desc' },
+        });
+      }
+
+      // 4. Fallback to any active agreement for customer
       if (!activeAgreement) {
         activeAgreement = await prisma.salesAgreement.findFirst({
           where: {
             customerId: lifting.customerId,
             status: { notIn: ['Void', 'Cancelled'] },
           },
-          select: { agreementNo: true, items: true, division: true },
+          select: { agreementNo: true, items: true, division: true, validFrom: true, validTo: true },
           orderBy: { createdAt: 'desc' },
         });
       }
@@ -132,6 +164,12 @@ export async function GET(
         customerUnitPrice,
         customerAgreementPrice: customerUnitPrice,
         customerAgreementNo,
+        customerAgreementValidity: activeAgreement ? {
+          validFrom: activeAgreement.validFrom,
+          validTo: activeAgreement.validTo,
+          isDateValid: (activeAgreement.validFrom ? new Date(activeAgreement.validFrom) <= liftingDate : true) &&
+                       (activeAgreement.validTo ? new Date(activeAgreement.validTo) >= liftingDate : true)
+        } : null,
       },
     });
   } catch (error: any) {

@@ -96,7 +96,7 @@ export async function GET(request: NextRequest) {
     const customerIds = Array.from(new Set(data.map((l: any) => l.customerId).filter(Boolean))) as string[];
     const customerAgreements = customerIds.length > 0 ? await prisma.salesAgreement.findMany({
       where: { customerId: { in: customerIds }, status: { notIn: ['Void', 'Cancelled'] } },
-      select: { customerId: true, agreementNo: true, items: true, division: true },
+      select: { customerId: true, agreementNo: true, items: true, division: true, validFrom: true, validTo: true },
       orderBy: { createdAt: 'desc' },
     }) : [];
 
@@ -121,11 +121,32 @@ export async function GET(request: NextRequest) {
       : [];
     const dbItemMap = new Map(dbItemsList.map((i) => [i.id, i]));
 
-    const resolveCustomerAgreementPrice = (customerId: string, cementType?: string) => {
+    const resolveCustomerAgreementPrice = (customerId: string, cementType?: string, liftingDate?: any) => {
       const agreements = customerAgreements.filter((a) => a.customerId === customerId);
-      // Prioritize agreements with division CEMENT or BOTH
-      const cementAgreements = agreements.filter((a) => a.division === 'CEMENT' || a.division === 'BOTH');
-      const targetAgreements = cementAgreements.length > 0 ? cementAgreements : agreements;
+      const lDate = liftingDate ? new Date(liftingDate) : null;
+
+      // Filter agreements where validFrom <= liftingDate <= validTo
+      const validDateAgreements = lDate
+        ? agreements.filter((a) => {
+            const from = a.validFrom ? new Date(a.validFrom) : null;
+            const to = a.validTo ? new Date(a.validTo) : null;
+            return (!from || from <= lDate) && (!to || to >= lDate);
+          })
+        : [];
+
+      // Prioritize:
+      // 1. CEMENT / BOTH agreement where validFrom <= liftingDate <= validTo
+      // 2. Any CEMENT / BOTH agreement
+      // 3. Any agreement where validFrom <= liftingDate <= validTo
+      // 4. Any customer agreement
+      const cementValidAgreements = validDateAgreements.filter((a) => a.division === 'CEMENT' || a.division === 'BOTH');
+      const cementAllAgreements = agreements.filter((a) => a.division === 'CEMENT' || a.division === 'BOTH');
+
+      const targetAgreements = cementValidAgreements.length > 0
+        ? cementValidAgreements
+        : (cementAllAgreements.length > 0
+            ? cementAllAgreements
+            : (validDateAgreements.length > 0 ? validDateAgreements : agreements));
 
       for (const agr of targetAgreements) {
         try {
@@ -213,7 +234,7 @@ export async function GET(request: NextRequest) {
 
     // Ensure numeric fields are properly converted
     let formattedData = data.map((lifting: any) => {
-      const resolvedAgreementPrice = resolveCustomerAgreementPrice(lifting.customerId, lifting.purchase?.cementType);
+      const resolvedAgreementPrice = resolveCustomerAgreementPrice(lifting.customerId, lifting.purchase?.cementType, lifting.liftingDate);
       const factoryPurchaseCost = Number(lifting.purchase?.unitPrice || 0);
       const custPrice = resolvedAgreementPrice > 0 ? resolvedAgreementPrice : factoryPurchaseCost;
       const normalizedBuyerQty = lifting.buyerWeighbridgeQty != null

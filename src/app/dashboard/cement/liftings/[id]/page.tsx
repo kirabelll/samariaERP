@@ -42,6 +42,11 @@ interface CementLifting {
   customerUnitPrice?: number;
   customerAgreementPrice?: number;
   customerAgreementNo?: string;
+  customerAgreementValidity?: {
+    validFrom?: string;
+    validTo?: string;
+    isDateValid?: boolean;
+  } | null;
   invoices?: Array<{
     id: string;
     invoiceNo: string;
@@ -819,6 +824,16 @@ export default function CementLiftingDetailPage() {
                 {lifting.customerAgreementNo && (
                   <p className="text-[11px] text-slate-500 mt-0.5">
                     Agreement: {lifting.customerAgreementNo}
+                    {lifting.customerAgreementValidity?.validFrom && lifting.customerAgreementValidity?.validTo && (
+                      <span className="block text-[10px] text-slate-400 mt-0.5">
+                        Validity: {new Date(lifting.customerAgreementValidity.validFrom).toLocaleDateString()} → {new Date(lifting.customerAgreementValidity.validTo).toLocaleDateString()}
+                        {lifting.customerAgreementValidity.isDateValid ? (
+                          <span className="text-emerald-600 font-medium ml-1">✓ Valid</span>
+                        ) : (
+                          <span className="text-amber-600 font-medium ml-1">⚠ Outside lifting date</span>
+                        )}
+                      </span>
+                    )}
                   </p>
                 )}
               </div>

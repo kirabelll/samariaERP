@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ExternalLink } from 'lucide-react';
+import { ExternalLink, Pencil } from 'lucide-react';
 import { Card, CardBody, CardHeader, Button, Badge, Input, Select } from '@/components/ui';
 import { Table } from '@/components/ui';
 import type { ColumnDef } from '@/components/ui';
@@ -179,6 +179,16 @@ export default function VouchersPage() {
           >
             View
           </Button>
+          {row.status !== 'Posted' && (
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => router.push(`/dashboard/finance/vouchers/${id}/edit`)}
+              icon={<Pencil className="w-3.5 h-3.5" />}
+            >
+              Edit
+            </Button>
+          )}
           <Button
             size="sm"
             variant="danger"
@@ -391,6 +401,16 @@ export default function VouchersPage() {
                           >
                             View
                           </Button>
+                          {voucher.status !== 'Posted' && (
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              onClick={() => router.push(`/dashboard/finance/vouchers/${voucher.id}/edit`)}
+                              icon={<Pencil className="w-3.5 h-3.5" />}
+                            >
+                              Edit
+                            </Button>
+                          )}
                           <Button
                             size="sm"
                             variant="danger"

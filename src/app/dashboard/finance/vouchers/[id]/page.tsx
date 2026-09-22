@@ -146,6 +146,7 @@ export default function VoucherDetailPage() {
   const [editError, setEditError] = useState<string | null>(null);
   const [bankAccounts, setBankAccounts] = useState<BankAccountOption[]>([]);
   const [editForm, setEditForm] = useState({
+    voucherType: 'PAYMENT',
     voucherDate: '',
     payeeName: '',
     payeeType: 'SUPPLIER',
@@ -198,6 +199,7 @@ export default function VoucherDetailPage() {
     if (!voucher) return;
     setEditError(null);
     setEditForm({
+      voucherType: voucher.voucherType || 'PAYMENT',
       voucherDate: voucher.voucherDate ? voucher.voucherDate.slice(0, 10) : '',
       payeeName: voucher.payeeName || '',
       payeeType: voucher.payeeType || 'SUPPLIER',
@@ -243,6 +245,7 @@ export default function VoucherDetailPage() {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          voucherType: editForm.voucherType,
           voucherDate: editForm.voucherDate,
           payeeName: editForm.payeeName.trim(),
           payeeType: editForm.payeeType,
@@ -922,6 +925,22 @@ export default function VoucherDetailPage() {
 
             <form onSubmit={handleSaveEdit} className="p-5 space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* Voucher Type */}
+                <div className="space-y-1.5 sm:col-span-2">
+                  <label className="block text-xs font-bold uppercase tracking-wider text-gray-700">
+                    Voucher Type *
+                  </label>
+                  <select
+                    value={editForm.voucherType}
+                    onChange={(e) => setEditForm({ ...editForm, voucherType: e.target.value })}
+                    className="w-full h-10 px-3 py-2 text-sm font-semibold border border-gray-300 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="PAYMENT">🔴 PAYMENT (Disbursement / Expense)</option>
+                    <option value="RECEIPT">🟢 RECEIPT (Collection / Revenue)</option>
+                    <option value="REFUND">🟠 REFUND (Return / Reversal)</option>
+                  </select>
+                </div>
+
                 {/* Payee Name */}
                 <div className="space-y-1.5">
                   <label className="block text-xs font-bold uppercase tracking-wider text-gray-700">
@@ -1106,21 +1125,30 @@ export default function VoucherDetailPage() {
               </div>
 
               {/* Modal Actions */}
-              <div className="flex items-center justify-end gap-3 pt-3 border-t border-gray-100">
-                <button
-                  type="button"
-                  onClick={() => setIsEditOpen(false)}
-                  className="px-4 py-2 text-sm font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-xl transition-colors"
+              <div className="flex items-center justify-between gap-3 pt-3 border-t border-gray-100">
+                <Link
+                  href={`/dashboard/finance/vouchers/${voucherId}/edit`}
+                  className="text-xs font-semibold text-blue-600 hover:text-blue-800 hover:underline inline-flex items-center gap-1"
                 >
-                  Cancel
-                </button>
-                <Button
-                  type="submit"
-                  isLoading={editLoading}
-                  icon={<Save className="w-4 h-4 mr-1.5" />}
-                >
-                  Save Changes
-                </Button>
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  <span>Open Full Page Editor</span>
+                </Link>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsEditOpen(false)}
+                    className="px-4 py-2 text-sm font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-xl transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <Button
+                    type="submit"
+                    isLoading={editLoading}
+                    icon={<Save className="w-4 h-4 mr-1.5" />}
+                  >
+                    Save Changes
+                  </Button>
+                </div>
               </div>
             </form>
           </div>

@@ -248,7 +248,7 @@ export async function PUT(
           recordRef: updatedVoucher.voucherNo,
           amount: Number(updatedVoucher.amount) || 0,
           description: `${updatedVoucher.voucherType} Voucher ${updatedVoucher.voucherNo} — ${Number(updatedVoucher.amount).toLocaleString('en-US')} ETB to ${updatedVoucher.payeeName}`,
-          requesterId: updatedVoucher.createdBy || '',
+          requesterId: updatedVoucher.preparedBy || (updatedVoucher as any).createdBy || '',
         });
       }
     }

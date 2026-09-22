@@ -128,9 +128,12 @@ export default function EditCementLiftingPage() {
   const [selfPlateNo, setSelfPlateNo] = useState('');
   const [selfDriverName, setSelfDriverName] = useState('');
 
-  // Agreement validation
+  // Agreement validation & dynamic price
   const [customerHasActiveAgreement, setCustomerHasActiveAgreement] = useState(true);
   const [checkingAgreement, setCheckingAgreement] = useState(false);
+  const [customerUnitPrice, setCustomerUnitPrice] = useState<number>(0);
+  const [customerAgreementNo, setCustomerAgreementNo] = useState<string>('');
+  const [loadingAgreementPrice, setLoadingAgreementPrice] = useState<boolean>(false);
 
   // Credit info
   const [creditInfo, setCreditInfo] = useState<{
@@ -172,6 +175,8 @@ export default function EditCementLiftingPage() {
 
         const lifting: CementLifting = liftingData.data;
         setOriginalLifting(lifting);
+        setCustomerUnitPrice(lifting.customerUnitPrice || lifting.customerAgreementPrice || lifting.purchase?.unitPrice || 0);
+        setCustomerAgreementNo(lifting.customerAgreementNo || '');
 
         // Purchases
         if (purchasesRes.ok) {
@@ -269,25 +274,75 @@ export default function EditCementLiftingPage() {
     loadAll();
   }, [id]);
 
-  // Check customer active agreement when customer changes
+  // Fetch and dynamically resolve customer agreement unit price for selected cement type
   useEffect(() => {
     if (!formData.customerId) {
       setCustomerHasActiveAgreement(true);
+      setCustomerUnitPrice(0);
+      setCustomerAgreementNo('');
       return;
     }
     setCheckingAgreement(true);
-    fetch(`/api/sales/agreements?customerId=${formData.customerId}&status=Active&division=CEMENT&limit=1`)
-      .then(r => r.json())
-      .then(json => {
-        if (json.success) {
-          setCustomerHasActiveAgreement((json.data || []).length > 0);
+    setLoadingAgreementPrice(true);
+
+    const cementType = (selectedPurchase?.cementType || '').toUpperCase().trim();
+
+    fetch(`/api/sales/agreements?customerId=${formData.customerId}&division=CEMENT&status=Active&limit=10`)
+      .then((r) => r.json())
+      .then((json) => {
+        if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+          setCustomerHasActiveAgreement(true);
+          const agreements = json.data;
+          let foundPrice = 0;
+          let foundAgNo = '';
+
+          for (const agr of agreements) {
+            try {
+              const parsed = typeof agr.items === 'string' ? JSON.parse(agr.items) : (agr.items || []);
+              if (Array.isArray(parsed) && parsed.length > 0) {
+                const matched = cementType ? parsed.find((item: any) => {
+                  const name = (item.itemName || item.name || item.description || '').toUpperCase();
+                  const type = (item.cementType || '').toUpperCase();
+                  return (type && type === cementType) || (name && name.includes(cementType));
+                }) || parsed[0] : parsed[0];
+
+                if (matched) {
+                  const price = Number(matched.unitPrice || matched.pricePerUnit || matched.price || matched.amount || 0);
+                  if (price > 0) {
+                    foundPrice = price;
+                    foundAgNo = agr.agreementNo || '';
+                    break;
+                  }
+                }
+              }
+            } catch {}
+          }
+
+          if (foundPrice > 0) {
+            setCustomerUnitPrice(foundPrice);
+            setCustomerAgreementNo(foundAgNo);
+          } else if (selectedPurchase?.unitPrice) {
+            setCustomerUnitPrice(Number(selectedPurchase.unitPrice));
+            setCustomerAgreementNo(agreements[0]?.agreementNo || '');
+          }
         } else {
           setCustomerHasActiveAgreement(false);
+          if (selectedPurchase?.unitPrice) {
+            setCustomerUnitPrice(Number(selectedPurchase.unitPrice));
+          }
         }
       })
-      .catch(() => setCustomerHasActiveAgreement(true))
-      .finally(() => setCheckingAgreement(false));
-  }, [formData.customerId]);
+      .catch(() => {
+        setCustomerHasActiveAgreement(true);
+        if (selectedPurchase?.unitPrice) {
+          setCustomerUnitPrice(Number(selectedPurchase.unitPrice));
+        }
+      })
+      .finally(() => {
+        setCheckingAgreement(false);
+        setLoadingAgreementPrice(false);
+      });
+  }, [formData.customerId, formData.purchaseId, selectedPurchase?.cementType]);
 
   // Check customer credit limit
   useEffect(() => {
@@ -338,7 +393,7 @@ export default function EditCementLiftingPage() {
     const bw = rawBw > 1000 ? rawBw / 100 : rawBw;
     const shortage = Math.max(0, fw - bw);
     const shortagePct = fw > 0 ? (shortage / fw) * 100 : 0;
-    const unitPrice = originalLifting?.customerUnitPrice || originalLifting?.purchase?.unitPrice || selectedPurchase?.unitPrice || 0;
+    const unitPrice = customerUnitPrice || selectedPurchase?.unitPrice || 0;
     const penaltyAmount = shortage > 0 ? shortage * unitPrice : 0;
 
     return {
@@ -626,7 +681,21 @@ export default function EditCementLiftingPage() {
                   ))}
                 </select>
                 {checkingAgreement && (
-                  <p className="text-xs text-blue-600 mt-1">Checking active Cement agreement...</p>
+                  <p className="text-xs text-blue-600 mt-1 flex items-center gap-1">
+                    <Loader className="w-3 h-3 animate-spin" /> Checking active Cement agreement & unit price...
+                  </p>
+                )}
+                {customerUnitPrice > 0 && !checkingAgreement && (
+                  <div className="mt-2 p-2.5 bg-blue-50/80 border border-blue-200 rounded-xl text-xs flex items-center justify-between">
+                    <div>
+                      <span className="font-semibold text-blue-900">Agreement Unit Price:</span>{' '}
+                      <strong className="text-blue-700 text-sm font-bold">ETB {customerUnitPrice.toLocaleString('en-US')} / QT</strong>
+                      {customerAgreementNo && (
+                        <span className="text-slate-500 ml-1.5">({customerAgreementNo})</span>
+                      )}
+                    </div>
+                    <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 text-[10px] font-semibold uppercase">Division: Cement</span>
+                  </div>
                 )}
                 {formData.customerId && !checkingAgreement && !customerHasActiveAgreement && (
                   <p className="text-xs text-amber-600 mt-1 font-medium">
@@ -914,17 +983,22 @@ export default function EditCementLiftingPage() {
           {/* Financial Summary Card */}
           <Card className="rounded-2xl bg-gradient-to-br from-slate-900 to-slate-800 text-white border-0 shadow-lg">
             <CardBody className="p-6 space-y-4">
-              <h3 className="text-sm font-semibold text-slate-300 uppercase tracking-wider">
-                Financial Summary
-              </h3>
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-slate-300 uppercase tracking-wider">
+                  Financial Summary (Division: CEMENT)
+                </h3>
+                {loadingAgreementPrice && (
+                  <span className="text-xs text-blue-400 animate-pulse">Updating Customer Unit Price...</span>
+                )}
+              </div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-center sm:text-left">
                 <div>
-                  <span className="text-xs text-slate-400 block mb-1">Customer Unit Price</span>
+                  <span className="text-xs text-slate-400 block mb-1">Customer Agreement Unit Price</span>
                   <span className="text-lg font-bold text-blue-300">
-                    ETB {Number(originalLifting.customerUnitPrice || selectedPurchase?.unitPrice || 0).toLocaleString('en-US')}
+                    ETB {Number(customerUnitPrice || selectedPurchase?.unitPrice || 0).toLocaleString('en-US')} / QT
                   </span>
-                  {originalLifting.customerAgreementNo && (
-                    <span className="text-[11px] text-slate-400 block">{originalLifting.customerAgreementNo}</span>
+                  {customerAgreementNo && (
+                    <span className="text-[11px] text-slate-400 block mt-0.5">Agreement: {customerAgreementNo}</span>
                   )}
                 </div>
                 <div>
@@ -938,8 +1012,8 @@ export default function EditCementLiftingPage() {
                   <span className="text-2xl font-black text-emerald-400">
                     ETB {(
                       (parseFloat(formData.factoryWeight) || 0) * 
-                      Number(originalLifting.customerUnitPrice || selectedPurchase?.unitPrice || 0)
-                    ).toLocaleString('en-US')}
+                      Number(customerUnitPrice || selectedPurchase?.unitPrice || 0)
+                    ).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </span>
                 </div>
               </div>

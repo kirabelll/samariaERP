@@ -867,6 +867,7 @@ export default function CementLiftingDetailPage() {
                         <p className="text-sm font-semibold text-[#1D1D1F]">ETB {Number(inv.totalAmount).toLocaleString('en-US')}</p>
                         <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
                           inv.status === 'Paid' ? 'bg-[#34C759]/10 text-[#248A3D]' :
+                          
                           inv.status === 'Partial' ? 'bg-[#FF9500]/10 text-[#D97706]' :
                           'bg-[#FF3B30]/10 text-[#D70015]'
                         }`}>{inv.status}</span>

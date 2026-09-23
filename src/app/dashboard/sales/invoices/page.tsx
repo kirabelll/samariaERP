@@ -114,21 +114,6 @@ export default function InvoicesPage() {
       render: (_val, row) => row.customer?.companyName || '-',
     },
     {
-      header: 'Items',
-      accessor: 'items',
-      render: (val) => {
-        try {
-          const items = typeof val === 'string' ? JSON.parse(val) : val;
-          if (Array.isArray(items) && items.length > 0) {
-            return items.map((item: any) => item.name || item.itemName || item.itemId || 'Unknown').join(', ');
-          }
-          return '-';
-        } catch {
-          return '-';
-        }
-      },
-    },
-    {
       header: 'Sales Order',
       accessor: 'salesOrder',
       render: (_val, row) => row.salesOrder?.orderNo || '-',

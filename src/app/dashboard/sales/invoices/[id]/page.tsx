@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { Card, CardHeader, CardBody, Button, Badge } from '@/components/ui';
 
@@ -127,6 +127,78 @@ export default function SalesInvoiceDetailPage() {
       day: 'numeric',
     });
   };
+
+  const parsedItems: any[] = useMemo(() => {
+    if (!data?.items) return [];
+    try {
+      const items = typeof data.items === 'string' ? JSON.parse(data.items) : data.items;
+      return Array.isArray(items) ? items : [];
+    } catch {
+      return [];
+    }
+  }, [data?.items]);
+
+  const { totalQty, totalLineSum, avgUnitPrice, itemSummaries, dominantUnit } = useMemo(() => {
+    let tQty = 0;
+    let tSum = 0;
+    const unitCounts: Record<string, number> = {};
+    const map = new Map<string, {
+      name: string;
+      unit: string;
+      totalQty: number;
+      sumTotal: number;
+      unitPrices: Set<number>;
+      count: number;
+    }>();
+
+    parsedItems.forEach((item, idx) => {
+      const name = item.name || item.itemName || item.item || item.itemId || `Item ${idx + 1}`;
+      const qty = Number(item.qty || item.quantity || 0);
+      const unit = item.unit || (data?.division === 'CEMENT' ? 'tons' : data?.division === 'AGGREGATE' ? 'm³' : 'pcs');
+      const unitPrice = Number(item.unitPrice || item.price || 0);
+      const lineTotal = item.total != null ? Number(item.total) : qty * unitPrice;
+
+      tQty += qty;
+      tSum += lineTotal;
+      unitCounts[unit] = (unitCounts[unit] || 0) + 1;
+
+      const key = `${name}___${unit}`;
+      if (!map.has(key)) {
+        map.set(key, {
+          name,
+          unit,
+          totalQty: 0,
+          sumTotal: 0,
+          unitPrices: new Set(),
+          count: 0,
+        });
+      }
+      const entry = map.get(key)!;
+      entry.totalQty += qty;
+      entry.sumTotal += lineTotal;
+      entry.unitPrices.add(unitPrice);
+      entry.count += 1;
+    });
+
+    const summaries = Array.from(map.values()).map(entry => {
+      const avgPrice = entry.totalQty > 0 ? entry.sumTotal / entry.totalQty : (Array.from(entry.unitPrices)[0] || 0);
+      return {
+        ...entry,
+        avgPrice,
+      };
+    });
+
+    const dominant = Object.keys(unitCounts).sort((a, b) => unitCounts[b] - unitCounts[a])[0] || (data?.division === 'CEMENT' ? 'tons' : data?.division === 'AGGREGATE' ? 'm³' : 'pcs');
+    const avgPrice = tQty > 0 ? tSum / tQty : 0;
+
+    return {
+      totalQty: tQty,
+      totalLineSum: tSum,
+      avgUnitPrice: avgPrice,
+      itemSummaries: summaries,
+      dominantUnit: dominant,
+    };
+  }, [parsedItems, data?.division]);
 
   if (loading) {
     return (
@@ -329,95 +401,268 @@ export default function SalesInvoiceDetailPage() {
             </div>
           </div>
 
-          {/* Invoice Items */}
-          {data.items && (
-            <div className="border-t border-slate-200 pt-8">
-              <h3 className="text-lg font-semibold text-slate-900 mb-4">Invoice Line Items</h3>
-              <div className="overflow-x-auto">
-                <table className="w-full border-collapse">
-                  <thead>
-                    <tr className="bg-slate-100 border-b border-slate-300">
-                      <th className="px-4 py-2.5 text-left text-sm font-semibold text-slate-900">#</th>
-                      <th className="px-4 py-2.5 text-left text-sm font-semibold text-slate-900">Item Description</th>
-                      <th className="px-4 py-2.5 text-right text-sm font-semibold text-slate-900">Quantity</th>
-                      <th className="px-4 py-2.5 text-right text-sm font-semibold text-slate-900">Unit</th>
-                      <th className="px-4 py-2.5 text-right text-sm font-semibold text-slate-900">Unit Price (ETB)</th>
-                      <th className="px-4 py-2.5 text-right text-sm font-semibold text-slate-900">Line Total (ETB)</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(() => {
-                      try {
-                        const items = typeof data.items === 'string' ? JSON.parse(data.items) : data.items;
-                        if (!Array.isArray(items) || items.length === 0) {
-                          return (
-                            <tr>
-                              <td colSpan={6} className="px-4 py-4 text-center text-slate-400">
-                                No line items found.
-                              </td>
-                            </tr>
-                          );
-                        }
-                        return items.map((item: any, idx: number) => {
-                          const itemName = item.name || item.itemName || item.item || item.itemId || `Item ${idx + 1}`;
-                          const qty = Number(item.qty || item.quantity || 0);
-                          const unit = item.unit || (data.division === 'CEMENT' ? 'tons' : data.division === 'AGGREGATE' ? 'm³' : 'pcs');
-                          const unitPrice = Number(item.unitPrice || item.price || 0);
-                          const total = item.total != null ? Number(item.total) : qty * unitPrice;
+          {/* Invoice Items & Summary */}
+          {parsedItems.length > 0 && (
+            <div className="border-t border-slate-200 pt-8 space-y-6">
+              {/* Header */}
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                <div>
+                  <h3 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
+                    <span>Items & Quantity Summary</span>
+                    <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-800">
+                      {parsedItems.length} Line {parsedItems.length === 1 ? 'Item' : 'Items'}
+                    </span>
+                  </h3>
+                  <p className="text-sm text-slate-600 mt-0.5">
+                    Overview of invoiced items, total quantities, unit prices, and line totals
+                  </p>
+                </div>
+              </div>
 
+              {/* Items Summary KPI Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200/80 rounded-xl p-4 shadow-sm">
+                  <div className="flex items-center justify-between text-blue-700 text-xs font-semibold uppercase tracking-wider mb-1">
+                    <span>Total Quantity</span>
+                    <span className="px-2 py-0.5 rounded bg-blue-100 text-blue-800 text-[10px] font-mono lowercase">
+                      {dominantUnit}
+                    </span>
+                  </div>
+                  <div className="text-2xl font-bold text-blue-950 mt-1">
+                    {totalQty.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 3 })}
+                    <span className="text-sm font-medium text-blue-700 ml-1.5">{dominantUnit}</span>
+                  </div>
+                  <div className="text-xs text-blue-600/80 mt-1.5">
+                    Across {parsedItems.length} line {parsedItems.length === 1 ? 'entry' : 'entries'}
+                  </div>
+                </div>
+
+                <div className="bg-gradient-to-br from-purple-50 to-pink-50 border border-purple-200/80 rounded-xl p-4 shadow-sm">
+                  <div className="text-purple-700 text-xs font-semibold uppercase tracking-wider mb-1">
+                    {itemSummaries.length === 1 && itemSummaries[0]?.unitPrices.size === 1 ? 'Unit Price' : 'Avg Unit Price'}
+                  </div>
+                  <div className="text-2xl font-bold text-purple-950 mt-1 font-mono">
+                    {formatCurrency(avgUnitPrice)}
+                    <span className="text-sm font-medium text-purple-700 ml-1.5">ETB</span>
+                  </div>
+                  <div className="text-xs text-purple-600/80 mt-1.5">
+                    {itemSummaries.length === 1 && itemSummaries[0]?.unitPrices.size === 1 ? 'Fixed unit rate' : 'Weighted average unit rate'}
+                  </div>
+                </div>
+
+                <div className="bg-gradient-to-br from-emerald-50 to-teal-50 border border-emerald-200/80 rounded-xl p-4 shadow-sm">
+                  <div className="text-emerald-700 text-xs font-semibold uppercase tracking-wider mb-1">
+                    Sum Line Total
+                  </div>
+                  <div className="text-2xl font-bold text-emerald-950 mt-1 font-mono">
+                    {formatCurrency(totalLineSum)}
+                    <span className="text-sm font-medium text-emerald-700 ml-1.5">ETB</span>
+                  </div>
+                  <div className="text-xs text-emerald-600/80 mt-1.5">
+                    Total before tax & deductions
+                  </div>
+                </div>
+
+                <div className="bg-gradient-to-br from-slate-50 to-slate-100 border border-slate-200/80 rounded-xl p-4 shadow-sm">
+                  <div className="text-slate-600 text-xs font-semibold uppercase tracking-wider mb-1">
+                    Item Types
+                  </div>
+                  <div className="text-2xl font-bold text-slate-900 mt-1">
+                    {itemSummaries.length}
+                    <span className="text-sm font-medium text-slate-600 ml-1.5">
+                      {itemSummaries.length === 1 ? 'Product' : 'Products'}
+                    </span>
+                  </div>
+                  <div className="text-xs text-slate-500 mt-1.5">
+                    {parsedItems.length} total invoice {parsedItems.length === 1 ? 'row' : 'rows'}
+                  </div>
+                </div>
+              </div>
+
+              {/* Grouped Items Summary Breakdown */}
+              {itemSummaries.length > 0 && (
+                <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+                  <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+                    <span className="font-semibold text-sm text-slate-800">
+                      Item Summary Breakdown
+                    </span>
+                    <span className="text-xs text-slate-500">
+                      Aggregated by product
+                    </span>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="bg-slate-100/70 border-b border-slate-200 text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                          <th className="px-4 py-3 text-left">Item Description</th>
+                          <th className="px-4 py-3 text-center">Lines</th>
+                          <th className="px-4 py-3 text-right">Total Quantity</th>
+                          <th className="px-4 py-3 text-right">Unit</th>
+                          <th className="px-4 py-3 text-right">Unit Price (ETB)</th>
+                          <th className="px-4 py-3 text-right">Sum Line Total (ETB)</th>
+                          <th className="px-4 py-3 text-right">Share</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {itemSummaries.map((summary, idx) => {
+                          const percent = totalLineSum > 0 ? (summary.sumTotal / totalLineSum) * 100 : 0;
                           return (
-                            <tr key={idx} className="border-b border-slate-200 hover:bg-slate-50">
-                              <td className="px-4 py-3 text-slate-400 font-mono text-xs">{idx + 1}</td>
-                              <td className="px-4 py-3 font-medium text-slate-900">
-                                <div>
-                                  <span>{itemName}</span>
-                                  {item.batchNo && (
-                                    <span className="ml-2 px-2 py-0.5 bg-purple-50 text-purple-700 text-xs font-semibold rounded border border-purple-200">
-                                      Batch: {item.batchNo}
-                                    </span>
-                                  )}
-                                  {item.expiryDate && (
-                                    <span className="ml-2 text-xs text-slate-500">
-                                      (Exp: {new Date(item.expiryDate).toLocaleDateString()})
-                                    </span>
-                                  )}
-                                  {item.dispatchNo && (
-                                    <span className="ml-2 text-xs text-blue-600 font-medium">
-                                      [Dispatch: {item.dispatchNo}]
-                                    </span>
-                                  )}
-                                  {item.liftingNo && (
-                                    <span className="ml-2 text-xs text-purple-600 font-medium">
-                                      [Lifting: {item.liftingNo}]
-                                    </span>
-                                  )}
+                            <tr key={idx} className="hover:bg-slate-50/60 transition-colors">
+                              <td className="px-4 py-3.5 font-medium text-slate-900">
+                                {summary.name}
+                              </td>
+                              <td className="px-4 py-3.5 text-center text-slate-600 text-xs">
+                                <span className="px-2 py-0.5 rounded-full bg-slate-100 font-mono">
+                                  {summary.count}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3.5 text-right font-semibold text-slate-900 font-mono">
+                                {summary.totalQty.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 3 })}
+                              </td>
+                              <td className="px-4 py-3.5 text-right text-slate-600">
+                                {summary.unit}
+                              </td>
+                              <td className="px-4 py-3.5 text-right font-mono text-slate-900">
+                                {summary.unitPrices.size === 1
+                                  ? formatCurrency(Array.from(summary.unitPrices)[0])
+                                  : `${formatCurrency(summary.avgPrice)} (avg)`}
+                              </td>
+                              <td className="px-4 py-3.5 text-right font-bold font-mono text-slate-900">
+                                {formatCurrency(summary.sumTotal)}
+                              </td>
+                              <td className="px-4 py-3.5 text-right text-xs font-semibold text-slate-500">
+                                <div className="flex items-center justify-end gap-1.5">
+                                  <div className="w-12 bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                                    <div
+                                      className="bg-blue-600 h-full rounded-full"
+                                      style={{ width: `${Math.min(100, Math.max(0, percent))}%` }}
+                                    />
+                                  </div>
+                                  <span>{percent.toFixed(1)}%</span>
                                 </div>
                               </td>
-                              <td className="px-4 py-3 text-right text-slate-900 font-semibold">
-                                {qty.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 3 })}
-                              </td>
-                              <td className="px-4 py-3 text-right text-slate-600">{unit}</td>
-                              <td className="px-4 py-3 text-right text-slate-900 font-mono">
-                                {formatCurrency(unitPrice)}
-                              </td>
-                              <td className="px-4 py-3 text-right text-slate-900 font-bold font-mono">
-                                {formatCurrency(total)}
-                              </td>
                             </tr>
                           );
-                        });
-                      } catch {
+                        })}
+                      </tbody>
+                      <tfoot>
+                        <tr className="bg-slate-50 border-t-2 border-slate-300 font-semibold text-slate-900">
+                          <td className="px-4 py-3 font-bold" colSpan={2}>
+                            Total
+                          </td>
+                          <td className="px-4 py-3 text-right font-bold font-mono text-blue-900">
+                            {totalQty.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 3 })}
+                          </td>
+                          <td className="px-4 py-3 text-right text-slate-600">
+                            {dominantUnit}
+                          </td>
+                          <td className="px-4 py-3 text-right font-mono text-slate-700">
+                            {formatCurrency(avgUnitPrice)}
+                          </td>
+                          <td className="px-4 py-3 text-right font-bold font-mono text-emerald-700">
+                            {formatCurrency(totalLineSum)}
+                          </td>
+                          <td className="px-4 py-3 text-right font-bold text-xs text-slate-700">
+                            100.0%
+                          </td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* Detailed Line Items Table */}
+              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+                <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+                  <span className="font-semibold text-sm text-slate-800">
+                    Detailed Line Items
+                  </span>
+                  <span className="text-xs text-slate-500">
+                    All individual item rows & tickets
+                  </span>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse text-sm">
+                    <thead>
+                      <tr className="bg-slate-100/70 border-b border-slate-200 text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                        <th className="px-4 py-3 text-left">#</th>
+                        <th className="px-4 py-3 text-left">Item Description</th>
+                        <th className="px-4 py-3 text-right">Quantity</th>
+                        <th className="px-4 py-3 text-right">Unit</th>
+                        <th className="px-4 py-3 text-right">Unit Price (ETB)</th>
+                        <th className="px-4 py-3 text-right">Line Total (ETB)</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {parsedItems.map((item: any, idx: number) => {
+                        const itemName = item.name || item.itemName || item.item || item.itemId || `Item ${idx + 1}`;
+                        const qty = Number(item.qty || item.quantity || 0);
+                        const unit = item.unit || (data.division === 'CEMENT' ? 'tons' : data.division === 'AGGREGATE' ? 'm³' : 'pcs');
+                        const unitPrice = Number(item.unitPrice || item.price || 0);
+                        const total = item.total != null ? Number(item.total) : qty * unitPrice;
+
                         return (
-                          <tr>
-                            <td colSpan={6} className="px-4 py-3 text-slate-600">
-                              Unable to parse items
+                          <tr key={idx} className="hover:bg-slate-50/60 transition-colors">
+                            <td className="px-4 py-3 text-slate-400 font-mono text-xs">{idx + 1}</td>
+                            <td className="px-4 py-3 font-medium text-slate-900">
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <span>{itemName}</span>
+                                {item.batchNo && (
+                                  <span className="px-2 py-0.5 bg-purple-50 text-purple-700 text-xs font-semibold rounded border border-purple-200">
+                                    Batch: {item.batchNo}
+                                  </span>
+                                )}
+                                {item.expiryDate && (
+                                  <span className="text-xs text-slate-500">
+                                    (Exp: {new Date(item.expiryDate).toLocaleDateString()})
+                                  </span>
+                                )}
+                                {item.dispatchNo && (
+                                  <span className="text-xs text-blue-600 font-medium">
+                                    [Dispatch: {item.dispatchNo}]
+                                  </span>
+                                )}
+                                {item.liftingNo && (
+                                  <span className="text-xs text-purple-600 font-medium">
+                                    [Lifting: {item.liftingNo}]
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 text-right text-slate-900 font-semibold font-mono">
+                              {qty.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 3 })}
+                            </td>
+                            <td className="px-4 py-3 text-right text-slate-600">{unit}</td>
+                            <td className="px-4 py-3 text-right text-slate-900 font-mono">
+                              {formatCurrency(unitPrice)}
+                            </td>
+                            <td className="px-4 py-3 text-right text-slate-900 font-bold font-mono">
+                              {formatCurrency(total)}
                             </td>
                           </tr>
                         );
-                      }
-                    })()}
-                  </tbody>
-                </table>
+                      })}
+                    </tbody>
+                    <tfoot>
+                      <tr className="bg-slate-50 border-t-2 border-slate-300 font-semibold">
+                        <td className="px-4 py-3.5 text-slate-900 font-bold" colSpan={2}>
+                          Total ({parsedItems.length} {parsedItems.length === 1 ? 'Line Item' : 'Line Items'})
+                        </td>
+                        <td className="px-4 py-3.5 text-right text-blue-900 font-bold font-mono">
+                          {totalQty.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 3 })}
+                        </td>
+                        <td className="px-4 py-3.5 text-right text-slate-600">{dominantUnit}</td>
+                        <td className="px-4 py-3.5 text-right text-slate-700 font-mono font-bold">
+                          {formatCurrency(avgUnitPrice)}
+                        </td>
+                        <td className="px-4 py-3.5 text-right text-emerald-700 font-bold font-mono text-base">
+                          {formatCurrency(totalLineSum)} ETB
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
               </div>
             </div>
           )}

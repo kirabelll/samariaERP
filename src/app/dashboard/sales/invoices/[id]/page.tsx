@@ -152,8 +152,53 @@ export default function SalesInvoiceDetailPage() {
       items: any[];
     }>();
 
+    const normalizeAggregateItemName = (rawName: string, item: any): string => {
+      // If item has linked dispatch with product name
+      if (data?.dispatches && Array.isArray(data.dispatches)) {
+        const found = data.dispatches.find((d: any) =>
+          (item.deliveryId && d.id === item.deliveryId) ||
+          (item.dispatchId && d.id === item.dispatchId) ||
+          (item.dispatchNo && d.dispatchNo === item.dispatchNo) ||
+          (item.padNumber && d.padNumber === item.padNumber) ||
+          (rawName && d.dispatchNo && rawName.includes(d.dispatchNo)) ||
+          (rawName && d.padNumber && rawName.includes(d.padNumber))
+        );
+        if (found?.item?.name) {
+          rawName = found.item.name;
+        }
+      }
+
+      const s = String(rawName || '').trim();
+      if (!s) return 'Aggregate Item';
+
+      // Match Aggregate 00 / 0-0
+      if (/aggregate[\s-_]*0?0\b/i.test(s) || /\b0-?0\b/.test(s)) return 'Aggregate 00';
+      // Match Aggregate 02 / 0-32 / 32 / 02
+      if (/aggregate[\s-_]*0?2\b/i.test(s) || /\b0-?32\b/.test(s) || /\b02\s*\(?32\)?\b/i.test(s) || (/\b32\b/i.test(s) && /agg/i.test(s))) return 'Aggregate 02 (0-32)';
+      // Match Aggregate 01 / 0-1
+      if (/aggregate[\s-_]*0?1\b/i.test(s) || /\b0-?1\b/.test(s)) return 'Aggregate 01';
+      // Match Aggregate 03
+      if (/aggregate[\s-_]*0?3\b/i.test(s) || /\b0-?3\b/.test(s)) return 'Aggregate 03';
+      // Match Aggregate 04
+      if (/aggregate[\s-_]*0?4\b/i.test(s) || /\b0-?4\b/.test(s)) return 'Aggregate 04';
+      // Match Aggregate 05
+      if (/aggregate[\s-_]*0?5\b/i.test(s) || /\b0-?5\b/.test(s)) return 'Aggregate 05';
+      if (/sub[\s-_]*base/i.test(s)) return 'Sub-Base';
+
+      if (s.includes('—')) {
+        const parts = s.split('—');
+        const candidate = parts[parts.length - 1].trim();
+        if (candidate && !candidate.startsWith('cm') && !candidate.startsWith('DISP')) {
+          return candidate;
+        }
+      }
+
+      return s;
+    };
+
     parsedItems.forEach((item, idx) => {
-      const name = item.name || item.itemName || item.item || item.itemId || `Item ${idx + 1}`;
+      const rawName = item.name || item.itemName || item.item || item.itemId || `Item ${idx + 1}`;
+      const name = normalizeAggregateItemName(rawName, item);
       const qty = Number(item.qty || item.quantity || 0);
       const unit = item.unit || (data?.division === 'CEMENT' ? 'tons' : data?.division === 'AGGREGATE' ? 'm³' : 'pcs');
       const unitPrice = Number(item.unitPrice || item.price || 0);
@@ -183,7 +228,8 @@ export default function SalesInvoiceDetailPage() {
       entry.items.push({
         ...item,
         resolvedIndex: idx + 1,
-        resolvedName: name,
+        resolvedName: rawName,
+        resolvedItemType: name,
         resolvedQty: qty,
         resolvedUnit: unit,
         resolvedUnitPrice: unitPrice,
@@ -209,7 +255,7 @@ export default function SalesInvoiceDetailPage() {
       itemSummaries: summaries,
       dominantUnit: dominant,
     };
-  }, [parsedItems, data?.division]);
+  }, [parsedItems, data?.division, data?.dispatches]);
 
   if (loading) {
     return (

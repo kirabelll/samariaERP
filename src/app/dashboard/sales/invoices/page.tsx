@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
+import { Download } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
 import { Card, CardBody, Table, Badge, Button, Input, Select } from '@/components/ui';
 import type { ColumnDef } from '@/components/ui';
@@ -28,6 +29,7 @@ export default function InvoicesPage() {
   const [statusFilter, setStatusFilter] = useState('');
   const [divisionFilter, setDivisionFilter] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
+  const [isExporting, setIsExporting] = useState(false);
   const pageSize = 10;
 
   const { data, pagination, loading, error, refetch } = useApiList<SalesInvoice>('/api/sales/invoices', {
@@ -36,6 +38,120 @@ export default function InvoicesPage() {
     search: searchTerm,
     filters: { status: statusFilter, division: divisionFilter },
   });
+
+  const exportToExcel = async () => {
+    try {
+      setIsExporting(true);
+      const params = new URLSearchParams({
+        page: '1',
+        limit: '10000',
+      });
+
+      if (searchTerm) params.append('search', searchTerm);
+      if (statusFilter) params.append('status', statusFilter);
+      if (divisionFilter) params.append('division', divisionFilter);
+
+      const res = await fetch(`/api/sales/invoices?${params.toString()}`);
+      const json = await res.json();
+      const records: any[] = json.data || [];
+
+      if (records.length === 0) {
+        alert('No sales invoices found to export.');
+        return;
+      }
+
+      const headers = [
+        'Invoice No',
+        'FS No',
+        'Division',
+        'Customer Name',
+        'Customer TIN',
+        'Sales Order / Agreement',
+        'Items Summary',
+        'Invoice Date',
+        'Due Date',
+        'Subtotal (ETB)',
+        'VAT Amount (ETB)',
+        'Withholding (ETB)',
+        'Total Amount (ETB)',
+        'Paid Amount (ETB)',
+        'Remaining Balance (ETB)',
+        'Status',
+      ];
+
+      const rows = records.map((inv: any) => {
+        const invDate = inv.invoiceDate ? new Date(inv.invoiceDate).toLocaleDateString() : '';
+        const dueDate = inv.dueDate ? new Date(inv.dueDate).toLocaleDateString() : '';
+
+        let itemsSummary = '';
+        if (inv.items) {
+          try {
+            const parsed = typeof inv.items === 'string' ? JSON.parse(inv.items) : inv.items;
+            if (Array.isArray(parsed)) {
+              itemsSummary = parsed
+                .map((it: any) => `${it.item || it.name || 'Item'} (Qty: ${it.qty || 1}, UnitPrice: ${it.unitPrice || 0})`)
+                .join('; ');
+            }
+          } catch {
+            itemsSummary = '';
+          }
+        }
+
+        const subtotal =
+          inv.subtotal != null
+            ? Number(inv.subtotal).toFixed(2)
+            : (Number(inv.totalAmount || 0) - Number(inv.vatAmount || 0)).toFixed(2);
+        const vat = inv.vatAmount != null ? Number(inv.vatAmount).toFixed(2) : '0.00';
+        const withholding = inv.withholding != null ? Number(inv.withholding).toFixed(2) : '0.00';
+        const total = inv.totalAmount != null ? Number(inv.totalAmount).toFixed(2) : '0.00';
+        const paid =
+          inv.totalPaid != null
+            ? Number(inv.totalPaid).toFixed(2)
+            : inv.paidAmount != null
+            ? Number(inv.paidAmount).toFixed(2)
+            : '0.00';
+        const remaining =
+          inv.remainingAmount != null
+            ? Number(inv.remainingAmount).toFixed(2)
+            : (Number(total) - Number(paid)).toFixed(2);
+
+        return [
+          `"${(inv.invoiceNo || '').replace(/"/g, '""')}"`,
+          `"${(inv.fsNo || '').replace(/"/g, '""')}"`,
+          `"${(inv.division || '').replace(/"/g, '""')}"`,
+          `"${(inv.customer?.companyName || '').replace(/"/g, '""')}"`,
+          `"${(inv.customer?.tin || '').replace(/"/g, '""')}"`,
+          `"${(inv.salesOrder?.orderNo || '').replace(/"/g, '""')}"`,
+          `"${itemsSummary.replace(/"/g, '""')}"`,
+          `"${invDate}"`,
+          `"${dueDate}"`,
+          subtotal,
+          vat,
+          withholding,
+          total,
+          paid,
+          remaining,
+          `"${(inv.status || '').replace(/"/g, '""')}"`,
+        ];
+      });
+
+      const csvContent = '\uFEFF' + [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.setAttribute('href', url);
+      const today = new Date().toISOString().split('T')[0];
+      link.setAttribute('download', `Sales_Invoices_${today}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (err: any) {
+      alert('Failed to export sales invoices: ' + (err.message || 'Unknown error'));
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
   const handleDeleteInvoice = async (invoice: SalesInvoice) => {
     const isInactive = invoice.status === 'Inactive';
@@ -169,9 +285,21 @@ export default function InvoicesPage() {
     <div className="space-y-4 sm:space-y-6">
       <div className="flex flex-wrap gap-3 items-center justify-between">
         <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900">Sales Invoices</h1>
-        <Link href="/dashboard/sales/invoices/new">
-          <Button variant="primary" size="lg">+ New Invoice</Button>
-        </Link>
+        <div className="flex items-center gap-3">
+          <Button
+            variant="outline"
+            size="lg"
+            onClick={exportToExcel}
+            disabled={isExporting || loading}
+            className="flex items-center gap-2 border-emerald-600 text-emerald-700 hover:bg-emerald-50 hover:border-emerald-700 font-medium"
+          >
+            <Download className="w-4 h-4 text-emerald-600" />
+            <span>{isExporting ? 'Exporting...' : 'Export to Excel'}</span>
+          </Button>
+          <Link href="/dashboard/sales/invoices/new">
+            <Button variant="primary" size="lg">+ New Invoice</Button>
+          </Link>
+        </div>
       </div>
 
       <Card>

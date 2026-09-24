@@ -597,11 +597,42 @@ export default function NewTransporterAgreementPage() {
               )}
             </div>
 
-            {selectedCustomerAgreementId && agreementDetails.offloadingSite && (
-              <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-3 text-sm text-green-800">
-                <strong>Offloading Site:</strong> {agreementDetails.offloadingSite} (from customer agreement)
-              </div>
-            )}
+            {selectedCustomerAgreementId && (() => {
+              const ca = customerAgreements.find((a) => a.id === selectedCustomerAgreementId);
+              if (!ca) return null;
+              const fromDate = ca.validFrom ? new Date(ca.validFrom).toLocaleDateString() : 'N/A';
+              const toDate = ca.validTo ? new Date(ca.validTo).toLocaleDateString() : 'N/A';
+              const isExpired = ca.validTo && new Date(ca.validTo) < new Date();
+              return (
+                <div className="bg-blue-50/80 border border-blue-200 rounded-lg px-4 py-3 text-sm space-y-1.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="font-bold text-blue-950">
+                      Agreement: {ca.agreementNo}
+                    </span>
+                    <span
+                      className={`px-2 py-0.5 rounded text-xs font-semibold ${
+                        isExpired
+                          ? 'bg-red-100 text-red-700 border border-red-200'
+                          : 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                      }`}
+                    >
+                      {isExpired ? 'Expired' : ca.status || 'Active'}
+                    </span>
+                  </div>
+                  <div className="text-xs text-slate-700 font-medium flex items-center gap-1.5">
+                    <span>Valid Date:</span>
+                    <strong className="text-blue-900">{fromDate}</strong>
+                    <span className="text-slate-400">&rarr;</span>
+                    <strong className="text-blue-900">{toDate}</strong>
+                  </div>
+                  {agreementDetails.offloadingSite && (
+                    <div className="text-xs text-green-800 font-medium pt-1 border-t border-blue-100">
+                      <strong>Offloading Site:</strong> {agreementDetails.offloadingSite} (from customer agreement)
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </CardBody>
         </Card>
 

@@ -178,7 +178,7 @@ export default function NewInvoicePage() {
       setApplyWithholding(false);
     }
 
-    // Always fetch customer sales agreements when partyType is 'Customer' to get customer unit prices
+    // Fetch agreements when partyType is Customer or Supplier
     if (partyType === 'Customer') {
       const fetchAgreements = async () => {
         setLoadingAgreements(true);
@@ -211,6 +211,30 @@ export default function NewInvoicePage() {
         }
       };
       fetchAgreements();
+    } else if (partyType === 'Supplier') {
+      const fetchSupplierAgreements = async () => {
+        setLoadingAgreements(true);
+        try {
+          const res = await fetch(`/api/supplier-agreements?supplierId=${partyId}&limit=100`);
+          const data = await res.json();
+          if (data.success) {
+            const activeAgreements = (data.data || []).filter(
+              (a: any) =>
+                a.status === 'Draft' ||
+                a.status === 'Active' ||
+                a.status === 'Approved' ||
+                a.status === 'Approved_Level_1' ||
+                a.status === 'Approved_Level_2'
+            );
+            setAgreements(activeAgreements);
+          }
+        } catch (err) {
+          console.error('Failed to fetch supplier agreements:', err);
+        } finally {
+          setLoadingAgreements(false);
+        }
+      };
+      fetchSupplierAgreements();
     } else {
       setAgreements([]);
     }
@@ -1562,29 +1586,94 @@ export default function NewInvoicePage() {
             </div>
           )}
 
-          {/* Party Info Panel */}
+          {/* Party & Agreement Info Panel */}
           {selectedParty && (
-            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+            <div className="bg-gradient-to-r from-blue-50/80 to-indigo-50/40 border border-blue-200 rounded-xl p-4 space-y-3">
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
                 <div>
-                  <span className="text-blue-600 font-medium block">{partyType}</span>
-                  <span className="text-slate-900 font-semibold">{selectedParty.companyName}</span>
+                  <span className="text-blue-600 font-medium block text-xs">{partyType}</span>
+                  <span className="text-slate-900 font-bold">{selectedParty.companyName}</span>
                 </div>
                 <div>
-                  <span className="text-blue-600 font-medium block">TIN</span>
+                  <span className="text-blue-600 font-medium block text-xs">TIN</span>
                   <span className="text-slate-900">{selectedParty.tin || '—'}</span>
                 </div>
                 <div>
-                  <span className="text-blue-600 font-medium block">Withholding</span>
+                  <span className="text-blue-600 font-medium block text-xs">Withholding</span>
                   <span className="text-slate-900">
                     {selectedParty.withholding ? `Yes (${selectedParty.withholdRate || 2}%)` : 'No'}
                   </span>
                 </div>
                 <div>
-                  <span className="text-blue-600 font-medium block">Division</span>
+                  <span className="text-blue-600 font-medium block text-xs">Division</span>
                   <span className="text-slate-900 font-semibold">{division}</span>
                 </div>
               </div>
+
+              {/* Agreement Validity Details */}
+              {loadingAgreements ? (
+                <div className="pt-2 border-t border-blue-200/60 flex items-center gap-2 text-xs text-blue-700">
+                  <span className="inline-block w-3.5 h-3.5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                  <span>Loading agreements &amp; validity dates...</span>
+                </div>
+              ) : agreements.length > 0 ? (
+                <div className="pt-2.5 border-t border-blue-200/60 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-blue-900 uppercase tracking-wide">
+                      {partyType === 'Customer' ? 'Customer Agreement(s)' : 'Supplier Agreement(s)'} &amp; Validity
+                    </span>
+                    <span className="text-[11px] text-slate-500 font-medium">
+                      {agreements.length} agreement{agreements.length > 1 ? 's' : ''} found
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                    {agreements.map((a: any) => {
+                      const fromDate = a.validFrom ? new Date(a.validFrom).toLocaleDateString() : 'N/A';
+                      const toDate = a.validTo ? new Date(a.validTo).toLocaleDateString() : 'N/A';
+                      const isExpired = a.validTo && new Date(a.validTo) < new Date();
+                      return (
+                        <div
+                          key={a.id}
+                          className={`rounded-xl border p-2.5 text-xs flex items-center justify-between gap-2 transition-all ${
+                            a.id === agreementId
+                              ? 'bg-blue-100/90 border-blue-400 font-semibold text-blue-950 shadow-sm'
+                              : 'bg-white border-blue-100 text-slate-800'
+                          }`}
+                        >
+                          <div className="space-y-0.5">
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-bold text-slate-900">{a.agreementNo || 'Agreement'}</span>
+                              <span
+                                className={`px-1.5 py-0.2 rounded text-[10px] font-semibold ${
+                                  isExpired
+                                    ? 'bg-red-100 text-red-700 border border-red-200'
+                                    : 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                                }`}
+                              >
+                                {isExpired ? 'Expired' : a.status || 'Active'}
+                              </span>
+                            </div>
+                            <div className="text-slate-600 font-medium flex items-center gap-1.5 text-[11px]">
+                              <span>Valid:</span>
+                              <span className="text-blue-900 font-semibold">{fromDate}</span>
+                              <span className="text-slate-400">&rarr;</span>
+                              <span className="text-blue-900 font-semibold">{toDate}</span>
+                            </div>
+                          </div>
+                          {a.totalAmount != null && Number(a.totalAmount) > 0 && (
+                            <div className="text-right">
+                              <span className="text-[10px] text-slate-400 block">Amount</span>
+                              <span className="font-bold text-slate-900">
+                                ETB {Number(a.totalAmount).toLocaleString('en-US')}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
             </div>
           )}
         </CardBody>

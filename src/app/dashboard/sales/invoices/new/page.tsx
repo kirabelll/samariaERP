@@ -518,10 +518,14 @@ export default function NewInvoicePage() {
               return Number(exactItem.unitPrice);
             }
 
-            // 2. Substring match on itemName / name
-            const nameItem = parsedItems.find((i) => {
-              const itemName = String(i.itemName || i.name || '').toLowerCase();
-              return itemName && (itemName.includes(key) || key.includes(itemName));
+            // 2. Match on cementType / type or Substring match on itemName / name
+            const nameItem = parsedItems.find((i: any) => {
+              const itemName = String(i.itemName || i.name || i.description || '').toLowerCase();
+              const rawType = String(i.cementType || i.type || '').toLowerCase();
+              return (
+                (rawType && (rawType === key || rawType.includes(key) || key.includes(rawType))) ||
+                (itemName && (itemName.includes(key) || key.includes(itemName)))
+              );
             });
             if (nameItem && Number(nameItem.unitPrice) > 0) {
               return Number(nameItem.unitPrice);
@@ -537,6 +541,76 @@ export default function NewInvoicePage() {
     }
 
     return fallbackPrice;
+  };
+
+  // Helper to resolve Unit Price / Customer Agreement Price from selected lifting or customer agreement
+  const getLiftingCustomerUnitPrice = (
+    lifting: any,
+    activeAgreements?: SalesAgreement[],
+    currentPartyType?: string
+  ): number => {
+    if (!lifting) return 0;
+    const isSupplier = (currentPartyType || partyType) === 'Supplier';
+
+    if (isSupplier) {
+      if (lifting.factoryPurchaseCost != null && Number(lifting.factoryPurchaseCost) > 0) {
+        return Number(lifting.factoryPurchaseCost);
+      }
+      if (lifting.purchase?.unitPrice != null && Number(lifting.purchase?.unitPrice) > 0) {
+        return Number(lifting.purchase?.unitPrice);
+      }
+      if (lifting.factoryUnitPrice != null && Number(lifting.factoryUnitPrice) > 0) {
+        return Number(lifting.factoryUnitPrice);
+      }
+      if (lifting.unitPrice != null && Number(lifting.unitPrice) > 0) {
+        return Number(lifting.unitPrice);
+      }
+      return 0;
+    }
+
+    // Party is Customer:
+    // 1. Prioritize Customer Agreement Price resolved on the lifting from backend API
+    if (lifting.customerAgreementPrice != null && Number(lifting.customerAgreementPrice) > 0) {
+      return Number(lifting.customerAgreementPrice);
+    }
+    if (lifting.customerUnitPrice != null && Number(lifting.customerUnitPrice) > 0) {
+      return Number(lifting.customerUnitPrice);
+    }
+    if (lifting.customerPrice != null && Number(lifting.customerPrice) > 0) {
+      return Number(lifting.customerPrice);
+    }
+    if (lifting.salePrice != null && Number(lifting.salePrice) > 0) {
+      return Number(lifting.salePrice);
+    }
+
+    // 2. Check metadata in registeredBy / notes if present
+    if (lifting.registeredBy && typeof lifting.registeredBy === 'string' && lifting.registeredBy.startsWith('{')) {
+      try {
+        const meta = JSON.parse(lifting.registeredBy);
+        if (meta.customerAgreementPrice && Number(meta.customerAgreementPrice) > 0) return Number(meta.customerAgreementPrice);
+        if (meta.customerUnitPrice && Number(meta.customerUnitPrice) > 0) return Number(meta.customerUnitPrice);
+        if (meta.customerPrice && Number(meta.customerPrice) > 0) return Number(meta.customerPrice);
+        if (meta.unitPrice && Number(meta.unitPrice) > 0) return Number(meta.unitPrice);
+      } catch {}
+    }
+
+    // 3. Resolve from loaded active customer agreements
+    const ags = activeAgreements || agreements;
+    if (ags && ags.length > 0) {
+      const cementTypeKey = lifting.cementType || lifting.purchase?.cementType || lifting.itemName || lifting.itemId;
+      const agPrice = getCustomerAgreementUnitPrice(ags, cementTypeKey, 0);
+      if (agPrice > 0) return agPrice;
+    }
+
+    // 4. Fallback to general unitPrice or purchase unitPrice
+    if (lifting.unitPrice != null && Number(lifting.unitPrice) > 0) {
+      return Number(lifting.unitPrice);
+    }
+    if (lifting.purchase?.unitPrice != null && Number(lifting.purchase?.unitPrice) > 0) {
+      return Number(lifting.purchase?.unitPrice);
+    }
+
+    return 0;
   };
 
   // Helper to resolve Customer Sale Price from selected dispatch or customer agreement
@@ -695,7 +769,7 @@ export default function NewInvoicePage() {
       // Group liftings by resolved item category / cementType
       const groupedMap = new Map<string, typeof selected>();
       selected.forEach((l) => {
-        const resolvedName = resolveItemName(l.cementType || l.itemName || l.itemId, 'Cement');
+        const resolvedName = resolveItemName(l.cementType || l.purchase?.cementType || l.itemName || l.itemId, 'Cement');
         const catKey = resolvedName.trim().toLowerCase();
         const existing = groupedMap.get(catKey) || [];
         groupedMap.set(catKey, [...existing, l]);
@@ -703,18 +777,12 @@ export default function NewInvoicePage() {
 
       const invoiceItems: InvoiceItem[] = Array.from(groupedMap.values()).map((group, index) => {
         const first = group[0];
-        const cementType = resolveItemName(first.cementType || first.itemName || first.itemId, 'Cement');
+        const cementType = resolveItemName(first.cementType || first.purchase?.cementType || first.itemName || first.itemId, 'Cement');
         const factory = first.purchase?.factory?.name || first.factory?.name || 'Factory';
-        const totalQty = group.reduce((sum, l) => sum + Number(l.factoryWeight || l.quantityTons || 1), 0);
+        const totalQty = group.reduce((sum, l) => sum + Number(l.buyerWeighbridgeQty || l.factoryWeight || l.quantityTons || 1), 0);
 
-        let unitPrice = getCustomerAgreementUnitPrice(
-          activeAgreements,
-          first.itemId || first.cementType,
-          0
-        );
-        if (!unitPrice) {
-          unitPrice = Number(first.unitPrice || first.customerUnitPrice || first.aggregateValue || 0);
-        }
+        // Fetch Unit Price from customer agreement / lifting
+        const unitPrice = getLiftingCustomerUnitPrice(first, activeAgreements, partyType);
 
         const vat = 15;
         const subtotal = totalQty * unitPrice;
@@ -743,15 +811,8 @@ export default function NewInvoicePage() {
       const invoiceItems: any[] = selected.map((lifting, index) => {
         const qty = Number(lifting.buyerWeighbridgeQty || lifting.factoryWeight || lifting.quantityTons || 1);
 
-        let unitPrice = getCustomerAgreementUnitPrice(
-          activeAgreements,
-          lifting.itemId || lifting.cementType,
-          0
-        );
-
-        if (!unitPrice) {
-          unitPrice = Number(lifting.unitPrice || lifting.customerUnitPrice || lifting.aggregateValue || 0);
-        }
+        // Fetch Unit Price from customer agreement / lifting
+        const unitPrice = getLiftingCustomerUnitPrice(lifting, activeAgreements, partyType);
 
         const vat = 15;
         const subtotal = qty * unitPrice;
@@ -759,7 +820,7 @@ export default function NewInvoicePage() {
 
         const factory = lifting.purchase?.factory?.name || lifting.factory?.name || 'Factory';
         const podHeader = lifting.padNumber ? `POD #${lifting.padNumber}` : (lifting.podNumber ? `POD #${lifting.podNumber}` : `POD #${lifting.liftingNo}`);
-        const cementType = resolveItemName(lifting.cementType || lifting.itemName || lifting.itemId, 'Cement');
+        const cementType = resolveItemName(lifting.cementType || lifting.purchase?.cementType || lifting.itemName || lifting.itemId, 'Cement');
         const itemName = `${podHeader} — ${cementType} Cement — ${factory}`;
 
         return {
@@ -838,23 +899,15 @@ export default function NewInvoicePage() {
     const lifting = liftingList.find((l: any) => l.id === lId);
     if (!lifting) return;
 
-    const qty = Number(lifting.factoryWeight || lifting.quantityTons || 1);
-    let unitPrice = getCustomerAgreementUnitPrice(
-      agreements,
-      lifting.itemId || lifting.cementType,
-      0
-    );
-
-    if (!unitPrice) {
-      unitPrice = Number(lifting.unitPrice || lifting.customerUnitPrice || lifting.aggregateValue || 0);
-    }
+    const qty = Number(lifting.buyerWeighbridgeQty || lifting.factoryWeight || lifting.quantityTons || 1);
+    const unitPrice = getLiftingCustomerUnitPrice(lifting, agreements, partyType);
 
     const vat = 15;
     const subtotal = qty * unitPrice;
     const total = subtotal + subtotal * (vat / 100);
     const factory = lifting.purchase?.factory?.name || lifting.factory?.name || 'Factory';
     const podHeader = lifting.padNumber ? `POD #${lifting.padNumber}` : (lifting.podNumber ? `POD #${lifting.podNumber}` : `POD #${lifting.liftingNo}`);
-    const cementType = resolveItemName(lifting.cementType || lifting.itemName || lifting.itemId, 'Cement');
+    const cementType = resolveItemName(lifting.cementType || lifting.purchase?.cementType || lifting.itemName || lifting.itemId, 'Cement');
     const itemName = `${podHeader} — ${cementType} Cement — ${factory} (${lifting.liftingNo})`;
 
     setItems([
@@ -1237,6 +1290,7 @@ export default function NewInvoicePage() {
                         </th>
                         <th className="py-2.5 px-3">Type</th>
                         <th className="py-2.5 px-3">Weight (QT)</th>
+                        <th className="py-2.5 px-3 text-right">Unit Price (ETB)</th>
                         <th className="py-2.5 px-3">Factory</th>
                         <th className="py-2.5 px-3">Status</th>
                         <th className="py-2.5 px-3">Invoice Status</th>
@@ -1246,6 +1300,7 @@ export default function NewInvoicePage() {
                     <tbody className="divide-y divide-slate-100 bg-white">
                       {filteredLiftings.map((l) => {
                         const isChecked = selectedLiftingIds.includes(l.id);
+                        const unitPrice = getLiftingCustomerUnitPrice(l, agreements, partyType);
                         return (
                           <tr
                             key={l.id}
@@ -1270,9 +1325,12 @@ export default function NewInvoicePage() {
                                 </span>
                               )}
                             </td>
-                            <td className="py-2.5 px-3 text-slate-600">{l.cementType}</td>
+                            <td className="py-2.5 px-3 text-slate-600">{l.cementType || l.purchase?.cementType || '—'}</td>
                             <td className="py-2.5 px-3 text-slate-900 font-semibold">
                               {Number(l.buyerWeighbridgeQty || l.factoryWeight || l.quantityTons || 0).toLocaleString('en-US')} QT
+                            </td>
+                            <td className="py-2.5 px-3 text-emerald-700 font-semibold text-right">
+                              {unitPrice > 0 ? `${unitPrice.toLocaleString('en-US', { minimumFractionDigits: 2 })} ETB` : '—'}
                             </td>
                             <td className="py-2.5 px-3 text-slate-600">
                               {l.purchase?.factory?.name || l.factory?.name || 'Factory'}

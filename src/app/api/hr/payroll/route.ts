@@ -117,7 +117,7 @@ export async function POST(request: NextRequest) {
         where: { status: 'Active' },
       });
 
-      itemsToCreate = employees.map((emp) => {
+      itemsToCreate = employees.map((emp: any) => {
         const calc = calculatePayrollRow({
           employeeId: emp.id,
           employeeNo: emp.employeeNo,
@@ -125,6 +125,11 @@ export async function POST(request: NextRequest) {
           department: emp.department || '',
           position: emp.position || '',
           baseSalary: emp.baseSalary || 0,
+          fieldAllowance: emp.fieldAllowance || 0,
+          isFieldAllowanceTaxable: emp.isFieldAllowanceTaxable ?? false,
+          taxableAllowance: emp.taxableAllowance || 0,
+          nonTaxableAllowance: emp.nonTaxableAllowance || 0,
+          allowances: emp.allowances || 0,
         });
 
         return {

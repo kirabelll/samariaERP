@@ -1034,6 +1034,11 @@ model Employee {
   hireDate        DateTime
   employmentType  String   @default("Permanent") // Permanent, Contract, PartTime
   baseSalary      Float    @default(0)
+  fieldAllowance  Float    @default(0)
+  isFieldAllowanceTaxable Boolean @default(false)
+  taxableAllowance Float   @default(0)
+  nonTaxableAllowance Float @default(0)
+  allowances      Float    @default(0)
   bankAccount     String?
   bankName        String?
   tin             String?
@@ -1107,6 +1112,9 @@ model PayrollItem {
   overtimeHours      Float         @default(0)
   overtimePay        Float         @default(0)
   allowances         Float         @default(0)
+  fieldAllowance     Float         @default(0)
+  taxableAllowance   Float         @default(0)
+  nonTaxableAllowance Float        @default(0)
   grossSalary        Float
   pensionEmployee    Float         @default(0) // 7%
   pensionEmployer    Float         @default(0) // 11%

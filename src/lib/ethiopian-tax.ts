@@ -88,6 +88,10 @@ export interface PayrollCalculationInput {
   position?: string;
   baseSalary: number;
   allowances?: number;
+  fieldAllowance?: number;
+  isFieldAllowanceTaxable?: boolean;
+  taxableAllowance?: number;
+  nonTaxableAllowance?: number;
   otherDeductions?: number;
   advanceDeduction?: number;
 }
@@ -99,10 +103,15 @@ export interface PayrollCalculationResult {
   department: string;
   position: string;
   baseSalary: number;
+  fieldAllowance: number;
+  taxableAllowance: number;
+  nonTaxableAllowance: number;
   allowances: number;
+  taxableGross: number;
   grossSalary: number;
   taxRate: string;
   incomeTax: number;
+  taxAllowance: number; // Income Tax as per Ethiopian Schedule
   pensionEmployee: number; // 7%
   pensionEmployer: number; // 11%
   totalPension: number; // 18%
@@ -113,24 +122,47 @@ export interface PayrollCalculationResult {
 }
 
 /**
- * Calculates full payroll item breakdown for an employee
+ * Calculates full payroll item breakdown for an employee based on Ethiopian Tax Schedule 'A'
  */
 export function calculatePayrollRow(input: PayrollCalculationInput): PayrollCalculationResult {
   const baseSalary = Number(input.baseSalary || 0);
-  const allowances = Number(input.allowances || 0);
-  const otherDeductions = Number(input.otherDeductions || 0);
-  const advanceDeduction = Number(input.advanceDeduction || 0);
+  const fieldAllowance = Number(input.fieldAllowance || 0);
+  const isFieldTaxable = input.isFieldAllowanceTaxable ?? false;
+  const taxableField = isFieldTaxable ? fieldAllowance : 0;
+  const nonTaxableField = isFieldTaxable ? 0 : fieldAllowance;
 
+  const taxableAllowance = Number(input.taxableAllowance || 0);
+  const nonTaxableAllowance = Number(input.nonTaxableAllowance || 0);
+
+  // If explicit allowances passed but breakdown isn't given
+  const explicitAllowances = input.allowances !== undefined && input.allowances !== null ? Number(input.allowances) : undefined;
+  const totalTaxableAllowances = taxableAllowance + taxableField;
+  const totalNonTaxableAllowances = nonTaxableAllowance + nonTaxableField;
+  const computedAllowances = totalTaxableAllowances + totalNonTaxableAllowances;
+
+  const allowances = explicitAllowances !== undefined && explicitAllowances > 0 && computedAllowances === 0
+    ? explicitAllowances
+    : computedAllowances;
+
+  // Taxable Gross = Base Salary + Taxable Allowances
+  const taxableGross = Math.round((baseSalary + (explicitAllowances !== undefined && computedAllowances === 0 ? explicitAllowances : totalTaxableAllowances)) * 100) / 100;
   const grossSalary = Math.round((baseSalary + allowances) * 100) / 100;
-  const incomeTax = calculateEthiopianIncomeTax(grossSalary);
-  const taxRate = getTaxBracketRate(grossSalary);
+
+  // Ethiopian Employment Income Tax
+  const incomeTax = calculateEthiopianIncomeTax(taxableGross);
+  const taxRate = getTaxBracketRate(taxableGross);
+
+  // Pensions (7% employee & 11% employer on base salary)
   const pensionEmployee = calculateEmployeePension(baseSalary);
   const pensionEmployer = calculateEmployerPension(baseSalary);
   const totalPension = Math.round((pensionEmployee + pensionEmployer) * 100) / 100;
 
-  // Net Deduction = Income Tax + Employee Pension (7%) + Other Deductions + Advance Deductions
+  const otherDeductions = Number(input.otherDeductions || 0);
+  const advanceDeduction = Number(input.advanceDeduction || 0);
+
+  // Total deductions = Income Tax + 7% Employee Pension + other & advances
   const totalDeductions = Math.round((incomeTax + pensionEmployee + otherDeductions + advanceDeduction) * 100) / 100;
-  const netSalary = Math.round((grossSalary - totalDeductions) * 100) / 100;
+  const netSalary = Math.max(0, Math.round((grossSalary - totalDeductions) * 100) / 100);
 
   return {
     employeeId: input.employeeId,
@@ -139,10 +171,15 @@ export function calculatePayrollRow(input: PayrollCalculationInput): PayrollCalc
     department: input.department || 'General',
     position: input.position || 'Staff',
     baseSalary,
+    fieldAllowance,
+    taxableAllowance,
+    nonTaxableAllowance,
     allowances,
+    taxableGross,
     grossSalary,
     taxRate,
     incomeTax,
+    taxAllowance: incomeTax,
     pensionEmployee,
     pensionEmployer,
     totalPension,

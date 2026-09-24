@@ -29,6 +29,11 @@ interface EmployeeRecord {
   department?: string | null;
   position?: string | null;
   baseSalary?: number | null;
+  fieldAllowance?: number | null;
+  isFieldAllowanceTaxable?: boolean | null;
+  taxableAllowance?: number | null;
+  nonTaxableAllowance?: number | null;
+  allowances?: number | null;
   status: string;
 }
 
@@ -66,7 +71,7 @@ export default function NewPayrollPage() {
     >
   >({});
 
-  // Fetch active employees
+  // Fetch active employees (includes base salary, field allowance, taxable/non-taxable allowances)
   useEffect(() => {
     const fetchEmployees = async () => {
       try {
@@ -97,14 +102,18 @@ export default function NewPayrollPage() {
     return getPayrollPeriodDates(yearNum, monthNum);
   }, [selectedMonth, selectedYear]);
 
-  // Compute payroll items for all employees
+  // Compute payroll items for all employees using fetched allowance & tax allowance
   const calculatedRows: EditablePayrollRow[] = useMemo(() => {
     return employees.map((emp) => {
-      const adj = adjustments[emp.id] || {
-        allowances: 0,
-        otherDeductions: 0,
-        advanceDeduction: 0,
-      };
+      const defaultField = Number(emp.fieldAllowance || 0);
+      const defaultTaxable = Number(emp.taxableAllowance || 0);
+      const defaultNonTaxable = Number(emp.nonTaxableAllowance || 0);
+      const defaultTotalAllowances = Number(emp.allowances || 0) || (defaultField + defaultTaxable + defaultNonTaxable);
+
+      const adj = adjustments[emp.id];
+      const allowances = adj?.allowances !== undefined ? adj.allowances : defaultTotalAllowances;
+      const otherDeductions = adj?.otherDeductions !== undefined ? adj.otherDeductions : 0;
+      const advanceDeduction = adj?.advanceDeduction !== undefined ? adj.advanceDeduction : 0;
 
       const fullName = `${emp.firstName} ${emp.middleName ? emp.middleName + ' ' : ''}${emp.lastName}`;
       const baseSalary = Number(emp.baseSalary || 0);
@@ -116,16 +125,20 @@ export default function NewPayrollPage() {
         department: emp.department || 'General',
         position: emp.position || 'Staff',
         baseSalary,
-        allowances: adj.allowances,
-        otherDeductions: adj.otherDeductions,
-        advanceDeduction: adj.advanceDeduction,
+        fieldAllowance: defaultField,
+        isFieldAllowanceTaxable: emp.isFieldAllowanceTaxable ?? false,
+        taxableAllowance: defaultTaxable,
+        nonTaxableAllowance: defaultNonTaxable,
+        allowances,
+        otherDeductions,
+        advanceDeduction,
       });
 
       return {
         ...calculated,
-        customAllowances: adj.allowances,
-        customOtherDeductions: adj.otherDeductions,
-        customAdvanceDeduction: adj.advanceDeduction,
+        customAllowances: allowances,
+        customOtherDeductions: otherDeductions,
+        customAdvanceDeduction: advanceDeduction,
       };
     });
   }, [employees, adjustments]);
@@ -702,19 +715,26 @@ export default function NewPayrollPage() {
                       {formatETB(row.baseSalary)}
                     </td>
 
-                    {/* Allowances (Editable) */}
+                    {/* Allowances (Fetched & Editable) */}
                     <td className="py-2.5 px-3 text-right">
-                      <input
-                        type="number"
-                        min="0"
-                        step="50"
-                        value={row.customAllowances || ''}
-                        placeholder="0.00"
-                        onChange={(e) =>
-                          handleAdjustmentChange(row.employeeId, 'allowances', e.target.value)
-                        }
-                        className="w-24 text-right px-2 py-1 text-xs border border-slate-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500 bg-slate-50 hover:bg-white"
-                      />
+                      <div className="flex flex-col items-end gap-1">
+                        <input
+                          type="number"
+                          min="0"
+                          step="50"
+                          value={row.customAllowances !== undefined ? row.customAllowances : ''}
+                          placeholder="0.00"
+                          onChange={(e) =>
+                            handleAdjustmentChange(row.employeeId, 'allowances', e.target.value)
+                          }
+                          className="w-24 text-right px-2 py-1 text-xs border border-slate-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500 bg-slate-50 hover:bg-white font-mono font-medium"
+                        />
+                        {row.fieldAllowance > 0 && (
+                          <span className="text-[10px] text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100 font-medium">
+                            Field: {formatETB(row.fieldAllowance)}
+                          </span>
+                        )}
+                      </div>
                     </td>
 
                     {/* Gross Salary */}

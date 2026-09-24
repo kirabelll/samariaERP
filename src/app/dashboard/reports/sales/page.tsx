@@ -22,6 +22,9 @@ import {
   X,
   Boxes,
   HelpCircle,
+  Download,
+  FileSpreadsheet,
+  Loader2,
 } from 'lucide-react';
 
 interface InvoiceItemBreakdown {
@@ -97,7 +100,43 @@ export default function SalesReportsPage() {
   const [activeView, setActiveView] = useState<'invoiced' | 'uninvoiced'>('invoiced');
   const [lookupId, setLookupId] = useState('');
   const [selectedInvoiceForModal, setSelectedInvoiceForModal] = useState<SalesRecord | null>(null);
+  const [exporting, setExporting] = useState<string | null>(null);
   const pageSize = 20;
+
+  const handleExport = async (type: 'invoiced' | 'uninvoiced') => {
+    setExporting(type);
+    try {
+      const params = new URLSearchParams({ type });
+      if (startDate) params.set('startDate', startDate);
+      if (endDate) params.set('endDate', endDate);
+      if (selectedDivision && selectedDivision !== 'ALL') params.set('division', selectedDivision);
+      if (searchQuery.trim()) params.set('search', searchQuery.trim());
+      if (type === 'uninvoiced' && uninvoicedTypeFilter !== 'ALL') {
+        params.set('uninvoicedType', uninvoicedTypeFilter);
+      }
+
+      const res = await fetch(`/api/reports/sales/export?${params.toString()}`);
+      if (!res.ok) throw new Error('Failed to export report');
+
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download =
+        type === 'invoiced'
+          ? `invoiced-sales-${new Date().toISOString().split('T')[0]}.csv`
+          : `delivered-not-invoiced-${new Date().toISOString().split('T')[0]}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (err) {
+      console.error('Export error:', err);
+      alert('Failed to export report. Please check your connection and try again.');
+    } finally {
+      setExporting(null);
+    }
+  };
 
   useEffect(() => {
     const fetchData = async () => {
@@ -549,6 +588,34 @@ export default function SalesReportsPage() {
             Audit invoiced sales, verify all multi-dispatch and multi-lifting items per invoice, and monitor unbilled shipments
           </p>
         </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => handleExport('invoiced')}
+            disabled={exporting !== null}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition-all cursor-pointer disabled:opacity-50"
+            title="Export Invoiced Sales to Excel (CSV)"
+          >
+            {exporting === 'invoiced' ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <FileSpreadsheet className="w-4 h-4" />
+            )}
+            <span>Export Invoiced Sales</span>
+          </button>
+          <button
+            onClick={() => handleExport('uninvoiced')}
+            disabled={exporting !== null}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold bg-amber-600 hover:bg-amber-700 text-white shadow-xs transition-all cursor-pointer disabled:opacity-50"
+            title="Export Delivered (Not Invoiced) to Excel (CSV)"
+          >
+            {exporting === 'uninvoiced' ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Download className="w-4 h-4" />
+            )}
+            <span>Export Delivered (Not Invoiced)</span>
+          </button>
+        </div>
       </div>
 
       {/* KPI Summary Cards */}
@@ -810,6 +877,20 @@ export default function SalesReportsPage() {
                 <option value="CONSTRUCTION">Construction</option>
                 <option value="MEDICAL">Medical</option>
               </select>
+
+              <button
+                onClick={() => handleExport(activeView)}
+                disabled={exporting !== null}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white transition-colors cursor-pointer disabled:opacity-50 shadow-xs"
+                title={`Export ${activeView === 'invoiced' ? 'Invoiced Sales' : 'Delivered (Not Invoiced)'} to Excel`}
+              >
+                {exporting === activeView ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <FileSpreadsheet className="w-3.5 h-3.5" />
+                )}
+                <span>Export to Excel</span>
+              </button>
             </div>
           </div>
         </CardHeader>

@@ -20,19 +20,33 @@ export interface EthiopianTaxBracket {
   rate: number; // e.g. 0.15 for 15%
   deduction: number;
   label: string;
+  rangeLabel: string;
 }
 
 export const ETHIOPIAN_TAX_BRACKETS: EthiopianTaxBracket[] = [
-  { min: 0, max: 2000, rate: 0.0, deduction: 0, label: '0%' },
-  { min: 2001, max: 4000, rate: 0.15, deduction: 300, label: '15%' },
-  { min: 4001, max: 7000, rate: 0.20, deduction: 500, label: '20%' },
-  { min: 7001, max: 10000, rate: 0.25, deduction: 850, label: '25%' },
-  { min: 10001, max: 14000, rate: 0.30, deduction: 1350, label: '30%' },
-  { min: 14001, max: Infinity, rate: 0.35, deduction: 2050, label: '35%' },
+  { min: 0, max: 2000, rate: 0.0, deduction: 0, label: '0%', rangeLabel: '0 - 2,000' },
+  { min: 2001, max: 4000, rate: 0.15, deduction: 300, label: '15%', rangeLabel: '2,001 - 4,000' },
+  { min: 4001, max: 7000, rate: 0.20, deduction: 500, label: '20%', rangeLabel: '4,001 - 7,000' },
+  { min: 7001, max: 10000, rate: 0.25, deduction: 850, label: '25%', rangeLabel: '7,001 - 10,000' },
+  { min: 10001, max: 14000, rate: 0.30, deduction: 1350, label: '30%', rangeLabel: '10,001 - 14,000' },
+  { min: 14001, max: Infinity, rate: 0.35, deduction: 2050, label: '35%', rangeLabel: '> 14,000' },
 ];
 
 export const EMPLOYEE_PENSION_RATE = 0.07; // 7%
 export const EMPLOYER_PENSION_RATE = 0.11; // 11%
+
+/**
+ * Formats numbers into ETB currency string deterministically without SSR/Client locale discrepancies
+ */
+export function formatETB(amount: number | undefined | null): string {
+  if (amount === undefined || amount === null || isNaN(Number(amount))) {
+    return '0.00';
+  }
+  const n = Number(amount);
+  const parts = n.toFixed(2).split('.');
+  parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return parts.join('.');
+}
 
 /**
  * Calculates Ethiopian Employment Income Tax based on taxable gross salary

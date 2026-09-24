@@ -7,6 +7,8 @@ import { Card, CardBody, Table, Badge, Button, Input, Select } from '@/component
 import type { ColumnDef } from '@/components/ui';
 import { useApiList } from '@/hooks/useApi';
 
+import { formatETB } from '@/lib/ethiopian-tax';
+
 interface Employee {
   id: string | number;
   employeeNo: string;
@@ -51,7 +53,7 @@ export default function EmployeesPage() {
     {
       header: 'Salary (ETB)',
       accessor: 'baseSalary',
-      render: (val) => Number(val).toLocaleString('en-US'),
+      render: (val) => formatETB(val),
     },
     {
       header: 'Status',

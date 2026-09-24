@@ -1,8 +1,17 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { Card, CardHeader, CardBody, Button, Badge } from '@/components/ui';
+import { DollarSign, Calculator, ShieldCheck } from 'lucide-react';
+import {
+  calculateEthiopianIncomeTax,
+  getTaxBracketRate,
+  calculateEmployeePension,
+  calculateEmployerPension,
+  ETHIOPIAN_TAX_BRACKETS,
+  formatETB,
+} from '@/lib/ethiopian-tax';
 
 interface EmployeeData {
   id: string;
@@ -21,6 +30,11 @@ interface EmployeeData {
   hireDate?: string;
   employmentType?: string;
   baseSalary?: number;
+  fieldAllowance?: number;
+  isFieldAllowanceTaxable?: boolean;
+  taxableAllowance?: number;
+  nonTaxableAllowance?: number;
+  allowances?: number;
   bankName?: string;
   bankAccount?: string;
   tin?: string;
@@ -49,6 +63,9 @@ const fieldLabels: Record<string, string> = {
   employmentType: 'Employment Type',
   hireDate: 'Hire Date',
   baseSalary: 'Base Salary (ETB)',
+  fieldAllowance: 'Field Allowance (ETB)',
+  taxableAllowance: 'Taxable Allowance (ETB)',
+  nonTaxableAllowance: 'Tax-Exempt Allowance (ETB)',
   bankName: 'Bank Name',
   bankAccount: 'Bank Account',
   tin: 'TIN',
@@ -127,9 +144,56 @@ export default function EmployeeDetailPage() {
   };
 
   const formatCurrency = (value?: number) => {
-    if (value === undefined || value === null) return '0.00 ETB';
-    return `${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ETB`;
+    return `${formatETB(value)} ETB`;
   };
+
+  const taxCalculations = useMemo(() => {
+    if (!data) return null;
+    const baseSalaryNum = Number(data.baseSalary || 0);
+    const fieldAllowanceNum = Number(data.fieldAllowance || 0);
+    const taxableAllowanceNum = Number(data.taxableAllowance || 0);
+    const nonTaxableAllowanceNum = Number(data.nonTaxableAllowance || 0);
+
+    const taxableField = data.isFieldAllowanceTaxable ? fieldAllowanceNum : 0;
+    const nonTaxableField = data.isFieldAllowanceTaxable ? 0 : fieldAllowanceNum;
+
+    const totalTaxableAllowances = taxableAllowanceNum + taxableField;
+    const totalNonTaxableAllowances = nonTaxableAllowanceNum + nonTaxableField;
+    const totalAllowances = totalTaxableAllowances + totalNonTaxableAllowances;
+
+    const taxableGross = baseSalaryNum + totalTaxableAllowances;
+    const totalGrossSalary = baseSalaryNum + totalAllowances;
+
+    const incomeTax = calculateEthiopianIncomeTax(taxableGross);
+    const activeBracketRate = getTaxBracketRate(taxableGross);
+
+    const pensionEmployee = calculateEmployeePension(baseSalaryNum);
+    const pensionEmployer = calculateEmployerPension(baseSalaryNum);
+    const totalPension = Math.round((pensionEmployee + pensionEmployer) * 100) / 100;
+
+    const totalEmployeeDeductions = Math.round((incomeTax + pensionEmployee) * 100) / 100;
+    const estimatedNetSalary = Math.max(0, Math.round((totalGrossSalary - totalEmployeeDeductions) * 100) / 100);
+
+    return {
+      baseSalary: baseSalaryNum,
+      fieldAllowance: fieldAllowanceNum,
+      isFieldAllowanceTaxable: Boolean(data.isFieldAllowanceTaxable),
+      taxableAllowance: taxableAllowanceNum,
+      nonTaxableAllowance: nonTaxableAllowanceNum,
+      totalTaxableAllowances,
+      totalNonTaxableAllowances,
+      totalAllowances,
+      taxableGross,
+      totalGrossSalary,
+      incomeTax,
+      activeBracketRate,
+      pensionEmployee,
+      pensionEmployer,
+      totalPension,
+      totalEmployeeDeductions,
+      estimatedNetSalary,
+    };
+  }, [data]);
 
   if (loading) {
     return (
@@ -317,17 +381,165 @@ export default function EmployeeDetailPage() {
             </div>
           </div>
 
-          {/* Salary Information Section */}
-          <div>
-            <h3 className="text-lg font-semibold text-slate-900 mb-4 pb-2 border-b">Salary Information</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          {/* Salary & Allowances Section */}
+          <div className="rounded-xl border border-indigo-200 bg-slate-50/50 p-5 space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-indigo-100 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-lg bg-indigo-600 text-white shadow-sm">
+                  <DollarSign className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-slate-900">Salary & Allowances</h3>
+                  <p className="text-xs text-slate-500">
+                    Monthly compensation package and Ethiopian Tax Schedule 'A' breakdown
+                  </p>
+                </div>
+              </div>
+              {taxCalculations && (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-indigo-100 text-indigo-800 border border-indigo-200">
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                  Tax Bracket: {taxCalculations.activeBracketRate}
+                </span>
+              )}
+            </div>
+
+            {/* Compensation Inputs / Values */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
               <div>
                 <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
                   {fieldLabels.baseSalary}
                 </label>
-                <p className="text-base font-bold font-mono text-slate-900 mt-1">{formatCurrency(data.baseSalary)}</p>
+                <p className="text-base font-bold font-mono text-slate-900 mt-1">
+                  {formatCurrency(data.baseSalary)}
+                </p>
+                <span className="text-[11px] text-slate-400 block mt-0.5">
+                  Subject to Pension (7% / 11%)
+                </span>
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                  {fieldLabels.fieldAllowance}
+                </label>
+                <p className="text-base font-bold font-mono text-slate-900 mt-1">
+                  {formatCurrency(data.fieldAllowance)}
+                </p>
+                <span className="text-[11px] font-medium text-slate-500 block mt-0.5">
+                  {data.isFieldAllowanceTaxable ? (
+                    <span className="text-amber-700">Taxable Field Allowance</span>
+                  ) : (
+                    <span className="text-emerald-700">Tax-Exempt Per Diem</span>
+                  )}
+                </span>
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                  {fieldLabels.taxableAllowance}
+                </label>
+                <p className="text-base font-bold font-mono text-slate-900 mt-1">
+                  {formatCurrency(data.taxableAllowance)}
+                </p>
+                <span className="text-[11px] text-slate-400 block mt-0.5">
+                  Housing / Position / Rep
+                </span>
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                  {fieldLabels.nonTaxableAllowance}
+                </label>
+                <p className="text-base font-bold font-mono text-slate-900 mt-1">
+                  {formatCurrency(data.nonTaxableAllowance)}
+                </p>
+                <span className="text-[11px] text-slate-400 block mt-0.5">
+                  Transport / Non-Taxable
+                </span>
               </div>
             </div>
+
+            {/* Live Payroll & Tax Calculation Cards */}
+            {taxCalculations && (
+              <div className="rounded-xl border border-indigo-100 bg-white p-4 shadow-xs space-y-4">
+                <div className="flex items-center gap-2 border-b border-slate-100 pb-2">
+                  <Calculator className="w-4 h-4 text-indigo-600" />
+                  <h4 className="font-bold text-slate-900 text-sm">
+                    Calculated Payroll & Deduction Summary
+                  </h4>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                  <div className="bg-slate-50 p-3 rounded-lg border border-slate-200">
+                    <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide block">
+                      Gross Salary
+                    </span>
+                    <p className="text-base font-bold text-slate-900 mt-1 font-mono">
+                      {formatCurrency(taxCalculations.totalGrossSalary)}
+                    </p>
+                    <span className="text-[10px] text-slate-400 block mt-0.5">
+                      Base + All Allowances
+                    </span>
+                  </div>
+
+                  <div className="bg-indigo-50/50 p-3 rounded-lg border border-indigo-100">
+                    <span className="text-xs font-semibold text-indigo-700 uppercase tracking-wide block">
+                      Taxable Gross
+                    </span>
+                    <p className="text-base font-bold text-indigo-900 mt-1 font-mono">
+                      {formatCurrency(taxCalculations.taxableGross)}
+                    </p>
+                    <span className="text-[10px] text-indigo-500 block mt-0.5">
+                      Subject to Income Tax
+                    </span>
+                  </div>
+
+                  <div className="bg-amber-50/50 p-3 rounded-lg border border-amber-100">
+                    <span className="text-xs font-semibold text-amber-800 uppercase tracking-wide block">
+                      Income Tax
+                    </span>
+                    <p className="text-base font-bold text-amber-700 mt-1 font-mono">
+                      {formatCurrency(taxCalculations.incomeTax)}
+                    </p>
+                    <span className="text-[10px] text-amber-600 block mt-0.5">
+                      Ethiopian Schedule 'A'
+                    </span>
+                  </div>
+
+                  <div className="bg-emerald-50/60 p-3 rounded-lg border border-emerald-200">
+                    <span className="text-xs font-semibold text-emerald-800 uppercase tracking-wide block">
+                      Estimated Net Pay
+                    </span>
+                    <p className="text-lg font-extrabold text-emerald-700 mt-1 font-mono">
+                      {formatCurrency(taxCalculations.estimatedNetSalary)}
+                    </p>
+                    <span className="text-[10px] text-emerald-600 block mt-0.5">
+                      Take-Home Monthly Pay
+                    </span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1 text-xs">
+                  <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-200 flex items-center justify-between">
+                    <span className="text-slate-600">Employee Pension (7%):</span>
+                    <span className="font-bold font-mono text-slate-900">
+                      {formatCurrency(taxCalculations.pensionEmployee)}
+                    </span>
+                  </div>
+                  <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-200 flex items-center justify-between">
+                    <span className="text-slate-600">Employer Pension (11%):</span>
+                    <span className="font-bold font-mono text-slate-900">
+                      {formatCurrency(taxCalculations.pensionEmployer)}
+                    </span>
+                  </div>
+                  <div className="bg-rose-50 p-2.5 rounded-lg border border-rose-200 text-rose-800 flex items-center justify-between">
+                    <span className="font-medium">Total Deductions:</span>
+                    <span className="font-bold font-mono text-rose-700">
+                      -{formatCurrency(taxCalculations.totalEmployeeDeductions)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Banking & Tax Information Section */}

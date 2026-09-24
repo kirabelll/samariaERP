@@ -21,7 +21,8 @@ import {
   getTaxBracketRate,
   calculateEmployeePension,
   calculateEmployerPension,
-  ETHIOPIAN_TAX_BRACKETS
+  ETHIOPIAN_TAX_BRACKETS,
+  formatETB,
 } from '@/lib/ethiopian-tax';
 
 interface FormData {
@@ -191,13 +192,6 @@ export default function NewEmployeePage() {
         return newErrors;
       });
     }
-  };
-
-  const formatETB = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(amount);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -575,11 +569,6 @@ export default function NewEmployeePage() {
                         ? taxCalculations.taxableGross > 14000
                         : taxCalculations.taxableGross <= bracket.max);
 
-                    const rangeLabel =
-                      bracket.max === Infinity
-                        ? '> 14,000'
-                        : `${bracket.min.toLocaleString()} - ${bracket.max.toLocaleString()}`;
-
                     return (
                       <div
                         key={idx}
@@ -590,7 +579,7 @@ export default function NewEmployeePage() {
                         }`}
                       >
                         <div className="text-[10px] font-medium tracking-tight">
-                          {rangeLabel} ETB
+                          {bracket.rangeLabel} ETB
                         </div>
                         <div className="text-sm font-extrabold mt-0.5">
                           {bracket.label}

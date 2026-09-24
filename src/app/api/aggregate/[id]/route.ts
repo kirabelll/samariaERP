@@ -92,12 +92,46 @@ export async function GET(
       }),
     ]);
 
-    // Pick agreement where dispatchDate is within [validFrom, validTo]
-    const validSalesAgr = allSalesAgreements.find((a) => isWithinPeriod(a.validFrom, a.validTo, dispatchDate));
-    const salesAgr = validSalesAgr || allSalesAgreements[0] || null;
+    // Pick customer agreement:
+    // 1. Prioritize agreement where dispatchDate is valid between [validFrom, validTo] AND contains this item
+    const validSalesAgrWithItem = allSalesAgreements.find((a) => {
+      if (!isWithinPeriod(a.validFrom, a.validTo, dispatchDate)) return false;
+      if (!a.items) return false;
+      try {
+        const parsed = typeof a.items === 'string' ? JSON.parse(a.items) : (a.items as any[] || []);
+        return Array.isArray(parsed) && parsed.some((i: any) => (i.itemId || i.id) === delivery.itemId);
+      } catch {
+        return false;
+      }
+    });
+    const validSalesAgr = validSalesAgrWithItem || allSalesAgreements.find((a) => isWithinPeriod(a.validFrom, a.validTo, dispatchDate));
+
+    // Fallback if no valid date agreement: any agreement containing this item
+    const anySalesAgrWithItem = allSalesAgreements.find((a) => {
+      if (!a.items) return false;
+      try {
+        const parsed = typeof a.items === 'string' ? JSON.parse(a.items) : (a.items as any[] || []);
+        return Array.isArray(parsed) && parsed.some((i: any) => (i.itemId || i.id) === delivery.itemId);
+      } catch {
+        return false;
+      }
+    });
+
+    const salesAgr = validSalesAgr || anySalesAgrWithItem || allSalesAgreements[0] || null;
     const isCustomerDateValid = Boolean(validSalesAgr);
 
-    const validSuppAgr = allSuppAgreements.find((a) => isWithinPeriod(a.validFrom, a.validTo, dispatchDate));
+    // Pick supplier agreement where dispatchDate is within [validFrom, validTo]
+    const validSuppAgrWithItem = allSuppAgreements.find((a) => {
+      if (!isWithinPeriod(a.validFrom, a.validTo, dispatchDate)) return false;
+      if (!a.items) return false;
+      try {
+        const parsed = typeof a.items === 'string' ? JSON.parse(a.items) : (a.items as any[] || []);
+        return Array.isArray(parsed) && parsed.some((i: any) => (i.itemId || i.id) === delivery.itemId);
+      } catch {
+        return false;
+      }
+    });
+    const validSuppAgr = validSuppAgrWithItem || allSuppAgreements.find((a) => isWithinPeriod(a.validFrom, a.validTo, dispatchDate));
     const suppAgr = validSuppAgr || allSuppAgreements[0] || null;
     const isSupplierDateValid = Boolean(validSuppAgr);
 

@@ -520,12 +520,29 @@ export default function NewInvoicePage() {
   const getCustomerAgreementUnitPrice = (
     agList: SalesAgreement[],
     itemSearchKey?: string,
-    fallbackPrice: number = 0
+    fallbackPrice: number = 0,
+    targetDate?: Date | string
   ): number => {
     if (!agList || agList.length === 0) return fallbackPrice;
     const key = String(itemSearchKey || '').trim().toLowerCase();
+    const tDate = targetDate ? new Date(targetDate) : null;
 
-    for (const agreement of agList) {
+    // Prioritize agreements where targetDate is within [validFrom, validTo]
+    let sortedAgList = agList;
+    if (tDate) {
+      const isWithin = (a: SalesAgreement) => {
+        const from = a.validFrom ? new Date(a.validFrom) : null;
+        if (from) from.setHours(0, 0, 0, 0);
+        const to = a.validTo ? new Date(a.validTo) : null;
+        if (to) to.setHours(23, 59, 59, 999);
+        return (!from || from <= tDate) && (!to || to >= tDate);
+      };
+      const validAgreements = agList.filter(isWithin);
+      const otherAgreements = agList.filter((a) => !isWithin(a));
+      sortedAgList = [...validAgreements, ...otherAgreements];
+    }
+
+    for (const agreement of sortedAgList) {
       try {
         const parsedItems: AgreementItem[] =
           typeof agreement.items === 'string'
@@ -618,11 +635,16 @@ export default function NewInvoicePage() {
       } catch {}
     }
 
-    // 3. Resolve from loaded active customer agreements
+    // 3. Resolve from loaded active customer agreements matching the lifting date
     const ags = activeAgreements || agreements;
     if (ags && ags.length > 0) {
       const cementTypeKey = lifting.cementType || lifting.purchase?.cementType || lifting.itemName || lifting.itemId;
-      const agPrice = getCustomerAgreementUnitPrice(ags, cementTypeKey, 0);
+      const agPrice = getCustomerAgreementUnitPrice(
+        ags,
+        cementTypeKey,
+        0,
+        lifting.liftingDate || lifting.createdAt
+      );
       if (agPrice > 0) return agPrice;
     }
 
@@ -669,12 +691,13 @@ export default function NewInvoicePage() {
       } catch {}
     }
 
-    // 3. Check customer agreements
+    // 3. Check customer agreements matching dispatchDate
     if (activeAgreements && activeAgreements.length > 0) {
       const agPrice = getCustomerAgreementUnitPrice(
         activeAgreements,
         dispatch.itemId || dispatch.itemName || dispatch.item?.name,
-        0
+        0,
+        dispatch.dispatchDate || dispatch.createdAt
       );
       if (agPrice > 0) return agPrice;
     }

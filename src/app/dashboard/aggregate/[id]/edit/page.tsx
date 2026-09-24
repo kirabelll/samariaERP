@@ -501,7 +501,15 @@ export default function EditAggregateDispatchPage() {
   // When Customer is changed
   const handleCustomerChange = (newCustId: string) => {
     const matchingAgreements = customerAgreements.filter((a) => a.customerId === newCustId);
-    const newSelectedAgrId = matchingAgreements.length > 0 ? matchingAgreements[0].id : '';
+    const dispatchD = formData.dispatchDate ? new Date(formData.dispatchDate) : new Date();
+    const isWithin = (from?: string, to?: string) => {
+      if (!from || !to) return false;
+      const f = new Date(from); f.setHours(0, 0, 0, 0);
+      const t = new Date(to); t.setHours(23, 59, 59, 999);
+      return dispatchD >= f && dispatchD <= t;
+    };
+    const validAgr = matchingAgreements.find((a) => isWithin(a.validFrom, a.validTo));
+    const newSelectedAgrId = validAgr ? validAgr.id : (matchingAgreements.length > 0 ? matchingAgreements[0].id : '');
 
     // Check if current item exists in new customer agreement
     let targetItemId = formData.itemId;
@@ -550,7 +558,15 @@ export default function EditAggregateDispatchPage() {
   // When Supplier is changed
   const handleSupplierChange = (newSuppId: string) => {
     const matchingAgreements = supplierAgreements.filter((a) => a.supplierId === newSuppId);
-    const newSelectedAgrId = matchingAgreements.length > 0 ? matchingAgreements[0].id : '';
+    const dispatchD = formData.dispatchDate ? new Date(formData.dispatchDate) : new Date();
+    const isWithin = (from?: string, to?: string) => {
+      if (!from || !to) return false;
+      const f = new Date(from); f.setHours(0, 0, 0, 0);
+      const t = new Date(to); t.setHours(23, 59, 59, 999);
+      return dispatchD >= f && dispatchD <= t;
+    };
+    const validAgr = matchingAgreements.find((a) => isWithin(a.validFrom, a.validTo));
+    const newSelectedAgrId = validAgr ? validAgr.id : (matchingAgreements.length > 0 ? matchingAgreements[0].id : '');
 
     let targetItemId = formData.itemId;
     const suppAgrItems = newSelectedAgrId ? supplierAgreementItems.get(newSelectedAgrId) : supplierAgreementItems.get(newSuppId);
@@ -639,6 +655,45 @@ export default function EditAggregateDispatchPage() {
       handleSupplierAgreementChange(value);
     } else if (name === 'itemId') {
       handleItemChange(value);
+    } else if (name === 'dispatchDate') {
+      const newDate = value;
+      const dispatchD = newDate ? new Date(newDate) : new Date();
+      const isWithin = (from?: string, to?: string) => {
+        if (!from || !to) return false;
+        const f = new Date(from); f.setHours(0, 0, 0, 0);
+        const t = new Date(to); t.setHours(23, 59, 59, 999);
+        return dispatchD >= f && dispatchD <= t;
+      };
+
+      let newSelectedCustAgrId = formData.selectedCustomerAgreementId;
+      if (formData.customerId) {
+        const matchingAgreements = customerAgreements.filter((a) => a.customerId === formData.customerId);
+        const validAgr = matchingAgreements.find((a) => isWithin(a.validFrom, a.validTo));
+        if (validAgr) {
+          newSelectedCustAgrId = validAgr.id;
+        }
+      }
+
+      let newSelectedSuppAgrId = formData.selectedSupplierAgreementId;
+      if (formData.supplierId) {
+        const matchingSuppAgreements = supplierAgreements.filter((a) => a.supplierId === formData.supplierId);
+        const validSuppAgr = matchingSuppAgreements.find((a) => isWithin(a.validFrom, a.validTo));
+        if (validSuppAgr) {
+          newSelectedSuppAgrId = validSuppAgr.id;
+        }
+      }
+
+      const autoCustPrice = lookupCustomerPrice(formData.customerId, newSelectedCustAgrId, formData.itemId);
+      const autoSuppPrice = lookupSupplierPrice(formData.supplierId, newSelectedSuppAgrId, formData.itemId);
+
+      setFormData((prev) => ({
+        ...prev,
+        dispatchDate: newDate,
+        selectedCustomerAgreementId: newSelectedCustAgrId,
+        selectedSupplierAgreementId: newSelectedSuppAgrId,
+        customerPrice: autoCustPrice !== undefined ? String(autoCustPrice) : prev.customerPrice,
+        aggregateValue: autoSuppPrice !== undefined ? String(autoSuppPrice) : prev.aggregateValue,
+      }));
     } else {
       setFormData((prev) => ({ ...prev, [name]: value }));
     }

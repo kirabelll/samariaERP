@@ -191,7 +191,7 @@ export async function GET(request: NextRequest) {
     activeInvoices.forEach((inv) => {
       if (inv.liftingId) invoicedLiftingIds.add(String(inv.liftingId));
       if (inv.items) {
-        let parsed = inv.items;
+        let parsed: any = inv.items;
         if (typeof parsed === 'string') {
           try {
             parsed = JSON.parse(parsed);

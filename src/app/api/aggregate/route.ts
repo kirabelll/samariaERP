@@ -123,12 +123,39 @@ export async function GET(request: NextRequest) {
     // Helper to resolve agreement price for a specific date and item
     const resolveAgreementPrice = (agreements: any[], partyId: string, itemId: string, dispatchDate: Date): number => {
       const partyAgreements = agreements.filter((a) => (a.customerId || a.supplierId) === partyId);
-      const validAgr = partyAgreements.find((a) => isWithinPeriod(a.validFrom, a.validTo, dispatchDate)) || partyAgreements[0];
-      if (!validAgr?.items) return 0;
+      
+      // 1. Prioritize agreement where dispatchDate is valid between [validFrom, validTo] AND contains this item
+      const validAgrWithItem = partyAgreements.find((a) => {
+        if (!isWithinPeriod(a.validFrom, a.validTo, dispatchDate)) return false;
+        if (!a.items) return false;
+        try {
+          const parsed = typeof a.items === 'string' ? JSON.parse(a.items) : (a.items as any[] || []);
+          return Array.isArray(parsed) && parsed.some((item: any) => (item.itemId || item.id) === itemId);
+        } catch {
+          return false;
+        }
+      });
+
+      // 2. Next: any agreement valid on dispatchDate
+      const validAgr = validAgrWithItem || partyAgreements.find((a) => isWithinPeriod(a.validFrom, a.validTo, dispatchDate));
+
+      // 3. Fallback: any agreement containing this item, or first available agreement
+      const anyAgrWithItem = partyAgreements.find((a) => {
+        if (!a.items) return false;
+        try {
+          const parsed = typeof a.items === 'string' ? JSON.parse(a.items) : (a.items as any[] || []);
+          return Array.isArray(parsed) && parsed.some((item: any) => (item.itemId || item.id) === itemId);
+        } catch {
+          return false;
+        }
+      });
+
+      const targetAgr = validAgr || anyAgrWithItem || partyAgreements[0];
+      if (!targetAgr?.items) return 0;
       try {
-        const parsed = typeof validAgr.items === 'string' ? JSON.parse(validAgr.items) : (validAgr.items as any[] || []);
+        const parsed = typeof targetAgr.items === 'string' ? JSON.parse(targetAgr.items) : (targetAgr.items as any[] || []);
         if (Array.isArray(parsed)) {
-          const matched = parsed.find((item: any) => (item.itemId || item.id) === itemId);
+          const matched = parsed.find((item: any) => (item.itemId || item.id) === itemId) || parsed[0];
           if (matched) {
             const unitPrice = Number(matched.unitPrice ?? matched.pricePerUnit ?? matched.price ?? 0);
             const qty = Number(matched.qty || matched.quantity || 1);
@@ -152,7 +179,7 @@ export async function GET(request: NextRequest) {
     const invoicedDispatchNos = new Set<string>();
     activeInvoices.forEach((inv) => {
       if (inv.items) {
-        let parsed = inv.items;
+        let parsed: any = inv.items;
         if (typeof parsed === 'string') {
           try {
             parsed = JSON.parse(parsed);

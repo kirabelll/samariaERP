@@ -473,12 +473,61 @@ export async function GET(request: NextRequest) {
           })
         : [];
 
+      // Fetch customer agreements for liftings to resolve exact customer price per Quintal
+      const liftingCustomerIds = Array.from(new Set(cementLiftings.map((l) => l.customerId).filter(Boolean)));
+      const customerAgreements = liftingCustomerIds.length > 0
+        ? await prisma.salesAgreement.findMany({
+            where: { customerId: { in: liftingCustomerIds }, status: { notIn: ['Void', 'Cancelled'] } },
+            select: { customerId: true, agreementNo: true, items: true, division: true, validFrom: true, validTo: true },
+            orderBy: { createdAt: 'desc' },
+          })
+        : [];
+
+      const resolveCustomerAgreementPrice = (customerId?: string, cementType?: string, liftingDate?: any): number => {
+        if (!customerId) return 0;
+        const agreements = customerAgreements.filter((a) => a.customerId === customerId);
+        const lDate = liftingDate ? new Date(liftingDate) : null;
+        const validDateAgreements = lDate
+          ? agreements.filter((a) => {
+              const from = a.validFrom ? new Date(a.validFrom) : null;
+              const to = a.validTo ? new Date(a.validTo) : null;
+              return (!from || from <= lDate) && (!to || to >= lDate);
+            })
+          : [];
+        const targetAgreements = validDateAgreements.length > 0 ? validDateAgreements : agreements;
+        for (const agr of targetAgreements) {
+          try {
+            const parsed = typeof agr.items === 'string' ? JSON.parse(agr.items) : (agr.items as any[] || []);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              const targetType = (cementType || '').toUpperCase().trim();
+              const matched = targetType
+                ? parsed.find((item: any) => {
+                    const rawName = (item.itemName || item.name || item.description || '').toUpperCase();
+                    const rawType = (item.cementType || item.type || '').toUpperCase();
+                    return (
+                      (rawType && (rawType === targetType || targetType.includes(rawType) || rawType.includes(targetType))) ||
+                      (rawName && (rawName.includes(targetType) || targetType.includes(rawName)))
+                    );
+                  }) || parsed[0]
+                : parsed[0];
+              if (matched) {
+                const price = Number(matched.unitPrice ?? matched.pricePerUnit ?? matched.price ?? matched.amount ?? 0);
+                if (price > 0) return price;
+              }
+            }
+          } catch {}
+        }
+        return 0;
+      };
+
       const uninvoicedCementItems = cementLiftings
         .filter((l) => !isLiftingInvoiced(l))
         .map((l) => {
-          const weight = l.buyerWeighbridgeQty || l.factoryWeight || 0;
-          const unitPrice = l.purchase?.unitPrice || 0;
-          const estValue = Math.round(weight * unitPrice * 100) / 100;
+          const rawWeight = Number(l.buyerWeighbridgeQty || l.factoryWeight || 0);
+          const weightInQuintals = rawWeight > 1000 ? rawWeight / 100 : rawWeight;
+          const agreedPrice = resolveCustomerAgreementPrice(l.customer?.id, l.purchase?.cementType, l.liftingDate);
+          const unitPrice = agreedPrice > 0 ? agreedPrice : Number(l.purchase?.unitPrice || 0);
+          const estValue = Math.round(weightInQuintals * unitPrice * 100) / 100;
           return {
             type: 'Cement Lifting',
             division: 'CEMENT',
@@ -486,8 +535,8 @@ export async function GET(request: NextRequest) {
             customer: l.customer?.companyName || 'Unknown',
             customerCode: l.customer?.code || '',
             source: l.factory?.name || 'Factory',
-            quantity: weight,
-            unit: 'Tons',
+            quantity: weightInQuintals,
+            unit: 'Quintal',
             unitPrice,
             estValue,
             deliveryDate: l.liftingDate ? new Date(l.liftingDate).toLocaleDateString() : '-',
@@ -500,7 +549,7 @@ export async function GET(request: NextRequest) {
       if ((division === 'ALL' || division === 'AGGREGATE') && (uninvoicedType === 'ALL' || uninvoicedType === 'AGGREGATE')) {
         const aggregateDeliveries = await prisma.aggregateDelivery.findMany({
           where: {
-            status: { in: ['Delivered', 'Verified', 'Settled'] },
+            status: { in: ['Delivered', 'Verified', 'Settled', 'Dispatched'] },
             ...(startDate || endDate ? { dispatchDate: liftingDateFilter } : {}),
           },
           orderBy: { dispatchDate: 'desc' },
@@ -517,8 +566,17 @@ export async function GET(request: NextRequest) {
         uninvoicedAggItems = aggregateDeliveries
           .filter((d) => !isDispatchInvoiced(d))
           .map((d) => {
-            const volume = d.deliveredVolume || d.loadedVolume || 0;
-            const unitPrice = d.aggregateValue || d.transportRate || 0;
+            const volume = Number(d.deliveredVolume || d.loadedVolume || 0);
+            let customerPrice = 0;
+            if (d.registeredBy && typeof d.registeredBy === 'string' && d.registeredBy.startsWith('{')) {
+              try {
+                const meta = JSON.parse(d.registeredBy);
+                if (meta.customerPrice && Number(meta.customerPrice) > 0) {
+                  customerPrice = Number(meta.customerPrice);
+                }
+              } catch {}
+            }
+            const unitPrice = customerPrice > 0 ? customerPrice : Number(d.aggregateValue || d.transportRate || 0);
             const estValue = Math.round(volume * unitPrice * 100) / 100;
             const cust = aggCustMap.get(d.customerId);
             return {

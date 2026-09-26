@@ -142,22 +142,308 @@ export async function GET(request: NextRequest) {
       if (v.sourceRef) voucherPaidMap.set(v.sourceRef, (voucherPaidMap.get(v.sourceRef) || 0) + amt);
     });
 
-    // Get already-invoiced aggregate delivery IDs from existing invoices
-    const aggInvoices = await prisma.salesInvoice.findMany({
-      where: { division: 'AGGREGATE', status: { not: 'Cancelled' } },
-      select: { items: true },
+    // Helper to safely parse JSON items
+    const safelyParseItems = (itemsRaw: any): any[] => {
+      if (!itemsRaw) return [];
+      let parsed = itemsRaw;
+      if (typeof parsed === 'string') {
+        try {
+          parsed = JSON.parse(parsed);
+          if (typeof parsed === 'string') parsed = JSON.parse(parsed);
+        } catch {
+          return [];
+        }
+      }
+      return Array.isArray(parsed) ? parsed : [];
+    };
+
+    // Extract all invoiced lifting and delivery references from all active invoices
+    const allActiveInvoices = await prisma.salesInvoice.findMany({
+      where: { status: { notIn: ['Cancelled', 'Inactive'] } },
+      select: {
+        id: true,
+        invoiceNo: true,
+        customerId: true,
+        liftingId: true,
+        items: true,
+        cementLifting: { select: { id: true, liftingNo: true, padNumber: true, podNumber: true } },
+      },
     });
-    const invoicedAggDeliveryIds = new Set<string>();
-    for (const inv of aggInvoices) {
-      try {
-        const parsed = typeof inv.items === 'string' ? JSON.parse(inv.items) : inv.items;
-        if (Array.isArray(parsed)) {
-          parsed.forEach((item: any) => {
-            if (item.deliveryId) invoicedAggDeliveryIds.add(item.deliveryId);
+
+    const invoicedLiftingIds = new Set<string>();
+    const invoicedLiftingNos = new Set<string>();
+    const invoicedDeliveryIds = new Set<string>();
+    const invoicedDispatchNos = new Set<string>();
+    const invoicedPadPodNos = new Set<string>();
+    const invoicedGeneralIds = new Set<string>();
+    const invoicedGeneralNos = new Set<string>();
+    const textCorpusParts: string[] = [];
+
+    allActiveInvoices.forEach((inv) => {
+      if (inv.liftingId) {
+        const lid = String(inv.liftingId).trim().toLowerCase();
+        invoicedLiftingIds.add(lid);
+        invoicedGeneralIds.add(lid);
+      }
+      if (inv.cementLifting?.liftingNo) {
+        const lno = String(inv.cementLifting.liftingNo).trim().toLowerCase();
+        invoicedLiftingNos.add(lno);
+        invoicedGeneralNos.add(lno);
+        if (inv.cementLifting.id) {
+          const cid = String(inv.cementLifting.id).trim().toLowerCase();
+          invoicedLiftingIds.add(cid);
+          invoicedGeneralIds.add(cid);
+        }
+        if (inv.cementLifting.padNumber) {
+          const pno = String(inv.cementLifting.padNumber).trim().toLowerCase();
+          invoicedPadPodNos.add(pno);
+          invoicedLiftingNos.add(pno);
+          invoicedGeneralNos.add(pno);
+        }
+        if (inv.cementLifting.podNumber) {
+          const pno = String(inv.cementLifting.podNumber).trim().toLowerCase();
+          invoicedPadPodNos.add(pno);
+          invoicedLiftingNos.add(pno);
+          invoicedGeneralNos.add(pno);
+        }
+      }
+
+      if (typeof inv.items === 'string') {
+        textCorpusParts.push(inv.items.toLowerCase());
+      }
+
+      const parsedItems = safelyParseItems(inv.items);
+      parsedItems.forEach((item: any) => {
+        if (item.id) {
+          const idStr = String(item.id).trim().toLowerCase();
+          invoicedGeneralIds.add(idStr);
+        }
+        if (item.liftingId) {
+          const idStr = String(item.liftingId).trim().toLowerCase();
+          invoicedLiftingIds.add(idStr);
+          invoicedGeneralIds.add(idStr);
+        }
+        if (item.liftingIds && Array.isArray(item.liftingIds)) {
+          item.liftingIds.forEach((id: any) => {
+            if (id) {
+              const idStr = String(id).trim().toLowerCase();
+              invoicedLiftingIds.add(idStr);
+              invoicedGeneralIds.add(idStr);
+            }
           });
         }
-      } catch { /* ignore */ }
-    }
+        if (item.deliveryId) {
+          const idStr = String(item.deliveryId).trim().toLowerCase();
+          invoicedDeliveryIds.add(idStr);
+          invoicedGeneralIds.add(idStr);
+        }
+        if (item.deliveryIds && Array.isArray(item.deliveryIds)) {
+          item.deliveryIds.forEach((id: any) => {
+            if (id) {
+              const idStr = String(id).trim().toLowerCase();
+              invoicedDeliveryIds.add(idStr);
+              invoicedGeneralIds.add(idStr);
+            }
+          });
+        }
+        if (item.dispatchId) {
+          const idStr = String(item.dispatchId).trim().toLowerCase();
+          invoicedDeliveryIds.add(idStr);
+          invoicedGeneralIds.add(idStr);
+        }
+        if (item.dispatchIds && Array.isArray(item.dispatchIds)) {
+          item.dispatchIds.forEach((id: any) => {
+            if (id) {
+              const idStr = String(id).trim().toLowerCase();
+              invoicedDeliveryIds.add(idStr);
+              invoicedGeneralIds.add(idStr);
+            }
+          });
+        }
+
+        if (item.liftingNo) {
+          const noStr = String(item.liftingNo).trim().toLowerCase();
+          invoicedLiftingNos.add(noStr);
+          invoicedGeneralNos.add(noStr);
+        }
+        if (item.liftingNos && Array.isArray(item.liftingNos)) {
+          item.liftingNos.forEach((no: any) => {
+            if (no) {
+              const noStr = String(no).trim().toLowerCase();
+              invoicedLiftingNos.add(noStr);
+              invoicedGeneralNos.add(noStr);
+            }
+          });
+        }
+        if (item.dispatchNo) {
+          const noStr = String(item.dispatchNo).trim().toLowerCase();
+          invoicedDispatchNos.add(noStr);
+          invoicedGeneralNos.add(noStr);
+        }
+        if (item.dispatchNos && Array.isArray(item.dispatchNos)) {
+          item.dispatchNos.forEach((no: any) => {
+            if (no) {
+              const noStr = String(no).trim().toLowerCase();
+              invoicedDispatchNos.add(noStr);
+              invoicedGeneralNos.add(noStr);
+            }
+          });
+        }
+        if (item.padNumber) {
+          const pad = String(item.padNumber).trim().toLowerCase();
+          invoicedPadPodNos.add(pad);
+          invoicedLiftingNos.add(pad);
+          invoicedDispatchNos.add(pad);
+          invoicedGeneralNos.add(pad);
+        }
+        if (item.padNumbers && Array.isArray(item.padNumbers)) {
+          item.padNumbers.forEach((p: any) => {
+            if (p) {
+              const pad = String(p).trim().toLowerCase();
+              invoicedPadPodNos.add(pad);
+              invoicedLiftingNos.add(pad);
+              invoicedDispatchNos.add(pad);
+              invoicedGeneralNos.add(pad);
+            }
+          });
+        }
+        if (item.podNumber) {
+          const pod = String(item.podNumber).trim().toLowerCase();
+          invoicedPadPodNos.add(pod);
+          invoicedLiftingNos.add(pod);
+          invoicedDispatchNos.add(pod);
+          invoicedGeneralNos.add(pod);
+        }
+        if (item.podNumbers && Array.isArray(item.podNumbers)) {
+          item.podNumbers.forEach((p: any) => {
+            if (p) {
+              const pod = String(p).trim().toLowerCase();
+              invoicedPadPodNos.add(pod);
+              invoicedLiftingNos.add(pod);
+              invoicedDispatchNos.add(pod);
+              invoicedGeneralNos.add(pod);
+            }
+          });
+        }
+
+        if (item.ref) {
+          const ref = String(item.ref).trim().toLowerCase();
+          invoicedGeneralNos.add(ref);
+        }
+        if (item.refs && Array.isArray(item.refs)) {
+          item.refs.forEach((r: any) => {
+            if (r) invoicedGeneralNos.add(String(r).trim().toLowerCase());
+          });
+        }
+
+        const text = `${item.item || ''} ${item.name || ''} ${item.description || ''} ${item.itemName || ''}`;
+        textCorpusParts.push(text.toLowerCase());
+        
+        const lftMatches = text.match(/(?:LIFT|LFT)-[\w-]+/gi);
+        if (lftMatches) {
+          lftMatches.forEach((m) => {
+            const clean = m.trim().toLowerCase();
+            invoicedLiftingNos.add(clean);
+            invoicedGeneralNos.add(clean);
+          });
+        }
+
+        const dispMatches = text.match(/(?:DISP|DSP|AGG)-[\w-]+/gi);
+        if (dispMatches) {
+          dispMatches.forEach((m) => {
+            const clean = m.trim().toLowerCase();
+            invoicedDispatchNos.add(clean);
+            invoicedGeneralNos.add(clean);
+          });
+        }
+
+        const podMatches = text.match(/(?:POD|PAD)s?\s*#?\s*([\w/-]+)/gi);
+        if (podMatches) {
+          podMatches.forEach((matchStr) => {
+            const cleaned = matchStr.replace(/^(?:POD|PAD)s?\s*#?/i, '').trim().toLowerCase();
+            if (cleaned) {
+              invoicedPadPodNos.add(cleaned);
+              invoicedLiftingNos.add(cleaned);
+              invoicedDispatchNos.add(cleaned);
+              invoicedGeneralNos.add(cleaned);
+            }
+          });
+        }
+      });
+    });
+
+    const allInvoicesTextCorpus = textCorpusParts.join(' ');
+
+    const isLiftingInvoiced = (l: any): boolean => {
+      if (Array.isArray(l.invoices) && l.invoices.some((inv: any) => inv.status !== 'Cancelled' && inv.status !== 'Inactive')) {
+        return true;
+      }
+      const idStr = String(l.id || '').trim().toLowerCase();
+      if (idStr && (invoicedLiftingIds.has(idStr) || invoicedGeneralIds.has(idStr))) {
+        return true;
+      }
+      const lNo = String(l.liftingNo || '').trim().toLowerCase();
+      if (lNo && (invoicedLiftingNos.has(lNo) || invoicedGeneralNos.has(lNo))) {
+        return true;
+      }
+      const padStr = String(l.padNumber || '').trim().toLowerCase();
+      if (padStr && (invoicedPadPodNos.has(padStr) || invoicedLiftingNos.has(padStr) || invoicedGeneralNos.has(padStr))) {
+        return true;
+      }
+      const podStr = String(l.podNumber || '').trim().toLowerCase();
+      if (podStr && (invoicedPadPodNos.has(podStr) || invoicedLiftingNos.has(podStr) || invoicedGeneralNos.has(podStr))) {
+        return true;
+      }
+      const delNote = String(l.deliveryNoteNo || '').trim().toLowerCase();
+      if (delNote && (invoicedGeneralNos.has(delNote) || invoicedLiftingNos.has(delNote))) {
+        return true;
+      }
+      if (lNo && allInvoicesTextCorpus.includes(lNo)) {
+        return true;
+      }
+      if (idStr && allInvoicesTextCorpus.includes(idStr)) {
+        return true;
+      }
+      if (padStr && padStr.length >= 3 && allInvoicesTextCorpus.includes(padStr)) {
+        return true;
+      }
+      if (podStr && podStr.length >= 3 && allInvoicesTextCorpus.includes(podStr)) {
+        return true;
+      }
+      return false;
+    };
+
+    const isDispatchInvoiced = (d: any): boolean => {
+      const idStr = String(d.id || '').trim().toLowerCase();
+      if (idStr && (invoicedDeliveryIds.has(idStr) || invoicedGeneralIds.has(idStr))) {
+        return true;
+      }
+      const dNo = String(d.dispatchNo || '').trim().toLowerCase();
+      if (dNo && (invoicedDispatchNos.has(dNo) || invoicedGeneralNos.has(dNo))) {
+        return true;
+      }
+      const padStr = String(d.padNumber || '').trim().toLowerCase();
+      if (padStr && (invoicedPadPodNos.has(padStr) || invoicedDispatchNos.has(padStr) || invoicedGeneralNos.has(padStr))) {
+        return true;
+      }
+      const podStr = String((d as any).podNumber || '').trim().toLowerCase();
+      if (podStr && (invoicedPadPodNos.has(podStr) || invoicedDispatchNos.has(podStr) || invoicedGeneralNos.has(podStr))) {
+        return true;
+      }
+      if (dNo && allInvoicesTextCorpus.includes(dNo)) {
+        return true;
+      }
+      if (idStr && allInvoicesTextCorpus.includes(idStr)) {
+        return true;
+      }
+      if (padStr && padStr.length >= 3 && allInvoicesTextCorpus.includes(padStr)) {
+        return true;
+      }
+      if (podStr && podStr.length >= 3 && allInvoicesTextCorpus.includes(podStr)) {
+        return true;
+      }
+      return false;
+    };
 
     // Group aggregate deliveries by customer
     const aggByCustomer = new Map<string, typeof aggregateDeliveries>();
@@ -227,12 +513,7 @@ export async function GET(request: NextRequest) {
       const paymentCount = c.payments.length;
 
       // Delivered/Verified liftings that have no invoice yet
-      const invoicedLiftingIds = new Set(
-        c.invoices.map((inv) => inv.liftingId).filter(Boolean)
-      );
-      const uninvoicedLiftings = c.cementLiftings.filter(
-        (l) => l.invoices.length === 0 && !invoicedLiftingIds.has(l.id)
-      );
+      const uninvoicedLiftings = c.cementLiftings.filter((l) => !isLiftingInvoiced(l));
       const cementDeliveredNotInvoiced = uninvoicedLiftings.reduce(
         (sum, l) => sum + Number(l.factoryWeight) * Number(l.purchase.unitPrice),
         0
@@ -241,9 +522,7 @@ export async function GET(request: NextRequest) {
 
       // Aggregate deliveries that haven't been invoiced yet
       const customerAggDeliveries = aggByCustomer.get(c.id) || [];
-      const uninvoicedAggDeliveries = customerAggDeliveries.filter(
-        (d) => !invoicedAggDeliveryIds.has(d.id)
-      );
+      const uninvoicedAggDeliveries = customerAggDeliveries.filter((d) => !isDispatchInvoiced(d));
       const aggDeliveredNotInvoiced = uninvoicedAggDeliveries.reduce(
         (sum, d) => sum + (d.deliveredVolume || d.loadedVolume) * (d.aggregateValue || 0),
         0

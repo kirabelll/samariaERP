@@ -965,6 +965,10 @@ export default function NewInvoicePage() {
         unitPrice,
         vat,
         total: Math.round(total * 100) / 100,
+        liftingId: lifting.id,
+        liftingNo: lifting.liftingNo,
+        padNumber: lifting.padNumber,
+        podNumber: lifting.podNumber,
       },
     ]);
   };

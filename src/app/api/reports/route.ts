@@ -61,7 +61,7 @@ export async function GET(request: NextRequest) {
             liftingId: true,
             division: true,
             items: true,
-            cementLifting: { select: { id: true, liftingNo: true } },
+            cementLifting: { select: { id: true, liftingNo: true, padNumber: true, podNumber: true } },
           },
         });
 
@@ -86,82 +86,294 @@ export async function GET(request: NextRequest) {
         const invoicedLiftingNos = new Set<string>();
         const invoicedDeliveryIds = new Set<string>();
         const invoicedDispatchNos = new Set<string>();
+        const invoicedPadPodNos = new Set<string>();
+        const invoicedGeneralIds = new Set<string>();
+        const invoicedGeneralNos = new Set<string>();
+        const textCorpusParts: string[] = [];
 
         allActiveInvoices.forEach((inv) => {
           // Direct lifting relationship
           if (inv.liftingId) {
-            invoicedLiftingIds.add(String(inv.liftingId));
+            const lid = String(inv.liftingId).trim().toLowerCase();
+            invoicedLiftingIds.add(lid);
+            invoicedGeneralIds.add(lid);
           }
           if (inv.cementLifting?.liftingNo) {
-            invoicedLiftingNos.add(String(inv.cementLifting.liftingNo));
+            const lno = String(inv.cementLifting.liftingNo).trim().toLowerCase();
+            invoicedLiftingNos.add(lno);
+            invoicedGeneralNos.add(lno);
             if (inv.cementLifting.id) {
-              invoicedLiftingIds.add(String(inv.cementLifting.id));
+              const cid = String(inv.cementLifting.id).trim().toLowerCase();
+              invoicedLiftingIds.add(cid);
+              invoicedGeneralIds.add(cid);
             }
+            if (inv.cementLifting.padNumber) {
+              const pno = String(inv.cementLifting.padNumber).trim().toLowerCase();
+              invoicedPadPodNos.add(pno);
+              invoicedLiftingNos.add(pno);
+              invoicedGeneralNos.add(pno);
+            }
+            if (inv.cementLifting.podNumber) {
+              const pno = String(inv.cementLifting.podNumber).trim().toLowerCase();
+              invoicedPadPodNos.add(pno);
+              invoicedLiftingNos.add(pno);
+              invoicedGeneralNos.add(pno);
+            }
+          }
+
+          if (typeof inv.items === 'string') {
+            textCorpusParts.push(inv.items.toLowerCase());
           }
 
           // Items parsing with comprehensive reference extraction
           const parsedItems = safelyParseItems(inv.items);
           parsedItems.forEach((item: any) => {
             // Explicit IDs
-            if (item.liftingId) invoicedLiftingIds.add(String(item.liftingId));
-            if (item.liftingIds && Array.isArray(item.liftingIds)) {
-              item.liftingIds.forEach((id: any) => invoicedLiftingIds.add(String(id)));
+            if (item.id) {
+              const idStr = String(item.id).trim().toLowerCase();
+              invoicedGeneralIds.add(idStr);
             }
-            if (item.deliveryId) invoicedDeliveryIds.add(String(item.deliveryId));
-            if (item.dispatchId) invoicedDeliveryIds.add(String(item.dispatchId));
+            if (item.liftingId) {
+              const idStr = String(item.liftingId).trim().toLowerCase();
+              invoicedLiftingIds.add(idStr);
+              invoicedGeneralIds.add(idStr);
+            }
+            if (item.liftingIds && Array.isArray(item.liftingIds)) {
+              item.liftingIds.forEach((id: any) => {
+                if (id) {
+                  const idStr = String(id).trim().toLowerCase();
+                  invoicedLiftingIds.add(idStr);
+                  invoicedGeneralIds.add(idStr);
+                }
+              });
+            }
+            if (item.deliveryId) {
+              const idStr = String(item.deliveryId).trim().toLowerCase();
+              invoicedDeliveryIds.add(idStr);
+              invoicedGeneralIds.add(idStr);
+            }
+            if (item.deliveryIds && Array.isArray(item.deliveryIds)) {
+              item.deliveryIds.forEach((id: any) => {
+                if (id) {
+                  const idStr = String(id).trim().toLowerCase();
+                  invoicedDeliveryIds.add(idStr);
+                  invoicedGeneralIds.add(idStr);
+                }
+              });
+            }
+            if (item.dispatchId) {
+              const idStr = String(item.dispatchId).trim().toLowerCase();
+              invoicedDeliveryIds.add(idStr);
+              invoicedGeneralIds.add(idStr);
+            }
+            if (item.dispatchIds && Array.isArray(item.dispatchIds)) {
+              item.dispatchIds.forEach((id: any) => {
+                if (id) {
+                  const idStr = String(id).trim().toLowerCase();
+                  invoicedDeliveryIds.add(idStr);
+                  invoicedGeneralIds.add(idStr);
+                }
+              });
+            }
 
             // Explicit numbers / codes
-            if (item.liftingNo) invoicedLiftingNos.add(String(item.liftingNo));
-            if (item.liftingNos && Array.isArray(item.liftingNos)) {
-              item.liftingNos.forEach((no: any) => invoicedLiftingNos.add(String(no)));
+            if (item.liftingNo) {
+              const noStr = String(item.liftingNo).trim().toLowerCase();
+              invoicedLiftingNos.add(noStr);
+              invoicedGeneralNos.add(noStr);
             }
-            if (item.dispatchNo) invoicedDispatchNos.add(String(item.dispatchNo));
+            if (item.liftingNos && Array.isArray(item.liftingNos)) {
+              item.liftingNos.forEach((no: any) => {
+                if (no) {
+                  const noStr = String(no).trim().toLowerCase();
+                  invoicedLiftingNos.add(noStr);
+                  invoicedGeneralNos.add(noStr);
+                }
+              });
+            }
+            if (item.dispatchNo) {
+              const noStr = String(item.dispatchNo).trim().toLowerCase();
+              invoicedDispatchNos.add(noStr);
+              invoicedGeneralNos.add(noStr);
+            }
+            if (item.dispatchNos && Array.isArray(item.dispatchNos)) {
+              item.dispatchNos.forEach((no: any) => {
+                if (no) {
+                  const noStr = String(no).trim().toLowerCase();
+                  invoicedDispatchNos.add(noStr);
+                  invoicedGeneralNos.add(noStr);
+                }
+              });
+            }
             if (item.padNumber) {
-              invoicedLiftingNos.add(String(item.padNumber));
-              invoicedDispatchNos.add(String(item.padNumber));
+              const pad = String(item.padNumber).trim().toLowerCase();
+              invoicedPadPodNos.add(pad);
+              invoicedLiftingNos.add(pad);
+              invoicedDispatchNos.add(pad);
+              invoicedGeneralNos.add(pad);
+            }
+            if (item.padNumbers && Array.isArray(item.padNumbers)) {
+              item.padNumbers.forEach((p: any) => {
+                if (p) {
+                  const pad = String(p).trim().toLowerCase();
+                  invoicedPadPodNos.add(pad);
+                  invoicedLiftingNos.add(pad);
+                  invoicedDispatchNos.add(pad);
+                  invoicedGeneralNos.add(pad);
+                }
+              });
             }
             if (item.podNumber) {
-              invoicedLiftingNos.add(String(item.podNumber));
-              invoicedDispatchNos.add(String(item.podNumber));
+              const pod = String(item.podNumber).trim().toLowerCase();
+              invoicedPadPodNos.add(pod);
+              invoicedLiftingNos.add(pod);
+              invoicedDispatchNos.add(pod);
+              invoicedGeneralNos.add(pod);
             }
             if (item.podNumbers && Array.isArray(item.podNumbers)) {
               item.podNumbers.forEach((p: any) => {
-                invoicedLiftingNos.add(String(p));
-                invoicedDispatchNos.add(String(p));
+                if (p) {
+                  const pod = String(p).trim().toLowerCase();
+                  invoicedPadPodNos.add(pod);
+                  invoicedLiftingNos.add(pod);
+                  invoicedDispatchNos.add(pod);
+                  invoicedGeneralNos.add(pod);
+                }
+              });
+            }
+
+            if (item.ref) {
+              const ref = String(item.ref).trim().toLowerCase();
+              invoicedGeneralNos.add(ref);
+            }
+            if (item.refs && Array.isArray(item.refs)) {
+              item.refs.forEach((r: any) => {
+                if (r) invoicedGeneralNos.add(String(r).trim().toLowerCase());
               });
             }
 
             // Pattern matching in item text (item, name, description, itemName)
             const text = `${item.item || ''} ${item.name || ''} ${item.description || ''} ${item.itemName || ''}`;
+            textCorpusParts.push(text.toLowerCase());
             
             // Cement lifting patterns (LIFT-xxxx, LFT-xxxx)
             const lftMatches = text.match(/(?:LIFT|LFT)-[\w-]+/gi);
-            if (lftMatches) lftMatches.forEach((m) => invoicedLiftingNos.add(m));
+            if (lftMatches) {
+              lftMatches.forEach((m) => {
+                const clean = m.trim().toLowerCase();
+                invoicedLiftingNos.add(clean);
+                invoicedGeneralNos.add(clean);
+              });
+            }
 
             // Aggregate dispatch patterns (DISP-xxxx, DSP-xxxx, AGG-xxxx)
             const dispMatches = text.match(/(?:DISP|DSP|AGG)-[\w-]+/gi);
-            if (dispMatches) dispMatches.forEach((m) => invoicedDispatchNos.add(m));
+            if (dispMatches) {
+              dispMatches.forEach((m) => {
+                const clean = m.trim().toLowerCase();
+                invoicedDispatchNos.add(clean);
+                invoicedGeneralNos.add(clean);
+              });
+            }
 
             // POD / PAD numbers embedded in text
             const podMatches = text.match(/(?:POD|PAD)s?\s*#?\s*([\w/-]+)/gi);
             if (podMatches) {
               podMatches.forEach((matchStr) => {
-                const cleaned = matchStr.replace(/^(?:POD|PAD)s?\s*#?/i, '').trim();
+                const cleaned = matchStr.replace(/^(?:POD|PAD)s?\s*#?/i, '').trim().toLowerCase();
                 if (cleaned) {
+                  invoicedPadPodNos.add(cleaned);
                   invoicedLiftingNos.add(cleaned);
                   invoicedDispatchNos.add(cleaned);
+                  invoicedGeneralNos.add(cleaned);
                 }
               });
             }
           });
         });
 
+        const allInvoicesTextCorpus = textCorpusParts.join(' ');
+
+        // Helpers to determine whether a lifting or dispatch is already invoiced
+        const isLiftingInvoiced = (l: any): boolean => {
+          if (Array.isArray(l.invoices) && l.invoices.some((inv: any) => inv.status !== 'Cancelled' && inv.status !== 'Inactive')) {
+            return true;
+          }
+          const idStr = String(l.id || '').trim().toLowerCase();
+          if (idStr && (invoicedLiftingIds.has(idStr) || invoicedGeneralIds.has(idStr))) {
+            return true;
+          }
+          const lNo = String(l.liftingNo || '').trim().toLowerCase();
+          if (lNo && (invoicedLiftingNos.has(lNo) || invoicedGeneralNos.has(lNo))) {
+            return true;
+          }
+          const padStr = String(l.padNumber || '').trim().toLowerCase();
+          if (padStr && (invoicedPadPodNos.has(padStr) || invoicedLiftingNos.has(padStr) || invoicedGeneralNos.has(padStr))) {
+            return true;
+          }
+          const podStr = String(l.podNumber || '').trim().toLowerCase();
+          if (podStr && (invoicedPadPodNos.has(podStr) || invoicedLiftingNos.has(podStr) || invoicedGeneralNos.has(podStr))) {
+            return true;
+          }
+          const delNote = String(l.deliveryNoteNo || '').trim().toLowerCase();
+          if (delNote && (invoicedGeneralNos.has(delNote) || invoicedLiftingNos.has(delNote))) {
+            return true;
+          }
+          // Substring match in all invoice items corpus
+          if (lNo && allInvoicesTextCorpus.includes(lNo)) {
+            return true;
+          }
+          if (idStr && allInvoicesTextCorpus.includes(idStr)) {
+            return true;
+          }
+          if (padStr && padStr.length >= 3 && allInvoicesTextCorpus.includes(padStr)) {
+            return true;
+          }
+          if (podStr && podStr.length >= 3 && allInvoicesTextCorpus.includes(podStr)) {
+            return true;
+          }
+          return false;
+        };
+
+        const isDispatchInvoiced = (d: any): boolean => {
+          const idStr = String(d.id || '').trim().toLowerCase();
+          if (idStr && (invoicedDeliveryIds.has(idStr) || invoicedGeneralIds.has(idStr))) {
+            return true;
+          }
+          const dNo = String(d.dispatchNo || '').trim().toLowerCase();
+          if (dNo && (invoicedDispatchNos.has(dNo) || invoicedGeneralNos.has(dNo))) {
+            return true;
+          }
+          const padStr = String(d.padNumber || '').trim().toLowerCase();
+          if (padStr && (invoicedPadPodNos.has(padStr) || invoicedDispatchNos.has(padStr) || invoicedGeneralNos.has(padStr))) {
+            return true;
+          }
+          const podStr = String((d as any).podNumber || '').trim().toLowerCase();
+          if (podStr && (invoicedPadPodNos.has(podStr) || invoicedDispatchNos.has(podStr) || invoicedGeneralNos.has(podStr))) {
+            return true;
+          }
+          // Substring match in all invoice items corpus
+          if (dNo && allInvoicesTextCorpus.includes(dNo)) {
+            return true;
+          }
+          if (idStr && allInvoicesTextCorpus.includes(idStr)) {
+            return true;
+          }
+          if (padStr && padStr.length >= 3 && allInvoicesTextCorpus.includes(padStr)) {
+            return true;
+          }
+          if (podStr && podStr.length >= 3 && allInvoicesTextCorpus.includes(podStr)) {
+            return true;
+          }
+          return false;
+        };
+
         // Date filter for liftings and deliveries
         const liftingDateFilter: any = {};
         if (startDate) liftingDateFilter.gte = new Date(startDate);
         if (endDate) liftingDateFilter.lte = new Date(endDate);
 
-        // 1. Fetch Cement Liftings and check strictly by ID and liftingNo against active invoices
+        // 1. Fetch Cement Liftings and check strictly against active invoices
         const cementLiftings = await prisma.cementLifting.findMany({
           where: {
             status: { in: ['Delivered', 'Verified', 'Lifted'] },
@@ -180,12 +392,7 @@ export async function GET(request: NextRequest) {
         });
 
         const uninvoicedCementItems = cementLiftings
-          .filter(
-            (l) =>
-              l.invoices.length === 0 && // No direct invoice relationship
-              !invoicedLiftingIds.has(String(l.id)) && // Not referenced by ID in any invoice items
-              !invoicedLiftingNos.has(String(l.liftingNo)) // Not referenced by liftingNo in any invoice items
-          )
+          .filter((l) => !isLiftingInvoiced(l))
           .map((l) => {
             const weight = l.buyerWeighbridgeQty || l.factoryWeight || 0;
             const unitPrice = l.purchase?.unitPrice || 0;
@@ -208,7 +415,7 @@ export async function GET(request: NextRequest) {
             };
           });
 
-        // 2. Fetch Aggregate Deliveries and check strictly by ID and dispatchNo against active invoices
+        // 2. Fetch Aggregate Deliveries and check strictly against active invoices
         const aggregateDeliveries = await prisma.aggregateDelivery.findMany({
           where: {
             status: { in: ['Delivered', 'Verified', 'Settled'] },
@@ -225,11 +432,7 @@ export async function GET(request: NextRequest) {
         const aggCustMap = new Map(aggCustomers.map((c) => [c.id, c.companyName]));
 
         const uninvoicedAggItems = aggregateDeliveries
-          .filter(
-            (d) =>
-              !invoicedDeliveryIds.has(String(d.id)) && // Not referenced by ID in any invoice items
-              !invoicedDispatchNos.has(String(d.dispatchNo)) // Not referenced by dispatchNo in any invoice items
-          )
+          .filter((d) => !isDispatchInvoiced(d))
           .map((d) => {
             const volume = d.deliveredVolume || d.loadedVolume || 0;
             const unitPrice = d.aggregateValue || d.transportRate || 0;
